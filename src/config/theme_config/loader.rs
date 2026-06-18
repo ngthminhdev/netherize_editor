@@ -6,7 +6,7 @@ use std::{
 use super::{
     model::{
         EditorThemeTokens, FileIconThemeTokens, GitThemeTokens, IconThemeTokens, SyntaxThemeTokens,
-        ThemeColor, ThemeConfig, UiThemeTokens,
+        ThemeColor, ThemeConfig, UiThemeTokens, derive_elevated_surface,
     },
     raw::{
         RawEditor, RawFileIconTheme, RawFileIcons, RawGit, RawIcons, RawSyntax, RawThemeFile, RawUi,
@@ -233,6 +233,10 @@ fn merge_raw_ui(defaults: Option<&RawUi>, current: &RawUi) -> RawUi {
         bg: current.bg.clone().or_else(|| defaults.bg.clone()),
         sidebar_bg: current.sidebar_bg.clone(),
         panel_bg: current.panel_bg.clone(),
+        elevated_bg: current
+            .elevated_bg
+            .clone()
+            .or_else(|| defaults.elevated_bg.clone()),
         terminal_bg: current
             .terminal_bg
             .clone()
@@ -542,10 +546,15 @@ fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
 }
 
 fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String> {
+    let panel_bg = parse_color("ui", "panel_bg", &raw.panel_bg)?;
     Ok(UiThemeTokens {
         bg: parse_color("ui", "bg", raw.bg.as_deref().unwrap_or("#07080d"))?,
         sidebar_bg: parse_color("ui", "sidebar_bg", &raw.sidebar_bg)?,
-        panel_bg: parse_color("ui", "panel_bg", &raw.panel_bg)?,
+        panel_bg,
+        elevated_bg: match raw.elevated_bg.as_deref() {
+            Some(hex) => parse_color("ui", "elevated_bg", hex)?,
+            None => derive_elevated_surface(panel_bg),
+        },
         terminal_bg: parse_color(
             "ui",
             "terminal_bg",

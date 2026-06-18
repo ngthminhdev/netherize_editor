@@ -371,11 +371,17 @@ impl Renderer {
                 let text_x = content_bounds[0] + self.sidebar_base_padding;
                 let text_y = filter_y
                     + self.panel_padding
-                    + ((SIDEBAR_FILTER_BAR_HEIGHT - self.panel_padding * 2.0 - line_h).max(0.0) * 0.5);
+                    + ((SIDEBAR_FILTER_BAR_HEIGHT - self.panel_padding * 2.0 - line_h).max(0.0)
+                        * 0.5);
 
                 chrome.push(
                     RegionDrawInstance::new(
-                        [content_bounds[0], filter_y, content_bounds[2], SIDEBAR_FILTER_BAR_HEIGHT],
+                        [
+                            content_bounds[0],
+                            filter_y,
+                            content_bounds[2],
+                            SIDEBAR_FILTER_BAR_HEIGHT,
+                        ],
                         panel_bg,
                     )
                     .with_radius(
@@ -487,7 +493,9 @@ impl Renderer {
                 }
 
                 let mut label_x = x + arrow_w + icon_slot_w;
-                if let (Some(marker), Some(color)) = (row.prefix_marker.as_deref(), row.prefix_color) {
+                if let (Some(marker), Some(color)) =
+                    (row.prefix_marker.as_deref(), row.prefix_color)
+                {
                     let marker_text = format!("{} ", marker);
                     glyphs.extend(layout_panel_text(
                         &marker_text,
@@ -539,7 +547,8 @@ impl Renderer {
             }
         } else if let Some((symbols, selected, inner_padding)) = outline {
             // Outline tab is active
-            let (oc, og, oi) = self.build_left_outline_content(content_bounds, symbols, selected, inner_padding);
+            let (oc, og, oi) =
+                self.build_left_outline_content(content_bounds, symbols, selected, inner_padding);
             chrome.extend(oc);
             glyphs.extend(og);
             content_icons.extend(oi);
@@ -574,7 +583,11 @@ impl Renderer {
         icons: &[Option<&'static str>],
         active: usize,
         focused: bool,
-    ) -> (Vec<RegionDrawInstance>, Vec<crate::render::glyph_instance::GlyphInstance>, Vec<IconDrawInstance>) {
+    ) -> (
+        Vec<RegionDrawInstance>,
+        Vec<crate::render::glyph_instance::GlyphInstance>,
+        Vec<IconDrawInstance>,
+    ) {
         let mut chrome: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<crate::render::glyph_instance::GlyphInstance> = Vec::new();
         let mut icon_instances: Vec<IconDrawInstance> = Vec::new();
@@ -712,12 +725,7 @@ impl Renderer {
         }
         let divider = super::utils::blend_rgb(tab_base, border, 0.7, 1.0);
         chrome.push(RegionDrawInstance::new(
-            [
-                bounds[0],
-                bounds[1] + bounds[3] - 1.0,
-                bounds[2],
-                1.0,
-            ],
+            [bounds[0], bounds[1] + bounds[3] - 1.0, bounds[2], 1.0],
             divider,
         ));
         self.sidebar_text_system.set_metrics(saved_metrics);

@@ -3239,5 +3239,43 @@
     ],
     "occurrences": 1,
     "last_seen": "2026-06-18T00:00:00+07:00"
+  },
+  {
+    "id": "bug-182",
+    "timestamp": "2026-06-18T17:02:36Z",
+    "error_message": "Recent Projects keeps stale moved repository paths; selecting them opens nothing and clutters the UI.",
+    "file": "src/app/event_loop/commands_prompts.rs",
+    "root_cause": "Recent project persistence had add/open behavior but no selected-entry removal path.",
+    "fix": "Added Recent Projects normal-mode x removal that deletes the selected path from persisted recent projects and metadata, saves state, and refreshes UI lists without deleting anything on disk.",
+    "tags": [
+      "recent-projects",
+      "persistence",
+      "palette",
+      "ui-noise",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T17:02:36Z"
+  },
+  {
+    "id": "bug-183",
+    "timestamp": "2026-06-18T17:09:03Z",
+    "error_message": "Recent Projects does not show -- NORMAL -- / -- INSERT -- status like file picker or symbol picker, so x removal after Esc is confusing.",
+    "file": "src/render/renderer/palette/recent_projects.rs",
+    "root_cause": "CommandPaletteRenderModel already exposed vim_mode_label, and file/symbol picker renderers drew it, but render_recent_projects never rendered model.vim_mode_label in its header.",
+    "fix": "Added Recent Projects header rendering for the same -- MODE -- text and a regression test for formatting the mode status.",
+    "tags": [
+      "recent-projects",
+      "command-palette",
+      "vim-mode",
+      "status-indicator",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-182"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T17:09:03Z"
   }
 ]

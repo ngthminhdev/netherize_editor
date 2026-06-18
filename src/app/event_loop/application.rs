@@ -6,7 +6,7 @@ use winit::{
     keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
 };
 
-const FOCUS_RING_THICKNESS: f32 = 2.0;
+const FOCUS_RING_THICKNESS: f32 = 1.0;
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
 /// Delay before the which-key overlay appears for a pending chord — long
 /// enough that fast chords never flash it, short enough to help a stuck user.
@@ -1394,7 +1394,12 @@ impl AppShell {
         } else {
             0.0
         };
-        let mut default_outline = self.theme.ui.accent.as_f32();
+        // Unfocused panel edge: a hairline ~10% lighter than the panel rather
+        // than the theme's `border_color`, which is darker than the background on
+        // dark themes and so vanishes — leaving panels looking disjointed. We
+        // lighten the 1px EDGE only; panel bodies stay flat.
+        let mut default_outline =
+            crate::config::theme_config::derive_elevated_surface(self.theme.ui.panel_bg).as_f32();
         default_outline[3] = default_outline[3].max(0.95);
         let focus_target = if show_welcome && !workspace_attached {
             FocusTarget::CenterEditor
@@ -1411,12 +1416,9 @@ impl AppShell {
             if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
                 self.theme.ui.error.as_f32()
             } else {
-                self.theme.ui.cyan.as_f32()
+                self.theme.ui.accent.as_f32()
             };
         focused_outline[3] = focused_outline[3].max(0.95);
-
-        // RightSidebar background: flat fill with an optional focus ring.
-        let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
 
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
@@ -1443,10 +1445,10 @@ impl AppShell {
                     || (show_welcome && region.id == RegionId::Center);
 
                 if region.id == RegionId::RightSidebar {
+                    let rs_fill =
+                        region_surface_color(RegionId::RightSidebar, &self.theme, is_focused);
                     if suppress_ring {
-                        vec![
-                            RegionDrawInstance::new(bounds, rs_panel_bg).with_radius(panel_radius),
-                        ]
+                        vec![RegionDrawInstance::new(bounds, rs_fill).with_radius(panel_radius)]
                     } else {
                         let outline_color = if is_focused {
                             focused_outline
@@ -1458,14 +1460,17 @@ impl AppShell {
                             outline_color,
                             FOCUS_RING_THICKNESS,
                             panel_radius,
-                            rs_panel_bg,
+                            rs_fill,
                         );
                         quads
                     }
                 } else if suppress_ring {
                     vec![
-                        RegionDrawInstance::new(bounds, region_color(region.id, &self.theme))
-                            .with_radius(panel_radius),
+                        RegionDrawInstance::new(
+                            bounds,
+                            region_surface_color(region.id, &self.theme, is_focused),
+                        )
+                        .with_radius(panel_radius),
                     ]
                 } else {
                     let outline_color = if is_focused {
@@ -1478,7 +1483,7 @@ impl AppShell {
                         outline_color,
                         FOCUS_RING_THICKNESS,
                         panel_radius,
-                        region_color(region.id, &self.theme),
+                        region_surface_color(region.id, &self.theme, is_focused),
                     )
                 }
             })
@@ -1568,13 +1573,14 @@ impl AppShell {
                             let scroll_x = preview.scroll_x;
                             let rendered_lines = preview.rendered_lines.clone();
                             let inner_padding = self.layout_engine.config.inner_padding;
-                            let (max_scroll, max_scroll_x) = renderer.update_markdown_preview_content(
-                                center_bounds,
-                                &rendered_lines,
-                                scroll_y,
-                                scroll_x,
-                                inner_padding,
-                            );
+                            let (max_scroll, max_scroll_x) = renderer
+                                .update_markdown_preview_content(
+                                    center_bounds,
+                                    &rendered_lines,
+                                    scroll_y,
+                                    scroll_x,
+                                    inner_padding,
+                                );
                             self.app_state.markdown_preview.max_scroll = max_scroll;
                             self.app_state.markdown_preview.max_scroll_x = max_scroll_x;
                             if self.app_state.markdown_preview.scroll_y > max_scroll {
@@ -1644,15 +1650,13 @@ impl AppShell {
                             renderer.clear_welcome_logo();
                             renderer.clear_buffer_terminal();
                             let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
-                            renderer.set_editor_breadcrumb_segments(
-                                build_editor_header_segments(
-                                    self.app_state.active_file(),
-                                    &self.cached_document_symbols,
-                                    cursor_line,
-                                    cursor_col,
-                                    &self.theme,
-                                ),
-                            );
+                            renderer.set_editor_breadcrumb_segments(build_editor_header_segments(
+                                self.app_state.active_file(),
+                                &self.cached_document_symbols,
+                                cursor_line,
+                                cursor_col,
+                                &self.theme,
+                            ));
                             let effective_highlights =
                                 crate::syntax::highlight::overlay_highlight_layers(
                                     &self.highlight_spans,
@@ -1719,13 +1723,14 @@ impl AppShell {
                             let scroll_x = preview.scroll_x;
                             let rendered_lines = preview.rendered_lines.clone();
                             let inner_padding = self.layout_engine.config.inner_padding;
-                            let (max_scroll, max_scroll_x) = renderer.update_markdown_preview_content(
-                                center_bounds,
-                                &rendered_lines,
-                                scroll_y,
-                                scroll_x,
-                                inner_padding,
-                            );
+                            let (max_scroll, max_scroll_x) = renderer
+                                .update_markdown_preview_content(
+                                    center_bounds,
+                                    &rendered_lines,
+                                    scroll_y,
+                                    scroll_x,
+                                    inner_padding,
+                                );
                             self.app_state.markdown_preview.max_scroll = max_scroll;
                             self.app_state.markdown_preview.max_scroll_x = max_scroll_x;
                             if self.app_state.markdown_preview.scroll_y > max_scroll {
@@ -2477,14 +2482,12 @@ impl AppShell {
                 // Rendered at the top of the bottom panel, showing all outer
                 // dock tabs (Terminal, Debug Console, Problems). Uses the same
                 // visual style as left/right dock tab bars.
-                let outer_strip_h =
-                    crate::workbench::layout_engine::BOTTOM_TAB_STRIP_HEIGHT;
+                let outer_strip_h = crate::workbench::layout_engine::BOTTOM_TAB_STRIP_HEIGHT;
                 let inset = crate::workbench::layout_engine::BOTTOM_DOCK_OUTLINE_INSET
                     .min(bottom_bounds[2] * 0.5)
                     .min(bottom_bounds[3] * 0.5)
                     .max(0.0);
-                let outer_strip_h = outer_strip_h
-                    .min((bottom_bounds[3] - inset * 2.0).max(0.0));
+                let outer_strip_h = outer_strip_h.min((bottom_bounds[3] - inset * 2.0).max(0.0));
 
                 // Build the outer tab list dynamically: each terminal instance
                 // appears as an individual tab, followed by an "Add terminal"
@@ -2531,8 +2534,7 @@ impl AppShell {
 
                 let outer_labels_refs: Vec<&str> =
                     outer_labels.iter().map(|s| s.as_str()).collect();
-                let strip_focused =
-                    self.focus_manager.current() == FocusTarget::BottomPanel;
+                let strip_focused = self.focus_manager.current() == FocusTarget::BottomPanel;
 
                 // ── Content area below the outer tab strip ───────────────────
                 // The outer strip IS the dock's only tab bar (like the left/right
@@ -2549,8 +2551,7 @@ impl AppShell {
                 //    replaces `terminal_glyph_instances` with the body glyphs, so
                 //    it has to run before the tab strip appends its title glyphs.
                 if terminal_tab_active {
-                    let bounds_changed =
-                        self.last_terminal_bounds != Some(bottom_bounds);
+                    let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
                     let grid_changed = self.sync_terminal_layout(content_bounds);
                     if (self.terminal_needs_layout || bounds_changed || grid_changed)
                         && let Some(renderer) = self.renderer.as_mut()
@@ -2764,10 +2765,10 @@ fn focus_ring_instances(
 #[cfg(test)]
 mod tests {
     use super::{
-        breadcrumb_segment_text, build_editor_breadcrumb_segments, build_editor_header_segments,
-        focus_ring_instances, AppShell, focus_target_region_id, mouse_button_code,
-        point_in_bounds, sgr_mouse_sequence, sgr_wheel_sequence, statusbar_source_path_label,
-        terminal_cell_at_position, visible_region_bounds,
+        AppShell, breadcrumb_segment_text, build_editor_breadcrumb_segments,
+        build_editor_header_segments, focus_ring_instances, focus_target_region_id,
+        mouse_button_code, point_in_bounds, sgr_mouse_sequence, sgr_wheel_sequence,
+        statusbar_source_path_label, terminal_cell_at_position, visible_region_bounds,
     };
     use crate::app::app_state::AppState;
     use crate::async_runtime::message::{
@@ -2795,7 +2796,7 @@ mod tests {
         let instances = focus_ring_instances(
             [12.0, 24.0, 320.0, 180.0],
             [0.7, 0.3, 1.0, 1.0],
-            3.0,
+            1.0,
             10.0,
             [0.08, 0.08, 0.1, 1.0],
         );
@@ -2805,6 +2806,7 @@ mod tests {
             2,
             "panel regions should still render both outline and fill"
         );
+        assert_eq!(instances[1].rect, [13.0, 25.0, 318.0, 178.0]);
     }
 
     #[test]
@@ -3094,8 +3096,7 @@ mod tests {
 
         assert_eq!(header[0].text, "main.rs", "file segment leads the header");
         let header_tail: Vec<&str> = header[1..].iter().map(|s| s.text.as_str()).collect();
-        let symbol_text: Vec<&str> =
-            symbol_only.iter().map(|s| s.text.as_str()).collect();
+        let symbol_text: Vec<&str> = symbol_only.iter().map(|s| s.text.as_str()).collect();
         assert!(!symbol_text.is_empty(), "cursor is inside the function");
         assert_eq!(
             header_tail, symbol_text,

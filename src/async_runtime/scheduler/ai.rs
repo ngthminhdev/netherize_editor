@@ -106,8 +106,8 @@ pub(super) async fn execute_ai_inline_request(
     if let Some(idx) = cleaned.rfind('}') {
         cleaned = &cleaned[..=idx];
     }
-    let json: serde_json::Value = serde_json::from_str(cleaned)
-        .map_err(|err| format!("ai response decode failed: {err}"))?;
+    let json: serde_json::Value =
+        serde_json::from_str(cleaned).map_err(|err| format!("ai response decode failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("ai request error {}: {}", status, json));
     }

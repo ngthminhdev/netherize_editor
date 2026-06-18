@@ -504,8 +504,7 @@ impl Renderer {
             .terminal_body_batch
             .map(|b| b.range.start + b.range.count)
             .unwrap_or(0);
-        self.terminal_glyph_instances
-            .truncate(body_count as usize);
+        self.terminal_glyph_instances.truncate(body_count as usize);
         let tab_text_start = body_count;
 
         let saved_metrics = self.terminal_text_system.buffer_metrics();
@@ -539,7 +538,12 @@ impl Renderer {
                         [bar_x, bounds[1], bar_w.max(0.0), TOP_BORDER],
                         bar_col,
                     )
-                    .with_corner_radii([if is_first { radius } else { 0.0 }, 0.0, 0.0, 0.0]),
+                    .with_corner_radii([
+                        if is_first { radius } else { 0.0 },
+                        0.0,
+                        0.0,
+                        0.0,
+                    ]),
                 );
             }
             if i + 1 < n {
@@ -604,7 +608,12 @@ impl Renderer {
                 let mut sep = border;
                 sep[3] *= 0.5;
                 chrome.push(RegionDrawInstance::new(
-                    [add_x - 0.5, bounds[1] + 6.0, 1.0, (bounds[3] - 12.0).max(0.0)],
+                    [
+                        add_x - 0.5,
+                        bounds[1] + 6.0,
+                        1.0,
+                        (bounds[3] - 12.0).max(0.0),
+                    ],
                     sep,
                 ));
             }
@@ -625,12 +634,7 @@ impl Renderer {
 
         let divider = super::utils::blend_rgb(tab_base, border, 0.7, 1.0);
         chrome.push(RegionDrawInstance::new(
-            [
-                bounds[0],
-                bounds[1] + bounds[3] - 1.0,
-                bounds[2],
-                1.0,
-            ],
+            [bounds[0], bounds[1] + bounds[3] - 1.0, bounds[2], 1.0],
             divider,
         ));
         self.terminal_text_system.set_metrics(saved_metrics);
@@ -639,14 +643,13 @@ impl Renderer {
             .terminal_glyph_instances
             .len()
             .saturating_sub(tab_text_start as usize) as u32;
-        self.terminal_outer_tab_batch =
-            rect_to_scissor(bounds).map(|scissor| TextScissorBatch {
-                scissor,
-                range: InstanceDrawRange {
-                    start: tab_text_start,
-                    count: tab_text_count,
-                },
-            });
+        self.terminal_outer_tab_batch = rect_to_scissor(bounds).map(|scissor| TextScissorBatch {
+            scissor,
+            range: InstanceDrawRange {
+                start: tab_text_start,
+                count: tab_text_count,
+            },
+        });
         // Re-upload the combined [body + tab titles] buffer. This is the last
         // touch of `terminal_glyph_instances` for the frame, so it guarantees the
         // tab titles reach the GPU even when the terminal body wasn't rebuilt.
@@ -860,10 +863,11 @@ impl Renderer {
         // matches it. The text system is shared with the terminal body, so save
         // and restore its metrics around the labels.
         let saved_metrics = self.terminal_text_system.buffer_metrics();
-        self.terminal_text_system.set_metrics(cosmic_text::Metrics::new(
-            font_size,
-            self.theme.editor.line_height,
-        ));
+        self.terminal_text_system
+            .set_metrics(cosmic_text::Metrics::new(
+                font_size,
+                self.theme.editor.line_height,
+            ));
 
         for i in 0..tab_count {
             let remaining_width = (right_limit - tab_x).max(0.0);

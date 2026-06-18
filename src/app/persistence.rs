@@ -116,6 +116,13 @@ impl AppPersistentState {
         );
     }
 
+    pub fn remove_recent(&mut self, path: &Path) -> bool {
+        let before_len = self.recent_projects.len();
+        self.recent_projects.retain(|recent| recent != path);
+        self.recent_project_meta.remove(path);
+        before_len != self.recent_projects.len()
+    }
+
     /// Record `language_key` as the most-recently-used LeetCode language,
     /// moving it to the front of the MRU list (deduped, capped).
     pub fn push_recent_leetcode_language(&mut self, language_key: &str) {
@@ -210,5 +217,21 @@ mod tests {
         assert_eq!(state.recent_leetcode_languages.len(), 12);
         // Most recent stays at the front.
         assert_eq!(state.recent_leetcode_languages[0], "lang19");
+    }
+
+    #[test]
+    fn remove_recent_drops_path_and_metadata() {
+        let project_a = PathBuf::from("/tmp/netherize-project-a");
+        let project_b = PathBuf::from("/tmp/netherize-project-b");
+        let mut state = AppPersistentState::default();
+
+        state.push_recent_with_icon(project_a.clone(), Some("a-icon".to_string()));
+        state.push_recent_with_icon(project_b.clone(), Some("b-icon".to_string()));
+
+        assert!(state.remove_recent(&project_a));
+        assert_eq!(state.recent_projects, vec![project_b.clone()]);
+        assert!(!state.recent_project_meta.contains_key(&project_a));
+        assert!(state.recent_project_meta.contains_key(&project_b));
+        assert!(!state.remove_recent(&project_a));
     }
 }

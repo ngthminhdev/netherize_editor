@@ -487,7 +487,11 @@ impl crate::render::renderer::Renderer {
         icons: &[Option<&'static str>],
         active: usize,
         focused: bool,
-    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>, Vec<IconDrawInstance>) {
+    ) -> (
+        Vec<RegionDrawInstance>,
+        Vec<GlyphInstance>,
+        Vec<IconDrawInstance>,
+    ) {
         let mut chrome: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
         let mut icon_instances: Vec<IconDrawInstance> = Vec::new();
@@ -495,20 +499,20 @@ impl crate::render::renderer::Renderer {
             return (chrome, glyphs, icon_instances);
         }
 
-    let font = self.theme.editor.font_size;
-    let line_h = self.theme.editor.line_height;
-    let fg = self.theme.ui.fg.as_f32();
-    let fg_dim = self.theme.ui.fg_dim.as_f32();
-    let accent = self.theme.ui.accent.as_f32();
-    let tab_base = super::utils::blend_rgb(
-        self.theme.editor.bg.as_f32(),
-        self.theme.ui.status_bar_bg.as_f32(),
-        0.62,
-        1.0,
-    );
-    let border = self.theme.ui.border_color.as_f32();
-    let active_bg = self.theme.editor.bg.as_f32();
-    let inactive_bg = tab_base;
+        let font = self.theme.editor.font_size;
+        let line_h = self.theme.editor.line_height;
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let tab_base = super::utils::blend_rgb(
+            self.theme.editor.bg.as_f32(),
+            self.theme.ui.status_bar_bg.as_f32(),
+            0.62,
+            1.0,
+        );
+        let border = self.theme.ui.border_color.as_f32();
+        let active_bg = self.theme.editor.bg.as_f32();
+        let inactive_bg = tab_base;
         const TOP_BORDER: f32 = 2.0;
         // Round ONLY the strip's two top corners so they follow the panel's
         // rounded focus-ring outline (top-left under the first tab, top-right

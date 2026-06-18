@@ -108,6 +108,21 @@ impl Renderer {
             header_text_y,
             model.hint_color,
         ));
+        if !is_theme_selector
+            && let Some(vim_text) = recent_projects_vim_mode_status(model.vim_mode_label)
+        {
+            let vim_w = estimate_monospace_width(&vim_text, font_size);
+            let vim_x = (count_x - vim_w - 16.0).max(text_x + badge_w + 16.0);
+            glyphs.extend(layout_panel_text(
+                &vim_text,
+                &mut self.palette_text_system,
+                &mut self.atlas,
+                &self.queue,
+                vim_x,
+                header_text_y,
+                model.match_color,
+            ));
+        }
         row_top += badge_h + PALETTE_HEADER_BOTTOM_PAD;
 
         quads.push(RegionDrawInstance::new(
@@ -386,6 +401,43 @@ impl Renderer {
         } else {
             "open"
         };
+        let recent_project_footer_actions = [
+            PaletteFooterAction {
+                keys: &["↑↓"],
+                label: "navigate",
+            },
+            PaletteFooterAction {
+                keys: &["↵"],
+                label: enter_label,
+            },
+            PaletteFooterAction {
+                keys: &["x"],
+                label: "remove",
+            },
+            PaletteFooterAction {
+                keys: &["󱊷"],
+                label: "close",
+            },
+        ];
+        let theme_footer_actions = [
+            PaletteFooterAction {
+                keys: &["↑↓"],
+                label: "navigate",
+            },
+            PaletteFooterAction {
+                keys: &["↵"],
+                label: enter_label,
+            },
+            PaletteFooterAction {
+                keys: &["󱊷"],
+                label: "close",
+            },
+        ];
+        let footer_actions: &[PaletteFooterAction<'_>] = if is_theme_selector {
+            &theme_footer_actions
+        } else {
+            &recent_project_footer_actions
+        };
         glyphs.extend(render_palette_footer(
             model,
             &mut self.palette_text_system,
@@ -396,20 +448,7 @@ impl Renderer {
             footer_y + PALETTE_FOOTER_TOP_PAD,
             font_size,
             palette_footer_content_height(footer_h),
-            &[
-                PaletteFooterAction {
-                    keys: &["↑↓"],
-                    label: "navigate",
-                },
-                PaletteFooterAction {
-                    keys: &["↵"],
-                    label: enter_label,
-                },
-                PaletteFooterAction {
-                    keys: &["󱊷"],
-                    label: "close",
-                },
-            ],
+            footer_actions,
         ));
 
         self.palette_chrome_instances = quads;
@@ -447,6 +486,28 @@ fn parse_recent_secondary(raw: &str) -> RecentProjectRenderMeta {
         path: path.to_string(),
         icon_source,
         last_opened_unix_secs,
+    }
+}
+
+fn recent_projects_vim_mode_status(label: Option<&'static str>) -> Option<String> {
+    label.map(|label| format!("-- {label} --"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recent_projects_formats_vim_mode_status_like_other_pickers() {
+        assert_eq!(
+            recent_projects_vim_mode_status(Some("NORMAL")),
+            Some("-- NORMAL --".to_string())
+        );
+        assert_eq!(
+            recent_projects_vim_mode_status(Some("INSERT")),
+            Some("-- INSERT --".to_string())
+        );
+        assert_eq!(recent_projects_vim_mode_status(None), None);
     }
 }
 

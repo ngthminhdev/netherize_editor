@@ -2285,3 +2285,40 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-06-18 17:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:25 | Created docs/superpowers/specs/2026-06-18-panel-surface-elevation-design.md | — | ~1767 |
+| 17:25 | Edited docs/superpowers/specs/2026-06-18-panel-surface-elevation-design.md | inline fix | ~26 |
+| 17:25 | Session end: 2 writes across 1 files (2026-06-18-panel-surface-elevation-design.md) | 1 reads | ~37508 tok |
+| 17:31 | Created docs/superpowers/plans/2026-06-18-panel-surface-elevation.md | — | ~4486 |
+| 17:32 | Session end: 3 writes across 2 files (2026-06-18-panel-surface-elevation-design.md, 2026-06-18-panel-surface-elevation.md) | 1 reads | ~42315 tok |
+
+## Session: 2026-06-18 17:41
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:48 | Implemented panel surface elevation plan | theme_config, event_loop, renderer ui utils | added derived elevated_bg, elevation-aware fills, 1px accent focus border, border_color seams, removed dead right_sidebar_background_quads; cargo build/test pass | ~65000 |
+
+## Session: 2026-06-18 17:41
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:56 | Edited src/app/event_loop/helpers.rs | as_f32() → focus() | ~100 |
+| 17:57 | Edited src/app/event_loop/helpers.rs | focused_center_uses_elevated_surface() → focus_does_not_lighten_region_body() | ~134 |
+| 17:58 | Created ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/feedback_no_panel_lightening.md | — | ~278 |
+| 17:58 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md | 1→2 lines | ~87 |
+| 17:58 | Session end: 4 writes across 3 files (helpers.rs, feedback_no_panel_lightening.md, MEMORY.md) | 2 reads | ~19352 tok |
+| 18:00 | Session end: 4 writes across 3 files (helpers.rs, feedback_no_panel_lightening.md, MEMORY.md) | 2 reads | ~19352 tok |
+| 18:03 | Edited src/config/theme_config.rs | 3→3 lines | ~38 |
+| 18:04 | Edited src/app/event_loop/application.rs | 2→7 lines | ~132 |
+| 18:04 | Session end: 6 writes across 5 files (helpers.rs, feedback_no_panel_lightening.md, MEMORY.md, theme_config.rs, application.rs) | 4 reads | ~55303 tok |
+
+## Session: 2026-06-18 22:21
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:02 | Added Recent Projects normal-mode x removal | recent-project palette/input/persistence | removes stale entries without disk deletion; cargo test --lib passed | ~tokens |
+| 00:09 | Added Recent Projects Vim mode status indicator | render/renderer/palette/recent_projects.rs | shows -- NORMAL -- / -- INSERT -- like file and symbol pickers | ~tokens |

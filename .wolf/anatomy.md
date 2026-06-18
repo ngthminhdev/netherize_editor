@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T08:03:33.841Z
-> Files: 437 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T11:04:08.732Z
+> Files: 440 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -16,8 +16,9 @@
 ## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
 
 - `feedback_never_auto_commit.md` (~239 tok)
+- `feedback_no_panel_lightening.md` (~279 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~241 tok)
+- `MEMORY.md` (~277 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
 - `project_leetcode_gen_model.md` (~519 tok)
 - `project_vim_palette_review.md` (~389 tok)
@@ -351,6 +352,7 @@
 
 - `2026-06-16-code-graph-hud.md` — Code Graph HUD & Blast Radius Implementation Plan (~11742 tok)
 - `2026-06-18-explorer-paste-rename-popup.md` — Explorer Paste Rename Popup Implementation Plan (~9603 tok)
+- `2026-06-18-panel-surface-elevation.md` — Panel Surface Elevation Implementation Plan (~4206 tok)
 - `2026-06-18-vim-command-palette.md` — Vim-mode Command Palette Implementation Plan (~13477 tok)
 
 ## docs/superpowers/specs/
@@ -360,6 +362,7 @@
 - `2026-06-15-test-generation-improvement-design.md` — Test Case Generation Improvement — Prompt, Verification, Stratification (~2022 tok)
 - `2026-06-16-code-graph-hud-design.md` — Code Graph HUD & Blast Radius — Design (~1972 tok)
 - `2026-06-18-explorer-paste-rename-popup-design.md` — Explorer Paste — Rename Popup Design (~2793 tok)
+- `2026-06-18-panel-surface-elevation-design.md` — Panel Surface Elevation — Design (~1652 tok)
 - `2026-06-18-vim-command-palette-design.md` — Vim-mode Command Palette — Design (~3213 tok)
 
 ## scripts/
@@ -406,7 +409,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~35587 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~35699 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -419,7 +422,7 @@
 - `commands_terminal.rs` (~13344 tok)
 - `commands_tests.rs` — [derive(Default)] (~37757 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~18603 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
 - `mod.rs` — Struct: AppShell (~7011 tok)
 - `setup.rs` — new, new_for_tests (~23297 tok)
 - `welcome.rs` (~611 tok)
@@ -501,7 +504,7 @@
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
-- `theme_config.rs` — Theme configuration entrypoint. (~182 tok)
+- `theme_config.rs` — Theme configuration entrypoint. (~176 tok)
 - `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~8633 tok)
 
 ## src/config/theme_config/

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::model::{
     EditorThemeTokens, FileIconThemeTokens, GitThemeTokens, IconThemeTokens, SyntaxThemeTokens,
-    ThemeColor, ThemeConfig, UiThemeTokens,
+    ThemeColor, ThemeConfig, UiThemeTokens, derive_elevated_surface,
 };
 
 impl ThemeConfig {
@@ -56,6 +56,7 @@ fn builtin_ui_tokens() -> UiThemeTokens {
         bg: rgb(7, 8, 13),
         sidebar_bg: rgb(15, 19, 32),
         panel_bg: rgb(18, 22, 34),
+        elevated_bg: derive_elevated_surface(rgb(18, 22, 34)),
         terminal_bg: rgb(11, 15, 24),
         overlay_bg: rgba(5, 7, 12, 217),
         status_bar_bg: rgb(11, 14, 22),

@@ -104,7 +104,10 @@ fn test_runner_field_editing_is_click_only() {
         context,
         now,
     );
-    assert!(edit_enter.is_none(), "Enter must not edit the field anymore");
+    assert!(
+        edit_enter.is_none(),
+        "Enter must not edit the field anymore"
+    );
 
     let edit_i = handler.route_normalized_input(char_input('i', KeyCode::KeyI), &map, context, now);
     assert!(edit_i.is_none(), "`i` must not edit the field anymore");
@@ -2083,8 +2086,7 @@ fn test_right_dock_switching_under_various_focuses() {
     let mut context_runner_drifted =
         KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::TestRunner);
     context_runner_drifted.right_sidebar_terminal = false;
-    let mapped =
-        handler.route_normalized_input(cmd_1.clone(), &map, context_runner_drifted, now);
+    let mapped = handler.route_normalized_input(cmd_1.clone(), &map, context_runner_drifted, now);
     assert!(
         matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchRightTab(0)),
         "Expected SwitchRightTab(0) from TestRunner focus with drifted terminal mode, got {:?}",

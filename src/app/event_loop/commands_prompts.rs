@@ -469,6 +469,38 @@ impl AppShell {
         changed | self.switch_workspace_to(path)
     }
 
+    pub(super) fn remove_recent_project_selection(&mut self) -> bool {
+        let Some(crate::app::command_palette::CommandPaletteAction::OpenFile(path)) =
+            self.app_state.command_palette_selected_action()
+        else {
+            return false;
+        };
+
+        let label = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+
+        if !self.persistent_state.remove_recent(&path) {
+            return false;
+        }
+
+        self.persistent_state.save();
+        let mut changed = self
+            .app_state
+            .open_recent_projects_palette_with_meta(
+                &self.persistent_state.recent_projects,
+                &self.persistent_state.recent_project_meta,
+            )
+            .is_ok();
+        changed |= self
+            .app_state
+            .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+        self.show_transient_toast(format!("Removed recent project: {label}"));
+        changed || self.transient_toast.is_some()
+    }
+
     pub(super) fn confirm_theme_selection(&mut self) -> bool {
         let Some(crate::app::command_palette::CommandPaletteAction::SelectTheme(theme_profile)) =
             self.app_state.command_palette_selected_action()

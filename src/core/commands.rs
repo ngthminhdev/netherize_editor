@@ -142,6 +142,8 @@ pub enum Command {
     OpenFolder,
     /// Open command palette showing recent projects list.
     OpenRecentProjects,
+    /// Remove the selected entry from the recent projects list.
+    RemoveRecentProject,
     OpenFilePicker,
     OpenVimCommand,
     OpenWorkspaceSymbols,

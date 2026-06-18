@@ -487,7 +487,9 @@ impl AppState {
         has_result_list: bool,
     ) -> crate::app::command_palette::PaletteVimAction {
         let workspace = self.workspace_model.as_ref();
-        let action = self.command_palette.vim_input(key, has_result_list, workspace);
+        let action = self
+            .command_palette
+            .vim_input(key, has_result_list, workspace);
         self.sync_file_picker_cache();
         action
     }
@@ -497,7 +499,8 @@ impl AppState {
     pub fn active_fuzzy_picker_vim_mode(
         &self,
     ) -> Option<crate::app::command_palette::PaletteVimMode> {
-        self.active_fuzzy_picker_buffer().map(|state| state.vim_mode)
+        self.active_fuzzy_picker_buffer()
+            .map(|state| state.vim_mode)
     }
 
     /// Run the shared Vim engine over the active fuzzy-picker buffer's query.
@@ -508,7 +511,9 @@ impl AppState {
         key: crate::core::commands::PaletteVimKey,
         has_result_list: bool,
     ) -> crate::app::command_palette::VimLineOutcome {
-        use crate::app::command_palette::{vim_line_input, PaletteVimAction, VimLineOutcome, VimLineView};
+        use crate::app::command_palette::{
+            PaletteVimAction, VimLineOutcome, VimLineView, vim_line_input,
+        };
         let no_op = VimLineOutcome {
             action: PaletteVimAction::Ignore,
             text_changed: false,

@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    app::command_palette::PaletteVimAction,
-    core::commands::PaletteVimKey,
-};
+use crate::{app::command_palette::PaletteVimAction, core::commands::PaletteVimKey};
 
 impl AppShell {
     pub(super) fn handle_palette_vim_input(&mut self, key: PaletteVimKey) -> Option<bool> {
@@ -23,9 +20,7 @@ impl AppShell {
         // not the overlay palette, and refresh results through the async search
         // plumbing the event loop owns — so route them separately.
         if self.app_state.active_buffer_is_fuzzy_picker() {
-            let outcome = self
-                .app_state
-                .fuzzy_picker_vim_input(key, has_result_list);
+            let outcome = self.app_state.fuzzy_picker_vim_input(key, has_result_list);
             if outcome.text_changed {
                 self.submit_active_palette_fzf_search();
                 self.submit_fuzzy_picker_preview_load();
@@ -194,6 +189,12 @@ impl AppShell {
                         .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
                 }
                 Some(self.confirm_recent_project_selection())
+            }
+            Command::RemoveRecentProject
+                if self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::RecentProjects) =>
+            {
+                Some(self.remove_recent_project_selection())
             }
             Command::OverlaySelectNext
             | Command::OverlaySelectPrev

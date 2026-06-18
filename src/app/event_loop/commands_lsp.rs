@@ -782,12 +782,7 @@ impl AppShell {
             .app_state
             .workspace_root_path()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| {
-                active
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_default()
-            });
+            .unwrap_or_else(|| active.parent().map(|p| p.to_path_buf()).unwrap_or_default());
         let focal_file = active
             .strip_prefix(&workspace_root)
             .unwrap_or(&active)
@@ -835,7 +830,10 @@ impl AppShell {
             self.app_state.code_graph_hud.detail = None;
             return;
         };
-        let root = self.app_state.workspace_root_path().map(|p| p.to_path_buf());
+        let root = self
+            .app_state
+            .workspace_root_path()
+            .map(|p| p.to_path_buf());
         let path = match root {
             Some(root) => root.join(&node.file_path),
             None => std::path::PathBuf::from(&node.file_path),

@@ -948,6 +948,46 @@ fn recent_projects_jk_only_work_from_welcome_context() {
 }
 
 #[test]
+fn recent_projects_x_filters_in_palette_insert_mode() {
+    let map = make_default_profile_map();
+    let input_x = NormalizedInput {
+        physical_key: Some(KeyCode::KeyX),
+        named_key: None,
+        text: Some("x".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    context.command_palette_mode = Some(CommandPaletteMode::RecentProjects);
+    context.palette_vim_mode = Some(crate::app::command_palette::PaletteVimMode::Insert);
+
+    assert_eq!(
+        map.translate(&input_x, context),
+        Some(Command::FilePickerAppendQuery("x".to_string()))
+    );
+}
+
+#[test]
+fn recent_projects_x_removes_only_in_palette_normal_mode() {
+    let map = make_default_profile_map();
+    let input_x = NormalizedInput {
+        physical_key: Some(KeyCode::KeyX),
+        named_key: None,
+        text: Some("x".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    context.command_palette_mode = Some(CommandPaletteMode::RecentProjects);
+    context.palette_vim_mode = Some(crate::app::command_palette::PaletteVimMode::Normal);
+
+    assert_eq!(
+        map.translate(&input_x, context),
+        Some(Command::RemoveRecentProject)
+    );
+}
+
+#[test]
 fn welcome_explorer_focus_routes_jk_to_recent_project_selection() {
     let map = make_default_profile_map();
     let mut context =
@@ -1610,7 +1650,10 @@ fn fuzzy_picker_normal_mode_routes_jk_to_vim_input() {
     let j = input_map
         .resolve(&input_from_physical(KeyCode::KeyJ, "j"), context)
         .expect("should resolve");
-    assert_eq!(j.command, Command::PaletteVimInput(PaletteVimKey::Char('j')));
+    assert_eq!(
+        j.command,
+        Command::PaletteVimInput(PaletteVimKey::Char('j'))
+    );
 }
 
 #[test]
@@ -1625,7 +1668,10 @@ fn palette_focus_normal_mode_routes_chars_to_vim_input() {
     let m = input_map
         .resolve(&input_from_physical(KeyCode::KeyD, "d"), context)
         .expect("should resolve");
-    assert_eq!(m.command, Command::PaletteVimInput(PaletteVimKey::Char('d')));
+    assert_eq!(
+        m.command,
+        Command::PaletteVimInput(PaletteVimKey::Char('d'))
+    );
 
     // Esc in Insert routes to PaletteVimInput(Esc) (enter Normal), not close.
     context.palette_vim_mode = Some(PaletteVimMode::Insert);

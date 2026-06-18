@@ -193,7 +193,11 @@ impl AppShell {
             }
             Command::FocusExplorer => {
                 let mut changed = self.release_focus_mode_to_editor();
-                if self.panel_state.left.switch_to_tab(crate::workbench::panel_state::PanelTabId::Explorer) {
+                if self
+                    .panel_state
+                    .left
+                    .switch_to_tab(crate::workbench::panel_state::PanelTabId::Explorer)
+                {
                     changed = true;
                     self.sidebar_needs_layout = true;
                 }
@@ -212,7 +216,11 @@ impl AppShell {
             }
             Command::FocusOutline => {
                 let mut changed = self.release_focus_mode_to_editor();
-                if self.panel_state.left.switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline) {
+                if self
+                    .panel_state
+                    .left
+                    .switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline)
+                {
                     changed = true;
                     self.sidebar_needs_layout = true;
                 }
@@ -452,7 +460,8 @@ impl AppShell {
                     }
 
                     let new_tab = self.panel_state.left.active_tab_id();
-                    if old_tab == Some(PanelTabId::Outline) && new_tab != Some(PanelTabId::Outline) {
+                    if old_tab == Some(PanelTabId::Outline) && new_tab != Some(PanelTabId::Outline)
+                    {
                         self.outline_selected = None;
                     }
 
@@ -659,10 +668,7 @@ impl AppShell {
             scratch_path: canonical_scratch_path,
         });
 
-        let report = dispatch_command(
-            &mut self.app_state,
-            Command::OpenFile(scratch_path),
-        );
+        let report = dispatch_command(&mut self.app_state, Command::OpenFile(scratch_path));
         if !report.success {
             self.show_transient_toast("Failed to open scratch file".to_string());
             self.app_state.test_field_edit = None;

@@ -380,8 +380,14 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::AiDebounceMs, SettingItem::AiDebounceMs { .. })
         | (SettingsEditingKind::LeetCodeAiApiUrl, SettingItem::LeetCodeAiApiUrl { .. })
         | (SettingsEditingKind::LeetCodeAiModel, SettingItem::LeetCodeAiModel { .. })
-        | (SettingsEditingKind::LeetCodeAiEndpointKind, SettingItem::LeetCodeAiEndpointKind { .. })
-        | (SettingsEditingKind::LeetCodeAiReasoningEffort, SettingItem::LeetCodeAiReasoningEffort { .. }) => {
+        | (
+            SettingsEditingKind::LeetCodeAiEndpointKind,
+            SettingItem::LeetCodeAiEndpointKind { .. },
+        )
+        | (
+            SettingsEditingKind::LeetCodeAiReasoningEffort,
+            SettingItem::LeetCodeAiReasoningEffort { .. },
+        ) => {
             format!("{}_", editing.draft)
         }
         (SettingsEditingKind::AiApiKey, SettingItem::AiApiKey { .. })

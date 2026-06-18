@@ -345,6 +345,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::NewInstance
         | Command::OpenFolder
         | Command::OpenRecentProjects
+        | Command::RemoveRecentProject
         | Command::ToggleTerminal
         | Command::ToggleBottomDock
         | Command::ToggleLeftDock

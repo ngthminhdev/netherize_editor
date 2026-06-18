@@ -72,8 +72,8 @@ mod welcome;
 use helpers::{
     build_preview_render_data, build_sidebar_rows, collect_explorer_entries,
     convert_worker_hover_blocks, detect_git_branch, diagnostic_spans_to_styled,
-    language_id_for_path, parse_hover_markdown_blocks, region_color, scale_theme, scale_ui_config,
-    syntax_spans_to_styled,
+    language_id_for_path, parse_hover_markdown_blocks, region_surface_color, scale_theme,
+    scale_ui_config, syntax_spans_to_styled,
 };
 use welcome::welcome_screen_content;
 

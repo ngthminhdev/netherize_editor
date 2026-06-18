@@ -32,8 +32,8 @@ impl PanelTabId {
     pub fn icon_glyph(self) -> Option<&'static str> {
         match self {
             Self::Explorer => Some("built_in:folder"),
-            Self::Search => Some("\u{f002}"),          // nf-fa-search
-            Self::Inspector => Some("\u{f05a}"),       // nf-fa-info_circle
+            Self::Search => Some("\u{f002}"),    // nf-fa-search
+            Self::Inspector => Some("\u{f05a}"), // nf-fa-info_circle
             Self::Outline => Some("built_in:outline"),
             Self::Terminal => Some("built_in:terminal"),
             Self::TestRunner => Some("built_in:flask"),
@@ -131,21 +131,11 @@ pub struct WorkbenchPanelState {
 impl Default for WorkbenchPanelState {
     fn default() -> Self {
         Self {
-            left: PanelState::new(
-                true,
-                240.0,
-                vec![
-                    PanelTabId::Explorer,
-                    PanelTabId::Outline,
-                ],
-            ),
+            left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Outline]),
             right: PanelState::new(
                 false,
                 650.0,
-                vec![
-                    PanelTabId::AiChat,
-                    PanelTabId::TestRunner,
-                ],
+                vec![PanelTabId::AiChat, PanelTabId::TestRunner],
             ),
             // Bottom dock only exposes the Terminal; its outer tab strip lists each
             // terminal instance as a tab. Debug Console and Problems have no content

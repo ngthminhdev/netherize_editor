@@ -216,9 +216,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 },
                 changed,
             ),
-            Err(err) => DispatchReport::failure(format!(
-                "Dispatch: palette cursor left failed -> {err}"
-            )),
+            Err(err) => {
+                DispatchReport::failure(format!("Dispatch: palette cursor left failed -> {err}"))
+            }
         },
         Command::PaletteMoveCursorRight => {
             match ctx.app_state.command_palette_move_cursor_right() {

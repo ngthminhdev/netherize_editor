@@ -930,6 +930,17 @@ impl InputMap {
             }
         }
 
+        if palette_mode == Some(CommandPaletteMode::RecentProjects)
+            && palette_vim_mode == Some(PaletteVimMode::Normal)
+            && !input.has_command_modifier()
+            && input.physical_key == Some(KeyCode::KeyX)
+        {
+            return Some(KeybindingMatch {
+                command: Command::RemoveRecentProject,
+                reason: "recent projects palette normal mode: x -> remove recent project",
+            });
+        }
+
         // Vim routing: in Normal/Visual forward keys to the palette state machine;
         // in Insert, only Esc is intercepted (to enter Normal) — everything else
         // falls through to the normal type-and-go handling below.
@@ -958,7 +969,12 @@ impl InputMap {
                     // Preserve existing list-nav keys (arrows) so they keep working.
                     if matches!(
                         input.named_key,
-                        Some(NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::ArrowLeft | NamedKey::ArrowRight)
+                        Some(
+                            NamedKey::ArrowUp
+                                | NamedKey::ArrowDown
+                                | NamedKey::ArrowLeft
+                                | NamedKey::ArrowRight
+                        )
                     ) {
                         // fall through to existing named-key handling
                     } else if let Some(ch) = single_char(input.text.as_deref().unwrap_or("")) {

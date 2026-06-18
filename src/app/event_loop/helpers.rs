@@ -1809,6 +1809,17 @@ pub(super) fn region_color(id: RegionId, theme: &ThemeConfig) -> [f32; 4] {
     }
 }
 
+/// Fill color for a region. Focus is conveyed by the border ring only — panels
+/// are NOT lightened on focus (the elevation experiment looked wrong), so every
+/// region keeps its flat theme color regardless of focus state.
+pub(super) fn region_surface_color(
+    id: RegionId,
+    theme: &ThemeConfig,
+    _is_focused: bool,
+) -> [f32; 4] {
+    region_color(id, theme)
+}
+
 pub(super) fn language_id_for_path(path: &Path) -> String {
     if let Some(profile) = crate::lsp::registry::language_profile_for_path(path) {
         return profile.language_id.to_string();
@@ -1868,12 +1879,33 @@ fn normalize_spans(spans: Vec<StyledTextSpan>, offset: usize) -> Vec<StyledTextS
 
 #[cfg(test)]
 mod tests {
-    use super::{display_width, normalize_spans, syntax_spans_to_styled};
+    use super::{display_width, normalize_spans, region_surface_color, syntax_spans_to_styled};
     use crate::{
         config::theme_config::ThemeConfig,
         syntax::highlight::{HighlightCategory, HighlightSpan},
         text::text_system::StyledTextSpan,
+        workbench::region_model::RegionId,
     };
+
+    #[test]
+    fn focus_does_not_lighten_region_body() {
+        let theme = ThemeConfig::load("default-dark").expect("load theme");
+        let focused = region_surface_color(RegionId::Center, &theme, true);
+        let unfocused = region_surface_color(RegionId::Center, &theme, false);
+        // Focus must NOT change the body shade — panels stay flat, focus is the
+        // border ring only.
+        assert_eq!(focused, unfocused);
+        assert_eq!(focused, theme.editor.bg.as_f32());
+    }
+
+    #[test]
+    fn unfocused_sidebar_keeps_panel_color() {
+        let theme = ThemeConfig::load("default-dark").expect("load theme");
+        assert_eq!(
+            region_surface_color(RegionId::LeftSidebar, &theme, false),
+            theme.ui.sidebar_bg.as_f32()
+        );
+    }
 
     #[test]
     fn syntax_spans_to_styled_applies_theme_colors_and_emphasis() {

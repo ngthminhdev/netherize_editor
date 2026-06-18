@@ -86,6 +86,24 @@ impl ThemeColor {
     }
 }
 
+/// Derive an elevated surface from a panel background by shifting it subtly away
+/// from its current luminance: dark panels lighten, light panels darken.
+pub fn derive_elevated_surface(panel_bg: ThemeColor) -> ThemeColor {
+    let [r, g, b, a] = panel_bg.as_u8();
+    let lum = 0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b);
+    let factor = 0.10_f32;
+    let shift = |c: u8| -> u8 {
+        let c = f32::from(c);
+        let out = if lum < 128.0 {
+            c + (255.0 - c) * factor
+        } else {
+            c * (1.0 - factor)
+        };
+        out.round().clamp(0.0, 255.0) as u8
+    };
+    ThemeColor::from_rgba_u8(shift(r), shift(g), shift(b), a)
+}
+
 pub fn srgb_to_linear(channel: f32) -> f32 {
     let value = channel.clamp(0.0, 1.0);
     if value <= 0.04045 {
@@ -170,6 +188,9 @@ pub struct UiThemeTokens {
     pub bg: ThemeColor,
     pub sidebar_bg: ThemeColor,
     pub panel_bg: ThemeColor,
+    /// Elevated surface for focused panels and overlays. Derived from panel_bg
+    /// when ui.elevated_bg is omitted.
+    pub elevated_bg: ThemeColor,
     pub terminal_bg: ThemeColor,
     pub overlay_bg: ThemeColor,
     pub status_bar_bg: ThemeColor,
@@ -343,10 +364,7 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
     {
         return Some("built_in:docker");
     }
-    if filename == "makefile"
-        || filename == "gnumakefile"
-        || filename == "justfile"
-    {
+    if filename == "makefile" || filename == "gnumakefile" || filename == "justfile" {
         return Some("built_in:makefile");
     }
     if filename == ".dockerignore" {
@@ -892,7 +910,9 @@ impl ThemeConfig {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{ThemeColor, ThemeConfig, linear_rgba_to_srgb_u8, srgb_to_linear};
+    use super::{
+        ThemeColor, ThemeConfig, derive_elevated_surface, linear_rgba_to_srgb_u8, srgb_to_linear,
+    };
 
     #[test]
     fn parse_hex_color_supports_rgb_and_rgba() {
@@ -913,6 +933,30 @@ mod tests {
     fn linear_round_trip_preserves_srgb_bytes() {
         let color = ThemeColor::from_hex("#8080C0CC").expect("theme color should parse");
         assert_eq!(linear_rgba_to_srgb_u8(color.as_f32()), color.as_u8());
+    }
+
+    #[test]
+    fn derive_elevated_lightens_dark_panel() {
+        let panel = ThemeColor::from_rgba_u8(0x1c, 0x24, 0x33, 0xff);
+        let elevated = derive_elevated_surface(panel);
+        let [pr, pg, pb, _] = panel.as_u8();
+        let [er, eg, eb, ea] = elevated.as_u8();
+        assert!(
+            er > pr && eg > pg && eb > pb,
+            "dark panel should lighten: {:?} -> {:?}",
+            panel.as_u8(),
+            elevated.as_u8()
+        );
+        assert_eq!(ea, 0xff, "alpha preserved");
+    }
+
+    #[test]
+    fn derive_elevated_darkens_light_panel() {
+        let panel = ThemeColor::from_rgba_u8(0xe8, 0xe8, 0xec, 0xff);
+        let elevated = derive_elevated_surface(panel);
+        let [pr, pg, pb, _] = panel.as_u8();
+        let [er, eg, eb, _] = elevated.as_u8();
+        assert!(er < pr && eg < pg && eb < pb, "light panel should darken");
     }
 
     #[test]

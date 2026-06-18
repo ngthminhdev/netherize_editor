@@ -123,8 +123,9 @@ impl Renderer {
         let vim_tag = match editor_mode {
             crate::core::mode::EditorMode::Insert => "  -- INSERT --",
             crate::core::mode::EditorMode::Normal => "  -- NORMAL --",
-            crate::core::mode::EditorMode::Visual
-            | crate::core::mode::EditorMode::VisualBlock => "  -- VISUAL --",
+            crate::core::mode::EditorMode::Visual | crate::core::mode::EditorMode::VisualBlock => {
+                "  -- VISUAL --"
+            }
             _ => "",
         };
         let unique_file_count = if is_live_grep {

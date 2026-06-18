@@ -385,9 +385,10 @@ impl SettingsState {
             SettingItem::LeetCodeAiEndpointKind { current } => {
                 (SettingsEditingKind::LeetCodeAiEndpointKind, current.clone())
             }
-            SettingItem::LeetCodeAiReasoningEffort { current } => {
-                (SettingsEditingKind::LeetCodeAiReasoningEffort, current.clone())
-            }
+            SettingItem::LeetCodeAiReasoningEffort { current } => (
+                SettingsEditingKind::LeetCodeAiReasoningEffort,
+                current.clone(),
+            ),
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }

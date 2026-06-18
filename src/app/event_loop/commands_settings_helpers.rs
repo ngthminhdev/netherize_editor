@@ -826,7 +826,9 @@ impl AppShell {
                     trimmed.to_string(),
                     |ai, value| ai.set_leetcode_api_url(value),
                     |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiApiUrl { current } = item {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiApiUrl { current } =
+                            item
+                        {
                             *current = value;
                         }
                     },
@@ -838,7 +840,9 @@ impl AppShell {
                     trimmed.to_string(),
                     |ai, value| ai.set_leetcode_model(value),
                     |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiModel { current } = item {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiModel { current } =
+                            item
+                        {
                             *current = value;
                         }
                     },
@@ -850,7 +854,9 @@ impl AppShell {
                     trimmed.to_string(),
                     |ai, value| ai.set_leetcode_api_key(value),
                     |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiApiKey { current } = item {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiApiKey { current } =
+                            item
+                        {
                             *current = value;
                         }
                     },
@@ -862,7 +868,10 @@ impl AppShell {
                     trimmed.to_string(),
                     |ai, value| ai.set_leetcode_endpoint_kind(value),
                     |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { current } = item {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiEndpointKind {
+                            current,
+                        } = item
+                        {
                             *current = value;
                         }
                     },
@@ -874,7 +883,10 @@ impl AppShell {
                     trimmed.to_string(),
                     |ai, value| ai.set_leetcode_reasoning_effort(value),
                     |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { current } = item {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort {
+                            current,
+                        } = item
+                        {
                             *current = value;
                         }
                     },

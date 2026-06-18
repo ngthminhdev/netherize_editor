@@ -61,7 +61,8 @@ impl Renderer {
         // Suggestion popup chrome is a separate range drawn *after* bubble text.
         let markdown_preview_overlay_chrome_start =
             markdown_preview_chrome_start + markdown_preview_chrome_count;
-        let markdown_preview_overlay_chrome_count = self.markdown_preview_overlay_chrome_instances.len() as u32;
+        let markdown_preview_overlay_chrome_count =
+            self.markdown_preview_overlay_chrome_instances.len() as u32;
 
         let test_runner_chrome_start =
             markdown_preview_overlay_chrome_start + markdown_preview_overlay_chrome_count;
@@ -277,8 +278,7 @@ impl Renderer {
             let bottom_dock_icon_count =
                 self.sidebar_icon_instances.len() as u32 - sidebar_icon_count;
             if bottom_dock_icon_count > 0 {
-                let outer_tab_scissor =
-                    self.terminal_outer_tab_batch.map(|b| b.scissor);
+                let outer_tab_scissor = self.terminal_outer_tab_batch.map(|b| b.scissor);
                 draw_text_region(
                     &mut pass,
                     outer_tab_scissor,
@@ -310,7 +310,8 @@ impl Renderer {
                 viewport_width,
                 viewport_height,
                 |render_pass| {
-                    self.markdown_preview_header_image_pipeline.draw(render_pass);
+                    self.markdown_preview_header_image_pipeline
+                        .draw(render_pass);
                     self.markdown_preview_hero_image_pipeline.draw(render_pass);
                 },
             );

@@ -15,9 +15,9 @@ use super::{
     LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache, SyntaxEngineCacheHandle,
     ai::execute_ai_inline_request,
     async_trace,
+    codegraph::run_codegraph_request,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
-    codegraph::run_codegraph_request,
     fzf::run_fzf_request,
     leetcode_fetch::{
         LeetCodeFetchJob, LeetCodeGenerateJob, run_leetcode_fetch, run_leetcode_generate,

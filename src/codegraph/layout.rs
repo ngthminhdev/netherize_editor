@@ -78,8 +78,11 @@ pub fn layout(
 
     let (callers, caller_window_start, caller_overflow) =
         column(n_callers, caller_focus.unwrap_or(0), cx + 12.0 * s);
-    let (callees, callee_window_start, callee_overflow) =
-        column(n_callees, callee_focus.unwrap_or(0), cx + cw - 12.0 * s - pill_w);
+    let (callees, callee_window_start, callee_overflow) = column(
+        n_callees,
+        callee_focus.unwrap_or(0),
+        cx + cw - 12.0 * s - pill_w,
+    );
 
     GraphLayout {
         center,

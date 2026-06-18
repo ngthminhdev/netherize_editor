@@ -134,7 +134,8 @@ mod tests {
 
     #[test]
     fn parse_header_finds_marker_below_other_lines() {
-        let source = "// some banner\n// netherize-leetcode id=42 slug=trapping-rain-water\ncode();\n";
+        let source =
+            "// some banner\n// netherize-leetcode id=42 slug=trapping-rain-water\ncode();\n";
         let parsed = parse_header(source).expect("header should parse");
         assert_eq!(parsed.id, "42");
         assert_eq!(parsed.slug, "trapping-rain-water");

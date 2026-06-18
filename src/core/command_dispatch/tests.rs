@@ -1376,10 +1376,8 @@ fn toggle_selection_comment_wraps_and_unwraps_block_comment_for_rs_file() {
 
 #[test]
 fn toggle_selection_comment_falls_back_to_line_comment_for_py_file() {
-    let mut app_state = AppState::from_text(
-        std::path::PathBuf::from("script.py"),
-        "a = 1\nb = 2\n",
-    );
+    let mut app_state =
+        AppState::from_text(std::path::PathBuf::from("script.py"), "a = 1\nb = 2\n");
     let _ = dispatch_command(
         &mut app_state,
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
@@ -1397,10 +1395,7 @@ fn toggle_selection_comment_falls_back_to_line_comment_for_py_file() {
     let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
     assert!(comment.success);
     assert_eq!(app_state.current_mode(), EditorMode::Normal);
-    assert_eq!(
-        app_state.text_string(),
-        "# a = 1\n# b = 2\n"
-    );
+    assert_eq!(app_state.text_string(), "# a = 1\n# b = 2\n");
 
     let undo = dispatch_command(&mut app_state, Command::Undo);
     assert!(undo.success);
@@ -1409,10 +1404,8 @@ fn toggle_selection_comment_falls_back_to_line_comment_for_py_file() {
 
 #[test]
 fn toggle_selection_comment_falls_back_to_hash_for_unknown_extension() {
-    let mut app_state = AppState::from_text(
-        std::path::PathBuf::from("scratch.xyz"),
-        "hello\nworld\n",
-    );
+    let mut app_state =
+        AppState::from_text(std::path::PathBuf::from("scratch.xyz"), "hello\nworld\n");
     let _ = dispatch_command(
         &mut app_state,
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
@@ -1429,10 +1422,7 @@ fn toggle_selection_comment_falls_back_to_hash_for_unknown_extension() {
 
     let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
     assert!(comment.state_changed);
-    assert_eq!(
-        app_state.text_string(),
-        "# hello\n# world\n"
-    );
+    assert_eq!(app_state.text_string(), "# hello\n# world\n");
 }
 
 #[test]
@@ -1473,10 +1463,7 @@ fn toggle_selection_comment_wraps_block_for_html_file() {
 
     let uncomment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
     assert!(uncomment.success);
-    assert_eq!(
-        app_state.text_string(),
-        "<div>\n  <p>text</p>\n</div>\n"
-    );
+    assert_eq!(app_state.text_string(), "<div>\n  <p>text</p>\n</div>\n");
 }
 
 #[test]
@@ -1500,10 +1487,7 @@ fn toggle_selection_comment_wraps_and_unwraps_block_for_css_file() {
 
     let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
     assert!(comment.success);
-    assert_eq!(
-        app_state.text_string(),
-        "/* body {\n  color: red;\n} */\n"
-    );
+    assert_eq!(app_state.text_string(), "/* body {\n  color: red;\n} */\n");
 
     let _ = dispatch_command(&mut app_state, Command::MoveToFirstLine);
 
@@ -1538,10 +1522,7 @@ fn toggle_line_comment_ignored_for_language_without_line_syntax() {
 
 #[test]
 fn toggle_line_comment_uses_hash_for_txt_file() {
-    let mut app_state = AppState::from_text(
-        std::path::PathBuf::from("notes.txt"),
-        "hello world\n",
-    );
+    let mut app_state = AppState::from_text(std::path::PathBuf::from("notes.txt"), "hello world\n");
     let _ = dispatch_command(
         &mut app_state,
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
@@ -1558,10 +1539,8 @@ fn toggle_line_comment_uses_hash_for_txt_file() {
 
 #[test]
 fn toggle_line_comment_uses_hash_for_env_dist_file() {
-    let mut app_state = AppState::from_text(
-        std::path::PathBuf::from("env.dist"),
-        "DB_HOST=localhost\n",
-    );
+    let mut app_state =
+        AppState::from_text(std::path::PathBuf::from("env.dist"), "DB_HOST=localhost\n");
     let _ = dispatch_command(
         &mut app_state,
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
@@ -2195,7 +2174,10 @@ fn yank_flash_triggered_on_yank_commands() {
 
     let mut word_end_state =
         AppState::from_text(unique_temp_path("yank_flash_word_end"), "hello world");
-    let _ = dispatch_command(&mut word_end_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(
+        &mut word_end_state,
+        Command::SwitchMode(ModeEvent::EnterNormal),
+    );
     let _ = dispatch_command(&mut word_end_state, Command::MoveRight);
     let _ = dispatch_command(&mut word_end_state, Command::MoveRight);
     let report = dispatch_command_with_clipboard(
@@ -2208,7 +2190,10 @@ fn yank_flash_triggered_on_yank_commands() {
 
     let mut motion_state =
         AppState::from_text(unique_temp_path("yank_flash_motion"), "hello world");
-    let _ = dispatch_command(&mut motion_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(
+        &mut motion_state,
+        Command::SwitchMode(ModeEvent::EnterNormal),
+    );
     let report = dispatch_command_with_clipboard(
         &mut motion_state,
         Command::Operate {

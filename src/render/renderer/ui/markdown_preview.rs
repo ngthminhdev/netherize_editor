@@ -1,8 +1,6 @@
 //! Right-sidebar markdown preview text rendering.
 
-use super::utils::{
-    blend_rgb, clip_styled_span_to_range, word_wrap_with_ranges,
-};
+use super::utils::{blend_rgb, clip_styled_span_to_range, word_wrap_with_ranges};
 
 use crate::{
     render::{
@@ -11,8 +9,8 @@ use crate::{
         renderer::{
             Renderer,
             helpers::{
-                layout_panel_rich_text,
-                layout_panel_rich_text_with_bytes, layout_panel_text, rect_to_scissor,
+                layout_panel_rich_text, layout_panel_rich_text_with_bytes, layout_panel_text,
+                rect_to_scissor,
             },
         },
     },
@@ -285,8 +283,7 @@ impl Renderer {
             }
             if line.is_code_block_end {
                 if let Some(start_idx) = current_code_block_start.take() {
-                    let y_start =
-                        layouted_lines[start_idx].y_offset - spacing_code_block_padding;
+                    let y_start = layouted_lines[start_idx].y_offset - spacing_code_block_padding;
                     let y_end = line.y_offset + line.line_h + spacing_code_block_padding;
 
                     let screen_y_start = start_y + y_start - scroll_offset_y;
@@ -321,9 +318,9 @@ impl Renderer {
                                 let badge_padding = 4.0;
                                 let badge_font_size = base_font_size * 0.75;
                                 let badge_char_w = (badge_font_size * 0.58).max(1.0);
-                                let badge_w =
-                                    (lang.len() as f32 * badge_char_w + badge_padding * 2.0)
-                                        .min(box_w - 8.0);
+                                let badge_w = (lang.len() as f32 * badge_char_w
+                                    + badge_padding * 2.0)
+                                    .min(box_w - 8.0);
                                 let badge_h = badge_font_size + badge_padding * 2.0;
                                 let badge_x = box_x + box_w - badge_w - 6.0;
                                 let badge_y = screen_y_start + 4.0;
@@ -340,7 +337,8 @@ impl Renderer {
                                     )
                                     .with_radius(3.0),
                                 );
-                                let saved_metrics = self.markdown_preview_text_system.buffer_metrics();
+                                let saved_metrics =
+                                    self.markdown_preview_text_system.buffer_metrics();
                                 self.markdown_preview_text_system.set_metrics(Metrics::new(
                                     badge_font_size,
                                     badge_font_size + 2.0,
@@ -545,10 +543,7 @@ impl Renderer {
                     default_color,
                 ));
             } else {
-                let has_decorations = line
-                    .spans
-                    .iter()
-                    .any(|s| s.underline || s.strikethrough);
+                let has_decorations = line.spans.iter().any(|s| s.underline || s.strikethrough);
                 if has_decorations {
                     let (glyphs, byte_ranges) = layout_panel_rich_text_with_bytes(
                         &line.text,

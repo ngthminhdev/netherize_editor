@@ -133,13 +133,15 @@ impl AiConfig {
     }
 
     fn leetcode_provider_mut(&mut self) -> &mut AiProviderConfig {
-        self.leetcode_mut().provider.get_or_insert_with(|| AiProviderConfig {
-            api_url: String::new(),
-            model: String::new(),
-            api_key: None,
-            endpoint_kind: None,
-            reasoning_effort: None,
-        })
+        self.leetcode_mut()
+            .provider
+            .get_or_insert_with(|| AiProviderConfig {
+                api_url: String::new(),
+                model: String::new(),
+                api_key: None,
+                endpoint_kind: None,
+                reasoning_effort: None,
+            })
     }
 
     pub fn set_leetcode_api_url(&mut self, value: String) -> Result<(), String> {

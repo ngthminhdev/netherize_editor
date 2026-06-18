@@ -57,6 +57,7 @@ pub(in crate::config::theme_config) struct RawUi {
     pub(in crate::config::theme_config) bg: Option<String>,
     pub(in crate::config::theme_config) sidebar_bg: String,
     pub(in crate::config::theme_config) panel_bg: String,
+    pub(in crate::config::theme_config) elevated_bg: Option<String>,
     pub(in crate::config::theme_config) terminal_bg: Option<String>,
     pub(in crate::config::theme_config) overlay_bg: Option<String>,
     pub(in crate::config::theme_config) status_bar_bg: String,

@@ -14,6 +14,6 @@ mod raw;
 pub use loader::ThemeProfileEntry;
 pub use model::{
     EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, LinearColor, SyntaxThemeTokens,
-    ThemeColor, ThemeConfig, UiThemeTokens, linear_rgba_to_srgb_u8, srgb_rgba_to_linear_f32,
-    srgb_to_linear,
+    ThemeColor, ThemeConfig, UiThemeTokens, derive_elevated_surface, linear_rgba_to_srgb_u8,
+    srgb_rgba_to_linear_f32, srgb_to_linear,
 };

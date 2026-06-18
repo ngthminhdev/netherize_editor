@@ -15,19 +15,18 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-        compute_caret_layout, compute_caret_layout_at_with_folds,
-        compute_caret_layout_with_folds, compute_cursor_overlay, rebuild_layout_projection,
+        compute_caret_layout, compute_caret_layout_at_with_folds, compute_caret_layout_with_folds,
+        compute_cursor_overlay, rebuild_layout_projection,
     },
 };
 use cosmic_text::Metrics;
 
+use super::super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, clamp_monospace_text_left, clamp_popup_width,
-    estimate_monospace_width,
-    gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_bold,
-    layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
+    estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
+    layout_panel_text_bold, layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
-use super::super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::completion::{completion_kind_badge, completion_label_spans};
 use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_TOP_INSET};
 use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
@@ -1490,7 +1489,10 @@ impl Renderer {
         // ── Top bar ─────────────────────────────────────────────────────────
         let pad = 16.0 * ui_s;
         let bar_h = lh + 16.0 * ui_s;
-        quads.push(RegionDrawInstance::new([px, py + bar_h - 1.0, pw, 1.0], c_border));
+        quads.push(RegionDrawInstance::new(
+            [px, py + bar_h - 1.0, pw, 1.0],
+            c_border,
+        ));
         let bar_text_y = py + (bar_h - lh) * 0.5;
         let focal = format!("◎ {}", hud.focal_symbol);
         text(self, glyphs, &focal, px + pad, bar_text_y, c_cyan);
@@ -1573,17 +1575,20 @@ impl Renderer {
         match &hud.status {
             CodeGraphHudStatus::Loading => {
                 let msg = "indexing…  (building / syncing code graph)";
-                let x = content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
+                let x =
+                    content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
                 text(self, glyphs, msg, x, content[1] + content[3] * 0.5, c_dim);
             }
             CodeGraphHudStatus::NotInstalled => {
                 let msg = "codegraph not installed — press <leader>m e to install";
-                let x = content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
+                let x =
+                    content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
                 text(self, glyphs, msg, x, content[1] + content[3] * 0.5, c_amber);
             }
             CodeGraphHudStatus::Empty => {
                 let msg = "no callers or callees found for this symbol";
-                let x = content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
+                let x =
+                    content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
                 text(self, glyphs, msg, x, content[1] + content[3] * 0.5, c_dim);
             }
             CodeGraphHudStatus::Error(emsg) => {
@@ -1712,7 +1717,14 @@ impl Renderer {
                 }
 
                 // Column headers.
-                text(self, glyphs, "CALLERS", content[0], content[1] - lh, c_ghost);
+                text(
+                    self,
+                    glyphs,
+                    "CALLERS",
+                    content[0],
+                    content[1] - lh,
+                    c_ghost,
+                );
                 let chdr = "CALLEES";
                 text(
                     self,
@@ -1777,7 +1789,12 @@ impl Renderer {
                     );
                     quads.push(
                         RegionDrawInstance::new(
-                            [pill.x + bt, pill.y + bt, pill.w - bt * 2.0, pill.h - bt * 2.0],
+                            [
+                                pill.x + bt,
+                                pill.y + bt,
+                                pill.w - bt * 2.0,
+                                pill.h - bt * 2.0,
+                            ],
                             blend_rgba(c_bg, col, if focused { 0.16 } else { 0.10 }, 1.0),
                         )
                         .with_radius((pr - bt).max(2.0)),
@@ -1812,7 +1829,11 @@ impl Renderer {
                         &this.queue,
                         tx,
                         ty,
-                        if is_center { with_alpha(c_cyan, 0.7) } else { col },
+                        if is_center {
+                            with_alpha(c_cyan, 0.7)
+                        } else {
+                            col
+                        },
                     ));
                     ty += lh;
                     // Line 3: file:line (truncated from the LEFT to keep the tail).
@@ -1831,18 +1852,47 @@ impl Renderer {
                 for (slot, pill) in gl.callers.iter().enumerate() {
                     let abs = gl.caller_window_start + slot;
                     let n = &model.callers[abs];
-                    draw_pill(self, glyphs, *pill, &n.name, &n.kind, &n.file_path, n.line,
-                        n.risk, hud.focus == Focus::Caller(abs), false);
+                    draw_pill(
+                        self,
+                        glyphs,
+                        *pill,
+                        &n.name,
+                        &n.kind,
+                        &n.file_path,
+                        n.line,
+                        n.risk,
+                        hud.focus == Focus::Caller(abs),
+                        false,
+                    );
                 }
                 for (slot, pill) in gl.callees.iter().enumerate() {
                     let abs = gl.callee_window_start + slot;
                     let n = &model.callees[abs];
-                    draw_pill(self, glyphs, *pill, &n.name, &n.kind, &n.file_path, n.line,
-                        n.risk, hud.focus == Focus::Callee(abs), false);
+                    draw_pill(
+                        self,
+                        glyphs,
+                        *pill,
+                        &n.name,
+                        &n.kind,
+                        &n.file_path,
+                        n.line,
+                        n.risk,
+                        hud.focus == Focus::Callee(abs),
+                        false,
+                    );
                 }
-                draw_pill(self, glyphs, center, &model.focal.name, &model.focal.kind,
-                    &model.focal.file_path, model.focal.line, RiskLevel::Focal,
-                    hud.focus == Focus::Center, true);
+                draw_pill(
+                    self,
+                    glyphs,
+                    center,
+                    &model.focal.name,
+                    &model.focal.kind,
+                    &model.focal.file_path,
+                    model.focal.line,
+                    RiskLevel::Focal,
+                    hud.focus == Focus::Center,
+                    true,
+                );
 
                 let overflow_y = content[1] + graph_content[3] - lh;
                 if gl.caller_overflow > 0 {
@@ -1851,9 +1901,14 @@ impl Renderer {
                 }
                 if gl.callee_overflow > 0 {
                     let s = format!("+{} more callees", gl.callee_overflow);
-                    text(self, glyphs, &s,
+                    text(
+                        self,
+                        glyphs,
+                        &s,
                         content[0] + content[2] - estimate_monospace_width(&s, fs),
-                        overflow_y, c_ghost);
+                        overflow_y,
+                        c_ghost,
+                    );
                 }
             }
         }
@@ -1878,9 +1933,8 @@ impl Renderer {
             .unwrap_or(self.theme.ui.accent)
             .as_f32();
         color[3] = (color[3] * 0.22).clamp(0.0, 1.0);
-        self.editor_overlay_chrome_instances.push(
-            RegionDrawInstance::new(rect, color).with_radius(2.0 * self.ui_scale.max(0.5)),
-        );
+        self.editor_overlay_chrome_instances
+            .push(RegionDrawInstance::new(rect, color).with_radius(2.0 * self.ui_scale.max(0.5)));
     }
 
     pub fn add_bracket_ripple_overlay(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {

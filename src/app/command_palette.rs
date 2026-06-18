@@ -1,10 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    app::match_ranges::compute_label_match_ranges,
-    config::theme_config::ThemeConfig,
-    core::commands::PaletteVimKey,
-    workspace::model::WorkspaceModel,
+    app::match_ranges::compute_label_match_ranges, config::theme_config::ThemeConfig,
+    core::commands::PaletteVimKey, workspace::model::WorkspaceModel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -896,10 +894,7 @@ impl CommandPalette {
 
                 if self.mode == CommandPaletteMode::DocumentSymbols {
                     filtered.sort_by_key(|item| {
-                        item.label
-                            .to_lowercase()
-                            .find(&q)
-                            .unwrap_or(usize::MAX)
+                        item.label.to_lowercase().find(&q).unwrap_or(usize::MAX)
                     });
                 }
                 filtered
@@ -1044,121 +1039,122 @@ impl CommandPalette {
         };
 
         // ── Layout: tách Command Palette vs File Picker/LiveGrep ─────────────
-        let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) =
-            if self.mode == CommandPaletteMode::LiveGrep {
-                let max_w = (width - 48.0).max(320.0);
-                let pw = if max_w >= 720.0 {
-                    (width * 0.82).clamp(720.0, max_w)
-                } else {
-                    max_w
-                };
-                let px = x + ((width - pw) * 0.5).max(0.0);
-                let min_height =
-                    live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
-                let max_h = (height - 32.0).max(row_height + panel_padding * 2.0);
-                let ph = if max_h >= min_height {
-                    (height * 0.52).clamp(min_height, max_h)
-                } else {
-                    max_h
-                };
-                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-                let body_height =
-                    (ph - live_grep_reserved_height(panel_padding, line_height)).max(row_height);
-                let visible_result_rows = (body_height / row_height).floor() as usize;
-                (pw, px, py, ph, visible_result_rows.max(1))
-            } else if self.mode.is_complex_picker() {
-                // File Picker / LiveGrep / Recent Projects — min 35% screen, TRUE CENTER
-                // Recent Projects ưu tiên rộng hơn để hiển thị full path.
-                let available_w = (width - 48.0).max(320.0);
-                let min_w = (width * 0.35).max(400.0);
-                let pw = if self.mode == CommandPaletteMode::ThemeSelector {
-                    (width * 0.60).clamp(min_w.max(560.0), available_w)
-                } else if self.mode == CommandPaletteMode::FilePicker {
-                    (width * 0.60).clamp(min_w.max(560.0), available_w)
-                } else if self.mode == CommandPaletteMode::RecentProjects {
-                    (width * 0.70).clamp(min_w, available_w)
-                } else if matches!(
-                    self.mode,
-                    CommandPaletteMode::WorkspaceSymbols | CommandPaletteMode::DocumentSymbols
-                ) {
-                    (width * 0.60).clamp(min_w.max(560.0), available_w)
-                } else {
-                    min_w.max(660.0_f32.min(available_w))
-                };
-                let px = x + ((width - pw) * 0.5).max(0.0);
-                let body_rows = if self.mode == CommandPaletteMode::FilePicker
-                    && self.results.is_empty()
-                    && self.query.trim().is_empty()
-                {
-                    0
-                } else {
-                    complex_picker_body_rows(
-                        self.mode,
-                        height,
-                        panel_padding,
-                        line_height,
-                        row_height,
-                        max_items,
-                    )
-                };
-                let min_picker_height = if body_rows == 0 {
-                    complex_picker_reserved_height(self.mode, panel_padding, line_height)
-                } else {
-                    row_height + panel_padding * 2.0
-                };
-                let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
-                    + row_height * body_rows as f32)
-                    .min((height - 32.0).max(min_picker_height));
-                // TRUE CENTER: 50/50
-                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-                (pw, px, py, ph, body_rows)
+        let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) = if self.mode
+            == CommandPaletteMode::LiveGrep
+        {
+            let max_w = (width - 48.0).max(320.0);
+            let pw = if max_w >= 720.0 {
+                (width * 0.82).clamp(720.0, max_w)
             } else {
-                // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
-                let is_confirmation = matches!(
-                    self.mode,
-                    CommandPaletteMode::ExplorerDeleteConfirm | CommandPaletteMode::BufferCloseConfirm
-                );
-                let min_w = if is_confirmation {
-                    (width * 0.34).max(380.0)
-                } else {
-                    (width * 0.30).max(300.0)
-                };
-                let ideal_w: f32 = if is_confirmation { 640.0 } else { 520.0 };
-                let pw = min_w.max(ideal_w.min(width - 48.0));
-                let px = x + ((width - pw) * 0.5).max(0.0);
-                // Dòng input + separator + items (nếu VimCommand: chỉ dòng input)
-                let content_rows = (requested_visible_rows
-                    + if requested_visible_rows > 0 { 1 } else { 0 })
-                .max(1) as f32;
-                let ph = if is_confirmation {
-                    (line_height * 6.1 + panel_padding * 2.0 + 36.0)
-                        .min((height - 64.0).max(line_height + panel_padding * 2.0))
-                } else {
-                    // Must match the minimalist renderer's row math exactly, else
-                    // the panel is shorter than the rows it claims to show and the
-                    // last result gets clipped by the scissor. Layout per row:
-                    //   prompt_h (= line_height + 10, min 30) + separator (8px)
-                    //   + N * row_height (= line_height + 8) + top/bottom padding.
-                    let _ = content_rows;
-                    let prompt_h = (line_height + 10.0).max(30.0);
-                    let body_h = if requested_visible_rows > 0 {
-                        8.0 + row_height * requested_visible_rows as f32
-                    } else {
-                        4.0
-                    };
-                    (prompt_h + body_h + panel_padding * 2.0)
-                        .min((height - 64.0).max(line_height + panel_padding * 2.0))
-                };
-                // TRUE CENTER: phân bố 50/50 trần-sàn
-                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-                let visible_result_rows = if show_results {
-                    (((ph - panel_padding * 2.0 - line_height - 8.0) / row_height).floor() as usize)
-                        .max(1)
-                } else {
-                    0
-                };
-                (pw, px, py, ph, visible_result_rows)
+                max_w
             };
+            let px = x + ((width - pw) * 0.5).max(0.0);
+            let min_height =
+                live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
+            let max_h = (height - 32.0).max(row_height + panel_padding * 2.0);
+            let ph = if max_h >= min_height {
+                (height * 0.52).clamp(min_height, max_h)
+            } else {
+                max_h
+            };
+            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+            let body_height =
+                (ph - live_grep_reserved_height(panel_padding, line_height)).max(row_height);
+            let visible_result_rows = (body_height / row_height).floor() as usize;
+            (pw, px, py, ph, visible_result_rows.max(1))
+        } else if self.mode.is_complex_picker() {
+            // File Picker / LiveGrep / Recent Projects — min 35% screen, TRUE CENTER
+            // Recent Projects ưu tiên rộng hơn để hiển thị full path.
+            let available_w = (width - 48.0).max(320.0);
+            let min_w = (width * 0.35).max(400.0);
+            let pw = if self.mode == CommandPaletteMode::ThemeSelector {
+                (width * 0.60).clamp(min_w.max(560.0), available_w)
+            } else if self.mode == CommandPaletteMode::FilePicker {
+                (width * 0.60).clamp(min_w.max(560.0), available_w)
+            } else if self.mode == CommandPaletteMode::RecentProjects {
+                (width * 0.70).clamp(min_w, available_w)
+            } else if matches!(
+                self.mode,
+                CommandPaletteMode::WorkspaceSymbols | CommandPaletteMode::DocumentSymbols
+            ) {
+                (width * 0.60).clamp(min_w.max(560.0), available_w)
+            } else {
+                min_w.max(660.0_f32.min(available_w))
+            };
+            let px = x + ((width - pw) * 0.5).max(0.0);
+            let body_rows = if self.mode == CommandPaletteMode::FilePicker
+                && self.results.is_empty()
+                && self.query.trim().is_empty()
+            {
+                0
+            } else {
+                complex_picker_body_rows(
+                    self.mode,
+                    height,
+                    panel_padding,
+                    line_height,
+                    row_height,
+                    max_items,
+                )
+            };
+            let min_picker_height = if body_rows == 0 {
+                complex_picker_reserved_height(self.mode, panel_padding, line_height)
+            } else {
+                row_height + panel_padding * 2.0
+            };
+            let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
+                + row_height * body_rows as f32)
+                .min((height - 32.0).max(min_picker_height));
+            // TRUE CENTER: 50/50
+            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+            (pw, px, py, ph, body_rows)
+        } else {
+            // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
+            let is_confirmation = matches!(
+                self.mode,
+                CommandPaletteMode::ExplorerDeleteConfirm | CommandPaletteMode::BufferCloseConfirm
+            );
+            let min_w = if is_confirmation {
+                (width * 0.34).max(380.0)
+            } else {
+                (width * 0.30).max(300.0)
+            };
+            let ideal_w: f32 = if is_confirmation { 640.0 } else { 520.0 };
+            let pw = min_w.max(ideal_w.min(width - 48.0));
+            let px = x + ((width - pw) * 0.5).max(0.0);
+            // Dòng input + separator + items (nếu VimCommand: chỉ dòng input)
+            let content_rows = (requested_visible_rows
+                + if requested_visible_rows > 0 { 1 } else { 0 })
+            .max(1) as f32;
+            let ph = if is_confirmation {
+                (line_height * 6.1 + panel_padding * 2.0 + 36.0)
+                    .min((height - 64.0).max(line_height + panel_padding * 2.0))
+            } else {
+                // Must match the minimalist renderer's row math exactly, else
+                // the panel is shorter than the rows it claims to show and the
+                // last result gets clipped by the scissor. Layout per row:
+                //   prompt_h (= line_height + 10, min 30) + separator (8px)
+                //   + N * row_height (= line_height + 8) + top/bottom padding.
+                let _ = content_rows;
+                let prompt_h = (line_height + 10.0).max(30.0);
+                let body_h = if requested_visible_rows > 0 {
+                    8.0 + row_height * requested_visible_rows as f32
+                } else {
+                    4.0
+                };
+                (prompt_h + body_h + panel_padding * 2.0)
+                    .min((height - 64.0).max(line_height + panel_padding * 2.0))
+            };
+            // TRUE CENTER: phân bố 50/50 trần-sàn
+            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+            let visible_result_rows = if show_results {
+                (((ph - panel_padding * 2.0 - line_height - 8.0) / row_height).floor() as usize)
+                    .max(1)
+            } else {
+                0
+            };
+            (pw, px, py, ph, visible_result_rows)
+        };
 
         let panel_bounds = [panel_x, panel_y, panel_width, panel_height];
 
@@ -1306,7 +1302,10 @@ impl CommandPalette {
                 PaletteVimMode::Normal => Some("NORMAL"),
                 PaletteVimMode::Visual => Some("VISUAL"),
             },
-            vim_caret_block: matches!(self.vim_mode, PaletteVimMode::Normal | PaletteVimMode::Visual),
+            vim_caret_block: matches!(
+                self.vim_mode,
+                PaletteVimMode::Normal | PaletteVimMode::Visual
+            ),
         })
     }
 }
@@ -1358,7 +1357,9 @@ fn symbol_tone(kind: &str) -> CommandPaletteItemTone {
     match kind {
         "Function" | "Method" | "Constructor" => CommandPaletteItemTone::Function,
         "Class" | "Struct" | "Interface" | "Enum" | "TypeParameter" => CommandPaletteItemTone::Type,
-        "Variable" | "Constant" | "Field" | "Property" | "EnumMember" => CommandPaletteItemTone::Variable,
+        "Variable" | "Constant" | "Field" | "Property" | "EnumMember" => {
+            CommandPaletteItemTone::Variable
+        }
         "Namespace" | "Module" | "Package" => CommandPaletteItemTone::Module,
         _ => CommandPaletteItemTone::Default,
     }
@@ -1587,7 +1588,10 @@ fn vim_word_forward_in(s: &str, byte: usize) -> usize {
     if chars.is_empty() {
         return 0;
     }
-    let mut i = chars.iter().position(|(b, _)| *b >= byte).unwrap_or(chars.len());
+    let mut i = chars
+        .iter()
+        .position(|(b, _)| *b >= byte)
+        .unwrap_or(chars.len());
     if i >= chars.len() {
         return s.len();
     }
@@ -1600,7 +1604,11 @@ fn vim_word_forward_in(s: &str, byte: usize) -> usize {
     while i < chars.len() && vim_char_class(chars[i].1) == VimCharClass::Whitespace {
         i += 1;
     }
-    if i >= chars.len() { s.len() } else { chars[i].0 }
+    if i >= chars.len() {
+        s.len()
+    } else {
+        chars[i].0
+    }
 }
 
 fn vim_word_backward_in(s: &str, byte: usize) -> usize {
@@ -1608,7 +1616,10 @@ fn vim_word_backward_in(s: &str, byte: usize) -> usize {
     if chars.is_empty() || byte == 0 {
         return 0;
     }
-    let mut i = chars.iter().position(|(b, _)| *b >= byte).unwrap_or(chars.len());
+    let mut i = chars
+        .iter()
+        .position(|(b, _)| *b >= byte)
+        .unwrap_or(chars.len());
     if i == 0 {
         return 0;
     }
@@ -1628,7 +1639,10 @@ fn vim_word_end_in(s: &str, byte: usize) -> usize {
     if chars.is_empty() {
         return 0;
     }
-    let mut i = chars.iter().position(|(b, _)| *b >= byte).unwrap_or(chars.len());
+    let mut i = chars
+        .iter()
+        .position(|(b, _)| *b >= byte)
+        .unwrap_or(chars.len());
     i += 1; // move at least one forward (vim `e`)
     while i < chars.len() && vim_char_class(chars[i].1) == VimCharClass::Whitespace {
         i += 1;
@@ -1826,7 +1840,11 @@ fn vim_apply_operator_motion(view: &mut VimLineView<'_>, motion: char) -> VimLin
         (_, '0' | '^') => 0,
         _ => return VimLineOutcome::action(PaletteVimAction::Consumed), // unsupported motion
     };
-    let (lo, hi) = if target >= start { (start, target) } else { (target, start) };
+    let (lo, hi) = if target >= start {
+        (start, target)
+    } else {
+        (target, start)
+    };
     let lo = lo.min(view.query.len());
     let hi = hi.min(view.query.len());
     if lo == hi {
@@ -1867,7 +1885,10 @@ fn vim_paste_register(view: &mut VimLineView<'_>, after: bool) -> VimLineOutcome
 }
 
 fn vim_line_input_visual(view: &mut VimLineView<'_>, key: PaletteVimKey) -> VimLineOutcome {
-    let anchor = view.selection_range.map(|(a, _)| a).unwrap_or(*view.cursor_byte);
+    let anchor = view
+        .selection_range
+        .map(|(a, _)| a)
+        .unwrap_or(*view.cursor_byte);
     let c = match key {
         PaletteVimKey::Enter => return VimLineOutcome::action(PaletteVimAction::Confirm),
         PaletteVimKey::Esc => {
@@ -1900,7 +1921,8 @@ fn vim_line_input_visual(view: &mut VimLineView<'_>, key: PaletteVimKey) -> VimL
             true
         }
         'e' => {
-            *view.cursor_byte = next_boundary(view.query, vim_word_end_in(view.query, *view.cursor_byte));
+            *view.cursor_byte =
+                next_boundary(view.query, vim_word_end_in(view.query, *view.cursor_byte));
             true
         }
         '0' => {
@@ -2339,10 +2361,19 @@ mod tests {
         p.open(CommandPaletteMode::FilePicker, None);
         p.set_query("x", None);
         p.vim_input(PaletteVimKey::Esc, false, None); // Normal
-        assert_eq!(p.vim_input(PaletteVimKey::Char('j'), true, None), PaletteVimAction::ListNext);
-        assert_eq!(p.vim_input(PaletteVimKey::Char('k'), true, None), PaletteVimAction::ListPrev);
+        assert_eq!(
+            p.vim_input(PaletteVimKey::Char('j'), true, None),
+            PaletteVimAction::ListNext
+        );
+        assert_eq!(
+            p.vim_input(PaletteVimKey::Char('k'), true, None),
+            PaletteVimAction::ListPrev
+        );
         // single-line prompt: j/k ignored
-        assert_eq!(p.vim_input(PaletteVimKey::Char('j'), false, None), PaletteVimAction::Ignore);
+        assert_eq!(
+            p.vim_input(PaletteVimKey::Char('j'), false, None),
+            PaletteVimAction::Ignore
+        );
     }
 
     #[test]
@@ -2350,9 +2381,15 @@ mod tests {
         let mut p = CommandPalette::default();
         p.open(CommandPaletteMode::ExplorerPasteFile, None);
         p.set_query("a", None);
-        assert_eq!(p.vim_input(PaletteVimKey::Enter, false, None), PaletteVimAction::Confirm);
+        assert_eq!(
+            p.vim_input(PaletteVimKey::Enter, false, None),
+            PaletteVimAction::Confirm
+        );
         p.vim_input(PaletteVimKey::Esc, false, None); // Insert -> Normal
-        assert_eq!(p.vim_input(PaletteVimKey::Esc, false, None), PaletteVimAction::Close);
+        assert_eq!(
+            p.vim_input(PaletteVimKey::Esc, false, None),
+            PaletteVimAction::Close
+        );
     }
 
     #[test]

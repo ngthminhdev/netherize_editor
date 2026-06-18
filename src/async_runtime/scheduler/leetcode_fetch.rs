@@ -86,7 +86,9 @@ pub(super) async fn run_leetcode_generate(
     result_tx: std_mpsc::Sender<WorkerMessage>,
     event_proxy: EventLoopProxy<AppEvent>,
 ) {
-    let payload = match generate_stratified_cases(&job.provider, &job.cache, &job.language_key).await {
+    let payload = match generate_stratified_cases(&job.provider, &job.cache, &job.language_key)
+        .await
+    {
         Ok(cases) => {
             let (final_cases, verified) = if job.verify {
                 verify_generated_cases(&job.provider, &job.cache, &job.language_key, cases).await
@@ -285,7 +287,10 @@ async fn generate_stratified_cases(
         return Err("AI provider is not configured".to_string());
     }
     let prompt = build_stratified_prompt(cache, language_key);
-    let endpoint = format!("{}/chat/completions", provider.api_url.trim_end_matches('/'));
+    let endpoint = format!(
+        "{}/chat/completions",
+        provider.api_url.trim_end_matches('/')
+    );
     let mut body = serde_json::json!({
         "model": provider.model,
         "messages": [
@@ -331,8 +336,8 @@ async fn generate_stratified_cases(
     if let Some(idx) = cleaned.rfind('}') {
         cleaned = &cleaned[..=idx];
     }
-    let value: serde_json::Value = serde_json::from_str(cleaned)
-        .map_err(|err| format!("AI returned invalid JSON: {err}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(cleaned).map_err(|err| format!("AI returned invalid JSON: {err}"))?;
     if !status.is_success() {
         if let Some(msg) = value["error"]["message"].as_str() {
             return Err(format!("AI error (HTTP {status}): {msg}"));
@@ -345,8 +350,8 @@ async fn generate_stratified_cases(
             let finish = value["choices"][0]["finish_reason"]
                 .as_str()
                 .unwrap_or("unknown");
-            let reasoning_toks = value["usage"]["completion_tokens_details"]["reasoning_tokens"]
-                .as_u64();
+            let reasoning_toks =
+                value["usage"]["completion_tokens_details"]["reasoning_tokens"].as_u64();
             if finish == "length" {
                 if let Some(rt) = reasoning_toks {
                     format!(
@@ -360,9 +365,7 @@ async fn generate_stratified_cases(
                         .to_string()
                 }
             } else {
-                format!(
-                    "AI response contained no content (finish_reason={finish})"
-                )
+                format!("AI response contained no content (finish_reason={finish})")
             }
         })?;
     parse_generated_cases(text)
@@ -375,7 +378,10 @@ async fn verify_generated_cases(
     cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
 ) -> (Vec<crate::runner::leetcode_api::LeetCodeTestCase>, bool) {
     let prompt = build_verify_prompt(cache, language_key, &cases);
-    let endpoint = format!("{}/chat/completions", provider.api_url.trim_end_matches('/'));
+    let endpoint = format!(
+        "{}/chat/completions",
+        provider.api_url.trim_end_matches('/')
+    );
     let mut body = serde_json::json!({
         "model": provider.model,
         "messages": [
@@ -648,8 +654,8 @@ async fn adapt_via_ai(
     if let Some(idx) = cleaned.rfind('}') {
         cleaned = &cleaned[..=idx];
     }
-    let value: serde_json::Value = serde_json::from_str(cleaned)
-        .map_err(|err| format!("AI returned invalid JSON: {err}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(cleaned).map_err(|err| format!("AI returned invalid JSON: {err}"))?;
     if !status.is_success() {
         if let Some(msg) = value["error"]["message"].as_str() {
             return Err(format!("AI error (HTTP {status}): {msg}"));
@@ -676,11 +682,13 @@ async fn adapt_via_ai(
 /// Parse the AI's JSON-array response into test cases. Each element must be an
 /// object with `input` and `expected`; objects/arrays are compacted to JSON
 /// strings, plain strings are kept verbatim.
-fn parse_generated_cases(text: &str) -> Result<Vec<crate::runner::leetcode_api::LeetCodeTestCase>, String> {
+fn parse_generated_cases(
+    text: &str,
+) -> Result<Vec<crate::runner::leetcode_api::LeetCodeTestCase>, String> {
     use crate::runner::leetcode_api::LeetCodeTestCase;
     let cleaned = extract_json_array(text)?;
-    let value: serde_json::Value = serde_json::from_str(&cleaned)
-        .map_err(|err| format!("AI returned invalid JSON: {err}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&cleaned).map_err(|err| format!("AI returned invalid JSON: {err}"))?;
     let array = value
         .as_array()
         .ok_or_else(|| "AI response was not a JSON array".to_string())?;
@@ -742,7 +750,7 @@ fn value_to_compact_string(value: &serde_json::Value) -> String {
 
 fn extract_json_array(text: &str) -> Result<String, String> {
     let mut candidates = Vec::new();
-    
+
     // 1. Extract all code fences
     let mut search_pos = 0;
     while let Some(start_fence) = text[search_pos..].find("```") {
@@ -763,7 +771,7 @@ fn extract_json_array(text: &str) -> Result<String, String> {
             break;
         }
     }
-    
+
     // 2. Also extract raw [ ... ] substrings
     let mut search_pos = 0;
     while let Some(start_idx) = text[search_pos..].find('[') {
@@ -775,10 +783,17 @@ fn extract_json_array(text: &str) -> Result<String, String> {
         }
         search_pos = abs_start + 1;
     }
-    
+
     // 3. Evaluate candidates: the first one that parses as a JSON array of objects
     // where at least one element has a key indicating expected output.
-    let expected_keys = ["expected", "expected_output", "output", "result", "expectedResult", "expected_result"];
+    let expected_keys = [
+        "expected",
+        "expected_output",
+        "output",
+        "result",
+        "expectedResult",
+        "expected_result",
+    ];
     for candidate in candidates {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&candidate) {
             if let Some(arr) = value.as_array() {
@@ -797,7 +812,7 @@ fn extract_json_array(text: &str) -> Result<String, String> {
             }
         }
     }
-    
+
     // Fallback to original find if nothing matched
     let trimmed = text.trim();
     if let Some(start_idx) = trimmed.find('[') {
@@ -807,7 +822,7 @@ fn extract_json_array(text: &str) -> Result<String, String> {
             }
         }
     }
-    
+
     Err("Could not locate JSON array in AI response".to_string())
 }
 
@@ -944,15 +959,13 @@ mod tests {
 
     #[test]
     fn strip_code_fence_handles_whitespace_around_fences() {
-        assert_eq!(
-            strip_code_fence("  ```json\n[1,2]\n```  "),
-            "[1,2]"
-        );
+        assert_eq!(strip_code_fence("  ```json\n[1,2]\n```  "), "[1,2]");
     }
 
     #[test]
     fn parse_json_with_trailing_sse_garbage() {
-        let body_text = "{\"id\":\"123\",\"choices\":[{\"message\":{\"content\":\"hello\"}}]}data: [DONE]";
+        let body_text =
+            "{\"id\":\"123\",\"choices\":[{\"message\":{\"content\":\"hello\"}}]}data: [DONE]";
         let mut cleaned = body_text.trim();
         if let Some(idx) = cleaned.rfind('}') {
             cleaned = &cleaned[..=idx];
@@ -991,8 +1004,14 @@ mod tests {
         let prompt = build_stratified_prompt(&cache, "javascript");
         assert!(prompt.contains("twoSum"), "missing function name");
         assert!(prompt.contains("two-sum"), "missing slug");
-        assert!(prompt.contains("exactly 5"), "should request exactly 5 cases");
-        assert!(prompt.contains("```json"), "missing json code block instruction");
+        assert!(
+            prompt.contains("exactly 5"),
+            "should request exactly 5 cases"
+        );
+        assert!(
+            prompt.contains("```json"),
+            "missing json code block instruction"
+        );
         // Speed/correctness contract: forbid prose/reasoning so a non-reasoning
         // model emits only the JSON array (fast, no truncation), and ask for
         // simple inputs rather than adversarial ones.
@@ -1057,12 +1076,10 @@ mod tests {
             title: "Two Sum".to_string(),
             statement: "Given an array...".to_string(),
             function_name: "twoSum".to_string(),
-            parameters: vec![
-                crate::runner::leetcode_cache::CachedParam {
-                    name: "nums".to_string(),
-                    type_name: "number[]".to_string(),
-                },
-            ],
+            parameters: vec![crate::runner::leetcode_cache::CachedParam {
+                name: "nums".to_string(),
+                type_name: "number[]".to_string(),
+            }],
             cases: vec![],
         };
         let cases = vec![
@@ -1076,7 +1093,10 @@ mod tests {
             },
         ];
         let prompt = build_verify_prompt(&cache, "javascript", &cases);
-        assert!(prompt.contains("exactly 2 objects"), "should mention case count");
+        assert!(
+            prompt.contains("exactly 2 objects"),
+            "should mention case count"
+        );
         assert!(prompt.contains("Case 1:"), "should list case 1");
         assert!(prompt.contains("Case 2:"), "should list case 2");
         assert!(prompt.contains("Re-trace"), "should ask for re-tracing");
@@ -1091,6 +1111,3 @@ mod tests {
         // (verified in the async function's reconciliation logic).
     }
 }
-
-
-

@@ -17,7 +17,8 @@ impl AppShell {
                         self.input_handler.clear_pending_prefix();
                     }
                     if self.right_pty_session_id.is_some() || self.pending_right_pty_spawn {
-                        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
+                        if let Ok(result) =
+                            self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
                         {
                             let _ = result;
                         }
