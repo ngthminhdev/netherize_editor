@@ -4,7 +4,7 @@
 
 **Goal:** Replace `-- NORMAL --` / `-- INSERT --` text in 3 palette renderers and the fuzzy picker with clean `NORMAL` / `INSERT` text colored by `mode_pill_color(editor_mode, theme)` (same helper the status bar uses). No pill, no border, no dot — just colored text.
 
-**Architecture:** Add one new `Option<[f32;4]>` field (`vim_mode_color`) to the existing `CommandPaletteRenderModel` and a small `PaletteVimMode → EditorMode` mapping helper. The producer populates the color from the theme; the 3 palette renderers just read the field. The fuzzy picker computes the color locally (it already has `editor_mode: EditorMode` and `&self.theme`). One updated test + two new producer tests.
+**Architecture:** Add one new `Option<[f32;4]>` field (`vim_mode_color`) to the existing `CommandPaletteRenderModel`. The producer populates the color directly from `theme.ui.mode_normal/insert/visual.as_f32()` (no cross-module helper needed). The 3 palette renderers just read the field. The fuzzy picker computes the color locally via `mode_pill_color(editor_mode, &self.theme)` (it already has `EditorMode`). One updated test + one new producer test.
 
 **Tech Stack:** Rust, wgpu, thiserror-free `anyhow::Result` patterns already in the codebase, no new crates.
 
@@ -16,88 +16,17 @@
 
 | File | Change | Reason |
 |---|---|---|
-| `src/render/renderer/helpers.rs` | Add `palette_vim_to_editor_mode()` | Shared by producer + fuzzy picker; lives next to `mode_pill_color` |
-| `src/app/command_palette.rs` | Add `vim_mode_color` field; populate in producer; add 1–2 tests | Single source of truth for the model |
+| `src/app/command_palette.rs` | Add `vim_mode_color` field; populate in producer using `theme.ui.mode_*.as_f32()` directly; add 1 test | Single source of truth for the model. Producer has `theme: &ThemeConfig` already, so no cross-module helper needed |
 | `src/render/renderer/palette/minimal.rs` | Switch to `model.vim_mode_color`; drop `--` wrapper | Command palette header |
 | `src/render/renderer/palette/file_picker.rs` | Switch to `model.vim_mode_color`; drop `--` wrapper | File picker header |
 | `src/render/renderer/palette/recent_projects.rs` | Switch to `model.vim_mode_color`; simplify helper to pass-through; update test | Recent projects header |
-| `src/render/renderer/editor/fuzzy.rs` | Split header text into title + colored vim tag (3 text runs); import `mode_display_label` + `mode_pill_color` | Fuzzy picker title |
+| `src/render/renderer/editor/fuzzy.rs` | Split header text into title + colored vim tag (3 text runs); import `mode_display_label` + `mode_pill_color` | Fuzzy picker title. Uses `mode_pill_color(editor_mode, &self.theme)` directly (EditorMode is already available) |
 
-No new files, no modules restructured, no public API beyond the one additive model field.
-
----
-
-## Task 1: Add `palette_vim_to_editor_mode` helper
-
-**Files:**
-- Modify: `src/render/renderer/helpers.rs:1-20` (imports + add helper at end of file, after line 467)
-- Test: same file, `#[cfg(test)] mod tests` at the bottom (file currently has no tests block — add one)
-
-- [ ] **Step 1: Write the failing test**
-
-Append a `#[cfg(test)] mod tests` block to `src/render/renderer/helpers.rs` (after line 467, the last line of the file):
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app::command_palette::PaletteVimMode;
-
-    #[test]
-    fn palette_vim_to_editor_mode_maps_each_variant() {
-        assert_eq!(palette_vim_to_editor_mode(PaletteVimMode::Insert), EditorMode::Insert);
-        assert_eq!(palette_vim_to_editor_mode(PaletteVimMode::Normal), EditorMode::Normal);
-        assert_eq!(palette_vim_to_editor_mode(PaletteVimMode::Visual), EditorMode::Visual);
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run:
-```bash
-cd /Users/qc-bright/Project/netherize_editor && cargo test -p netherize_editor palette_vim_to_editor_mode_maps_each_variant -- --nocapture
-```
-Expected: compile error (`palette_vim_to_editor_mode` not found) OR test failure. Either is fine — confirms the symbol is missing.
-
-- [ ] **Step 3: Add the helper function**
-
-At the end of `src/render/renderer/helpers.rs` (after line 467), add:
-
-```rust
-// ── Palette ↔ Editor mode mapping ─────────────────────────────────────────────
-
-pub(super) fn palette_vim_to_editor_mode(
-    mode: crate::app::command_palette::PaletteVimMode,
-) -> EditorMode {
-    use crate::app::command_palette::PaletteVimMode;
-    match mode {
-        PaletteVimMode::Insert => EditorMode::Insert,
-        PaletteVimMode::Normal => EditorMode::Normal,
-        PaletteVimMode::Visual => EditorMode::Visual,
-    }
-}
-```
-
-`EditorMode` is already imported at the top of the file (used by `mode_display_label` and `mode_pill_color`).
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run:
-```bash
-cd /Users/qc-bright/Project/netherize_editor && cargo test -p netherize_editor palette_vim_to_editor_mode_maps_each_variant -- --nocapture
-```
-Expected: PASS (1 test).
-
-- [ ] **Step 5: Commit**
-
-```bash
-cd /Users/qc-bright/Project/netherize_editor && git add src/render/renderer/helpers.rs && git commit -m "feat(renderer): add palette_vim_to_editor_mode helper"
-```
+No new files, no modules restructured, no public API beyond the one additive model field. **No new helper needed** — early plans called for a `palette_vim_to_editor_mode` helper, but the producer has direct `ThemeConfig` access and the fuzzy picker has `EditorMode` directly, so the helper would be dead code. (Initial Task 1 attempt was reverted.)
 
 ---
 
-## Task 2: Add `vim_mode_color` field + populate in producer
+## Task 1: Add `vim_mode_color` field + populate in producer
 
 **Files:**
 - Modify: `src/app/command_palette.rs:500-520` (struct definition) and `:1280-1310` (producer) and `:2082-2101` (test)
@@ -115,22 +44,18 @@ In `src/app/command_palette.rs`, add this test directly after `paste_overlay_ren
         p.open(CommandPaletteMode::ExplorerPasteFile, None);
         p.set_query("docker-compose (1).yml", None);
 
-        // Insert: color must match mode_pill_color(Insert, theme).
+        // Insert: color must match theme.ui.mode_insert.
         let insert = p
             .render(&theme, [0.0, 0.0, 1200.0, 800.0])
             .expect("insert render model");
-        let expected_insert =
-            crate::render::renderer::helpers::mode_pill_color(crate::core::mode::EditorMode::Insert, &theme);
-        assert_eq!(insert.vim_mode_color, Some(expected_insert));
+        assert_eq!(insert.vim_mode_color, Some(theme.ui.mode_insert.as_f32()));
 
-        // Normal: color must match mode_pill_color(Normal, theme).
+        // Normal: color must match theme.ui.mode_normal.
         p.vim_input(PaletteVimKey::Esc, false, None);
         let normal = p
             .render(&theme, [0.0, 0.0, 1200.0, 800.0])
             .expect("normal render model");
-        let expected_normal =
-            crate::render::renderer::helpers::mode_pill_color(crate::core::mode::EditorMode::Normal, &theme);
-        assert_eq!(normal.vim_mode_color, Some(expected_normal));
+        assert_eq!(normal.vim_mode_color, Some(theme.ui.mode_normal.as_f32()));
     }
 ```
 
@@ -153,18 +78,17 @@ In `src/app/command_palette.rs`, find the `CommandPaletteRenderModel` struct (se
 
 - [ ] **Step 4: Populate the field in the producer**
 
-In the same file, find the `vim_mode_label: match self.vim_mode { … }` block (line 1300). Directly after it (before the `vim_caret_block: matches!(…)` line, line 1305), add:
+In the same file, find the `vim_mode_label: match self.vim_mode { … }` block (line 1300). Read the surrounding producer code to see how `theme` flows through. The `render()` method (line 1004) takes `theme: &ThemeConfig` as a parameter. Inside the producer body you will either see `theme` available as a local binding, or you'll see `self.theme` if the palette struct caches the theme. **Whichever form is used in nearby lines, mirror that form for the new line.** Directly after the `vim_mode_label:` block, add:
 
 ```rust
-            vim_mode_color: self.vim_mode.map(|m| {
-                crate::render::renderer::helpers::mode_pill_color(
-                    crate::render::renderer::helpers::palette_vim_to_editor_mode(m),
-                    &self.theme,
-                )
-            }),
+            vim_mode_color: match self.vim_mode {
+                PaletteVimMode::Insert => Some(<THEME_ACCESSOR>.ui.mode_insert.as_f32()),
+                PaletteVimMode::Normal => Some(<THEME_ACCESSOR>.ui.mode_normal.as_f32()),
+                PaletteVimMode::Visual => Some(<THEME_ACCESSOR>.ui.mode_visual.as_f32()),
+            },
 ```
 
-Note: `self.theme` must be available where this producer runs. The existing `render(&self, theme: &ThemeConfig, …)` call (line 2089) passes `theme` as a parameter — it is stored on the struct or computed from the call site. **Check by reading the producer body before this step:** if `self.theme` does not exist, store the theme in the CommandPalette (e.g. as a `last_theme: Option<ThemeConfig>` field set in `render`) or change the test to use whatever accessor already exists. The producer must have theme access; verify and adapt the line above accordingly. Document the actual accessor used (e.g. `&self.cached_theme` or `&self.theme`).
+Where `<THEME_ACCESSOR>` is whatever the surrounding producer code uses for the theme reference (e.g. `theme` or `self.theme`).
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -172,7 +96,7 @@ Run:
 ```bash
 cd /Users/qc-bright/Project/netherize_editor && cargo test -p netherize_editor paste_overlay_render_exposes_vim_mode_color_per_mode -- --nocapture
 ```
-Expected: PASS (1 test). If theme access path is different, adjust Step 4 first.
+Expected: PASS (1 test). If `assert_eq` fails, re-check that `<THEME_ACCESSOR>` resolves to the same `ThemeConfig` instance the test passed in.
 
 - [ ] **Step 6: Verify the existing label test still passes**
 
@@ -180,7 +104,7 @@ Run:
 ```bash
 cd /Users/qc-bright/Project/netherize_editor && cargo test -p netherize_editor paste_overlay_render_exposes_vim_mode_label_and_block_caret -- --nocapture
 ```
-Expected: PASS (regression check — we didn't break the existing label test).
+Expected: PASS (regression check).
 
 - [ ] **Step 7: Commit**
 
@@ -190,7 +114,7 @@ cd /Users/qc-bright/Project/netherize_editor && git add src/app/command_palette.
 
 ---
 
-## Task 3: Update `render_command_palette_minimalist` (minimal.rs)
+## Task 2: Update `render_command_palette_minimalist` (minimal.rs)
 
 **Files:**
 - Modify: `src/render/renderer/palette/minimal.rs:390-403`
@@ -248,7 +172,7 @@ cd /Users/qc-bright/Project/netherize_editor && git add src/render/renderer/pale
 
 ---
 
-## Task 4: Update `render_file_picker_complex` (file_picker.rs)
+## Task 3: Update `render_file_picker_complex` (file_picker.rs)
 
 **Files:**
 - Modify: `src/render/renderer/palette/file_picker.rs:120-134`
@@ -308,7 +232,7 @@ cd /Users/qc-bright/Project/netherize_editor && git add src/render/renderer/pale
 
 ---
 
-## Task 5: Simplify `recent_projects_vim_mode_status` + update its test + use new color
+## Task 4: Simplify `recent_projects_vim_mode_status` + update its test + use new color
 
 **Files:**
 - Modify: `src/render/renderer/palette/recent_projects.rs:111-125, 492-511`
@@ -414,7 +338,7 @@ cd /Users/qc-bright/Project/netherize_editor && git add src/render/renderer/pale
 
 ---
 
-## Task 6: Update fuzzy picker header (split text runs)
+## Task 5: Update fuzzy picker header (split text runs)
 
 **Files:**
 - Modify: `src/render/renderer/editor/fuzzy.rs:1-15` (imports), `:114-199` (header rendering)
@@ -594,7 +518,7 @@ cd /Users/qc-bright/Project/netherize_editor && git add src/render/renderer/edit
 
 ---
 
-## Task 7: Final verification
+## Task 6: Final verification
 
 **Files:** none (verification only)
 
@@ -605,7 +529,6 @@ Run:
 cd /Users/qc-bright/Project/netherize_editor && cargo test --workspace 2>&1 | tail -60
 ```
 Expected: all tests pass, including:
-- `palette_vim_to_editor_mode_maps_each_variant`
 - `paste_overlay_render_exposes_vim_mode_label_and_block_caret` (regression)
 - `paste_overlay_render_exposes_vim_mode_color_per_mode`
 - `recent_projects_passes_vim_mode_label_through`
@@ -638,19 +561,20 @@ Confirm: no `--` markers around the mode label; label is colored (blue-ish for N
 
 - [ ] **Step 5: Commit (verification log, optional)**
 
-If any verification artifact was generated, commit it. Otherwise skip — the feature work is already committed across tasks 1–6.
+If any verification artifact was generated, commit it. Otherwise skip — the feature work is already committed across tasks 1–5.
 
 ---
 
 ## Self-Review Notes
 
 - **Spec coverage:**
-  - Producer field + tests → Task 2 ✓
-  - 3 palette renderers → Tasks 3, 4, 5 ✓
-  - Recent projects helper + test update → Task 5 ✓
-  - Fuzzy picker split → Task 6 ✓
-  - Shared helper → Task 1 ✓
-  - Build/test/lint/analyze → Task 7 ✓
-- **Placeholder scan:** no TBDs, no "implement later", all code blocks complete. The "Check by reading the producer body" note in Task 2 Step 4 is a verification prompt, not a placeholder — it forces the implementer to read the actual code before assuming `self.theme` exists.
-- **Type consistency:** `vim_mode_color: Option<[f32; 4]>` is used identically across Tasks 2–5. `palette_vim_to_editor_mode` is used in Task 2 and the test in Task 1. `mode_pill_color` and `mode_display_label` are used identically in Task 6.
-- **Risk:** LOW. Each task is independently committable and testable. Task 6 is the only multi-step edit; the prefix/vim-tag x-coordinate math mirrors the status bar's `estimate_monospace_width` accumulator pattern.
+  - Producer field + tests → Task 1 ✓
+  - Command palette header → Task 2 ✓
+  - File picker header → Task 3 ✓
+  - Recent projects helper + test update → Task 4 ✓
+  - Fuzzy picker split → Task 5 ✓
+  - Build/test/lint/analyze → Task 6 ✓
+- **Placeholder scan:** no TBDs, no "implement later", all code blocks complete. The `<THEME_ACCESSOR>` placeholder in Task 1 Step 4 is intentional — it forces the implementer to read the actual producer body and use the same theme-access pattern as surrounding code, rather than guessing `self.theme` vs `theme`.
+- **Type consistency:** `vim_mode_color: Option<[f32; 4]>` is used identically across Tasks 1–4. `mode_pill_color` and `mode_display_label` are used identically in Task 5 (already `pub(super)`, accessible via `use super::super::helpers::…`).
+- **Risk:** LOW. Each task is independently committable and testable. Task 5 is the only multi-step edit; the prefix/vim-tag x-coordinate math mirrors the status bar's `estimate_monospace_width` accumulator pattern.
+- **Removed in revision:** Original plan had a `palette_vim_to_editor_mode` helper in `helpers.rs`. Reverted after code review revealed it would have been dead code (producer has direct `ThemeConfig` access, fuzzy picker has `EditorMode` directly). New plan uses `theme.ui.mode_*.as_f32()` in the producer instead.
