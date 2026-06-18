@@ -119,17 +119,16 @@ impl Renderer {
 
         // Vim mode indicator, drawn to the left of the result count.
         if let Some(label) = model.vim_mode_label {
-            let vim_text = format!("-- {label} --");
-            let vim_w = vim_text.chars().count() as f32 * font_size * 0.60;
+            let vim_w = label.chars().count() as f32 * font_size * 0.60;
             let vim_x = (count_x - vim_w - 16.0).max(query_x + prefix_w);
             glyphs.extend(layout_panel_text(
-                &vim_text,
+                label,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
                 vim_x,
                 query_y,
-                model.match_color,
+                model.vim_mode_color.unwrap_or(model.match_color),
             ));
         }
         row_top += badge_h + PALETTE_HEADER_BOTTOM_PAD;
