@@ -20,7 +20,7 @@ use cosmic_text::Metrics;
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
     layout_panel_rich_text, layout_panel_text, layout_panel_text_bold, layout_panel_text_italic,
-    rect_to_scissor, should_draw_block_cursor,
+    mode_display_label, mode_pill_color, rect_to_scissor, should_draw_block_cursor,
 };
 use super::{
     buffers::grouped_list_window_start, cursor_diagnostic, editor_viewport_geometry,
@@ -120,13 +120,20 @@ impl Renderer {
         // Modal indicator driven by the editor mode (the fuzzy picker already
         // toggles Insert<->Normal via Esc; Normal gives j/k navigation and q/Esc
         // to close — this just makes the current mode visible).
-        let vim_tag = match editor_mode {
-            crate::core::mode::EditorMode::Insert => "  -- INSERT --",
-            crate::core::mode::EditorMode::Normal => "  -- NORMAL --",
-            crate::core::mode::EditorMode::Visual | crate::core::mode::EditorMode::VisualBlock => {
-                "  -- VISUAL --"
-            }
-            _ => "",
+        let (vim_tag, vim_color): (&str, Option<[f32; 4]>) = match editor_mode {
+            crate::core::mode::EditorMode::Insert => (
+                mode_display_label(crate::core::mode::EditorMode::Insert),
+                Some(mode_pill_color(crate::core::mode::EditorMode::Insert, &self.theme)),
+            ),
+            crate::core::mode::EditorMode::Normal => (
+                mode_display_label(crate::core::mode::EditorMode::Normal),
+                Some(mode_pill_color(crate::core::mode::EditorMode::Normal, &self.theme)),
+            ),
+            crate::core::mode::EditorMode::Visual | crate::core::mode::EditorMode::VisualBlock => (
+                mode_display_label(crate::core::mode::EditorMode::Visual),
+                Some(mode_pill_color(crate::core::mode::EditorMode::Visual, &self.theme)),
+            ),
+            _ => ("", None),
         };
         let unique_file_count = if is_live_grep {
             let mut paths = Vec::<String>::new();
@@ -146,23 +153,18 @@ impl Renderer {
         } else {
             0
         };
+        // Compose the pieces: title (fg) · vim_tag (mode color) · optional tail (fg_dim).
         let left_header = if is_live_grep {
-            format!(
-                "{}{}  {} results · {} files",
-                title,
-                vim_tag,
-                fuzzy_state.results.len(),
-                unique_file_count
-            )
+            format!("{}  ", title)
         } else {
-            format!("{}{}  > {}", title, vim_tag, fuzzy_state.query)
+            format!("{}  > {}", title, fuzzy_state.query)
         };
 
         self.editor_overlay_text_system
             .set_size(Some((left_w - 20.0 * s).max(1.0)), Some(line_height));
         if is_live_grep {
-            let header_count_w =
-                estimate_monospace_width(" 999 results · 999 files", font_size).min(left_w * 0.55);
+            // 1) title (fg) + 2 spaces, 2) vim tag (mode color), 3) count suffix (fg_dim).
+            let title_w = estimate_monospace_width(title, font_size);
             glyphs.extend(layout_panel_text(
                 title,
                 &mut self.editor_overlay_text_system,
@@ -172,6 +174,21 @@ impl Renderer {
                 header_y,
                 fg,
             ));
+            if !vim_tag.is_empty() {
+                // 2 spaces after title, then the vim tag in mode color.
+                let tag_x = left_x + 10.0 * s + title_w + estimate_monospace_width("  ", font_size);
+                glyphs.extend(layout_panel_text(
+                    vim_tag,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    tag_x,
+                    header_y,
+                    vim_color.unwrap_or(fg),
+                ));
+            }
+            let header_count_w =
+                estimate_monospace_width(" 999 results · 999 files", font_size).min(left_w * 0.55);
             let count_label = format!(
                 "{} results · {} files",
                 fuzzy_state.results.len(),
@@ -187,8 +204,12 @@ impl Renderer {
                 fg_dim,
             ));
         } else {
+            // 1) prefix (title + spaces + query) in fg, 2) vim tag in mode color.
+            let clamped_prefix =
+                clamp_monospace_text(&left_header, (left_w - 20.0 * s).max(1.0), font_size);
+            let prefix_w = estimate_monospace_width(&clamped_prefix, font_size);
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&left_header, (left_w - 20.0 * s).max(1.0), font_size),
+                &clamped_prefix,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
@@ -196,6 +217,19 @@ impl Renderer {
                 header_y,
                 fg,
             ));
+            if !vim_tag.is_empty() {
+                // 2-space separator mirrors the live-grep branch's gap.
+                let sep_w = estimate_monospace_width("  ", font_size);
+                glyphs.extend(layout_panel_text(
+                    vim_tag,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x + 10.0 * s + prefix_w + sep_w,
+                    header_y,
+                    vim_color.unwrap_or(fg),
+                ));
+            }
         }
 
         if is_live_grep {
