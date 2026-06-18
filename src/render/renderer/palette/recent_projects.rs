@@ -111,16 +111,16 @@ impl Renderer {
         if !is_theme_selector
             && let Some(vim_text) = recent_projects_vim_mode_status(model.vim_mode_label)
         {
-            let vim_w = estimate_monospace_width(&vim_text, font_size);
+            let vim_w = estimate_monospace_width(vim_text, font_size);
             let vim_x = (count_x - vim_w - 16.0).max(text_x + badge_w + 16.0);
             glyphs.extend(layout_panel_text(
-                &vim_text,
+                vim_text,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
                 vim_x,
                 header_text_y,
-                model.match_color,
+                model.vim_mode_color.unwrap_or(model.match_color),
             ));
         }
         row_top += badge_h + PALETTE_HEADER_BOTTOM_PAD;
@@ -489,8 +489,8 @@ fn parse_recent_secondary(raw: &str) -> RecentProjectRenderMeta {
     }
 }
 
-fn recent_projects_vim_mode_status(label: Option<&'static str>) -> Option<String> {
-    label.map(|label| format!("-- {label} --"))
+fn recent_projects_vim_mode_status(label: Option<&'static str>) -> Option<&'static str> {
+    label
 }
 
 #[cfg(test)]
@@ -498,15 +498,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recent_projects_formats_vim_mode_status_like_other_pickers() {
-        assert_eq!(
-            recent_projects_vim_mode_status(Some("NORMAL")),
-            Some("-- NORMAL --".to_string())
-        );
-        assert_eq!(
-            recent_projects_vim_mode_status(Some("INSERT")),
-            Some("-- INSERT --".to_string())
-        );
+    fn recent_projects_passes_vim_mode_label_through() {
+        assert_eq!(recent_projects_vim_mode_status(Some("NORMAL")), Some("NORMAL"));
+        assert_eq!(recent_projects_vim_mode_status(Some("INSERT")), Some("INSERT"));
         assert_eq!(recent_projects_vim_mode_status(None), None);
     }
 }
