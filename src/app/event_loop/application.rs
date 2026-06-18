@@ -1543,7 +1543,11 @@ impl AppShell {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
-                        renderer.update_fuzzy_picker_buffer_content(fuzzy_state, center_bounds);
+                        renderer.update_fuzzy_picker_buffer_content(
+                            fuzzy_state,
+                            center_bounds,
+                            self.app_state.current_mode(),
+                        );
                     } else if diagnostics_active {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();

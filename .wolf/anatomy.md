@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T06:09:54.617Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T06:59:45.222Z
 > Files: 437 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -383,7 +383,7 @@
 - `ai_agents.rs` — AI agent CLIs that can be launched inside the right-dock terminal. (~635 tok)
 - `async_bridge.rs` — BridgePumpStats: new, pump (~3855 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — VimLineView: prompt_prefix, empty_hint, title, is_complex_picker (~23858 tok)
+- `command_palette.rs` — VimLineView: prompt_prefix, empty_hint, title, is_complex_picker (~24154 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
@@ -406,7 +406,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~35191 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~35587 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -573,7 +573,7 @@
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5570 tok)
 - `completion.rs` — Declares COMPLETION_KIND_TEXT (~1959 tok)
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
-- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8278 tok)
+- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8342 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~26989 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
@@ -594,7 +594,7 @@
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~3796 tok)
+- `file_picker.rs` — Declares to (~3810 tok)
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
 - `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1951 tok)
 - `live_grep.rs` — Declares to (~2616 tok)

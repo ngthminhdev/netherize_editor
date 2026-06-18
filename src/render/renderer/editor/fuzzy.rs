@@ -33,6 +33,7 @@ impl Renderer {
         &mut self,
         fuzzy_state: &crate::app::app_state::FuzzyState,
         center_bounds: [f32; 4],
+        editor_mode: crate::core::mode::EditorMode,
     ) {
         if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
             self.clear_editor_overlays();
@@ -116,11 +117,15 @@ impl Renderer {
             crate::app::command_palette::CommandPaletteMode::FileHistory => "File History",
             _ => "Search",
         };
-        // Vim sub-mode indicator (Insert is the default, shown without a tag).
-        let vim_tag = match fuzzy_state.vim_mode {
-            crate::app::command_palette::PaletteVimMode::Normal => "  -- NORMAL --",
-            crate::app::command_palette::PaletteVimMode::Visual => "  -- VISUAL --",
-            crate::app::command_palette::PaletteVimMode::Insert => "",
+        // Modal indicator driven by the editor mode (the fuzzy picker already
+        // toggles Insert<->Normal via Esc; Normal gives j/k navigation and q/Esc
+        // to close — this just makes the current mode visible).
+        let vim_tag = match editor_mode {
+            crate::core::mode::EditorMode::Insert => "  -- INSERT --",
+            crate::core::mode::EditorMode::Normal => "  -- NORMAL --",
+            crate::core::mode::EditorMode::Visual
+            | crate::core::mode::EditorMode::VisualBlock => "  -- VISUAL --",
+            _ => "",
         };
         let unique_file_count = if is_live_grep {
             let mut paths = Vec::<String>::new();

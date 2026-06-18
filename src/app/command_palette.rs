@@ -1791,6 +1791,9 @@ fn vim_line_input_normal(
             consumed
         }
         'p' | 'P' => vim_paste_register(view, c == 'p'),
+        // `q` closes the palette in Normal (matches the fuzzy picker's q/Esc),
+        // for quick keyboard dismissal of list pickers.
+        'q' => VimLineOutcome::action(PaletteVimAction::Close),
         'j' => {
             if has_result_list {
                 VimLineOutcome::action(PaletteVimAction::ListNext)
@@ -2051,6 +2054,28 @@ mod tests {
         assert_eq!(model.scrim_color[1], expected_scrim[1]);
         assert_eq!(model.scrim_color[2], expected_scrim[2]);
         assert!(model.scrim_color[3] >= 0.72);
+    }
+
+    #[test]
+    fn paste_overlay_render_exposes_vim_mode_label_and_block_caret() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("docker-compose (1).yml", None);
+
+        // Insert (default): thin caret, INSERT label.
+        let insert = p
+            .render(&ThemeConfig::builtin_dark(), [0.0, 0.0, 1200.0, 800.0])
+            .expect("insert render model");
+        assert_eq!(insert.vim_mode_label, Some("INSERT"));
+        assert!(!insert.vim_caret_block);
+
+        // After Esc -> Normal: block caret, NORMAL label.
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        let normal = p
+            .render(&ThemeConfig::builtin_dark(), [0.0, 0.0, 1200.0, 800.0])
+            .expect("normal render model");
+        assert_eq!(normal.vim_mode_label, Some("NORMAL"));
+        assert!(normal.vim_caret_block);
     }
 
     #[test]
