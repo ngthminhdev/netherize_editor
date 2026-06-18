@@ -506,6 +506,7 @@ pub struct CommandPaletteRenderModel {
     pub prompt_cursor_byte: usize,
     pub prompt_selection_range: Option<(usize, usize)>,
     pub vim_mode_label: Option<&'static str>,
+    pub vim_mode_color: Option<[f32; 4]>,
     pub vim_caret_block: bool,
 }
 
@@ -1301,6 +1302,11 @@ impl CommandPalette {
                 PaletteVimMode::Insert => Some("INSERT"),
                 PaletteVimMode::Normal => Some("NORMAL"),
                 PaletteVimMode::Visual => Some("VISUAL"),
+            },
+            vim_mode_color: match self.vim_mode {
+                PaletteVimMode::Insert => Some(theme.ui.mode_insert.as_f32()),
+                PaletteVimMode::Normal => Some(theme.ui.mode_normal.as_f32()),
+                PaletteVimMode::Visual => Some(theme.ui.mode_visual.as_f32()),
             },
             vim_caret_block: matches!(
                 self.vim_mode,
@@ -2098,6 +2104,27 @@ mod tests {
             .expect("normal render model");
         assert_eq!(normal.vim_mode_label, Some("NORMAL"));
         assert!(normal.vim_caret_block);
+    }
+
+    #[test]
+    fn paste_overlay_render_exposes_vim_mode_color_per_mode() {
+        let theme = ThemeConfig::builtin_dark();
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("docker-compose (1).yml", None);
+
+        // Insert: color must match theme.ui.mode_insert.
+        let insert = p
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("insert render model");
+        assert_eq!(insert.vim_mode_color, Some(theme.ui.mode_insert.as_f32()));
+
+        // Normal: color must match theme.ui.mode_normal.
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        let normal = p
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("normal render model");
+        assert_eq!(normal.vim_mode_color, Some(theme.ui.mode_normal.as_f32()));
     }
 
     #[test]
