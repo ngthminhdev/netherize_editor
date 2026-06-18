@@ -41,11 +41,6 @@ pub fn default_ai_agents() -> &'static [AiAgent] {
             command: "agy",
         },
         AiAgent {
-            id: "aider",
-            label: "Aider",
-            command: "aider",
-        },
-        AiAgent {
             id: "gemini",
             label: "Gemini",
             command: "gemini",
@@ -54,6 +49,16 @@ pub fn default_ai_agents() -> &'static [AiAgent] {
             id: "mimo",
             label: "MiMo",
             command: "mimo",
+        },
+        AiAgent {
+            id: "claudemimo",
+            label: "Claude Mimo",
+            command: "mimocode",
+        },
+        AiAgent {
+            id: "claudekimi",
+            label: "Claude Kimi",
+            command: "kimicode",
         },
     ]
 }

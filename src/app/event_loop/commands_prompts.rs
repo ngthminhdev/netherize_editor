@@ -289,6 +289,50 @@ impl AppShell {
                 let _ = self.app_state.set_pending_explorer_rename_path(None);
                 new_path
             }
+            CommandPaletteMode::ExplorerPasteFile => {
+                let Some(source_path) = self.pending_paste_source_path.take() else {
+                    return false;
+                };
+                let Some(target_dir) = self.pending_paste_target_dir.take() else {
+                    return false;
+                };
+
+                let new_name = self.app_state.command_palette_query_text().trim();
+                if new_name.is_empty() {
+                    self.show_transient_toast("Paste name cannot be empty".to_string());
+                    // Restore state so the user can retry.
+                    self.pending_paste_source_path = Some(source_path);
+                    self.pending_paste_target_dir = Some(target_dir);
+                    return false;
+                }
+                if new_name.contains(std::path::MAIN_SEPARATOR)
+                    || new_name.contains('/')
+                    || new_name.contains('\\')
+                {
+                    self.show_transient_toast("Invalid file name".to_string());
+                    self.pending_paste_source_path = Some(source_path);
+                    self.pending_paste_target_dir = Some(target_dir);
+                    return false;
+                }
+
+                let target_path = target_dir.join(new_name);
+                if target_path.exists() {
+                    self.show_transient_toast("File already exists".to_string());
+                    self.pending_paste_source_path = Some(source_path);
+                    self.pending_paste_target_dir = Some(target_dir);
+                    return false;
+                }
+
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::FileOperation,
+                    payload: WorkerRequestPayload::CopyFile {
+                        source_path,
+                        target_path: target_path.clone(),
+                    },
+                });
+                target_path
+            }
             _ => return false,
         };
 

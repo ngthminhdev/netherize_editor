@@ -2,6 +2,15 @@ use std::path::PathBuf;
 
 use crate::core::mode::ModeEvent;
 
+/// A keystroke forwarded into the palette's single-line Vim state machine.
+/// Synthesized by the input layer — never parsed from a keymap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteVimKey {
+    Char(char),
+    Esc,
+    Enter,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     Visual,
@@ -156,6 +165,18 @@ pub enum Command {
     ExtensionsUninstallSelected,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
+    /// Move the command-palette cursor one character left.
+    PaletteMoveCursorLeft,
+    /// Move the command-palette cursor one character right.
+    PaletteMoveCursorRight,
+    /// Move the command-palette cursor to the start of the query.
+    PaletteMoveCursorToStart,
+    /// Move the command-palette cursor to the end of the query.
+    PaletteMoveCursorToEnd,
+    /// Delete the character after the command-palette cursor.
+    PaletteDeleteCharForward,
+    /// A keystroke routed into the palette's single-line Vim state machine.
+    PaletteVimInput(PaletteVimKey),
     ToggleLiveGrepCaseSensitive,
     ToggleInFileSearchCaseSensitive,
     OverlaySelectNext,
@@ -586,6 +607,11 @@ impl Command {
                 | Self::OverlaySelectNext
                 | Self::OverlaySelectPrev
                 | Self::FilePickerBackspaceQuery
+                | Self::PaletteMoveCursorLeft
+                | Self::PaletteMoveCursorRight
+                | Self::PaletteMoveCursorToStart
+                | Self::PaletteMoveCursorToEnd
+                | Self::PaletteDeleteCharForward
                 | Self::CompletionNext
                 | Self::CompletionPrev
                 | Self::ReferencesSelectNext

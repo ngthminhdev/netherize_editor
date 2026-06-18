@@ -424,17 +424,24 @@ impl AppShell {
                     .and_then(|n| n.to_str())
                     .unwrap_or("file")
                     .to_string();
-                let target_path = next_available_paste_path(&target_dir, &file_name);
+                let suggested_path = next_available_paste_path(&target_dir, &file_name);
+                let suggested_name = suggested_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&file_name)
+                    .to_string();
 
-                // Submit async file copy request to avoid blocking UI thread
-                self.submit(RequestSpec {
-                    revision_id: 0,
-                    topic: RequestTopic::FileOperation,
-                    payload: WorkerRequestPayload::CopyFile {
-                        source_path,
-                        target_path,
-                    },
-                });
+                if !self.open_prompt_overlay(CommandPaletteMode::ExplorerPasteFile) {
+                    return Some(false);
+                }
+
+                self.pending_paste_source_path = Some(source_path);
+                self.pending_paste_target_dir = Some(target_dir);
+                let _ = self.app_state.set_command_palette_query(&suggested_name);
+                let _ = self
+                    .app_state
+                    .set_command_palette_selection_range(Some((0, suggested_name.len())));
+
                 Some(true)
             }
             Command::ExplorerMoveUp => {

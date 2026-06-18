@@ -1309,6 +1309,52 @@ fn file_picker_confirm_submits_git_baseline_refresh_for_opened_file() {
 }
 
 #[test]
+fn fuzzy_picker_vim_normal_mode_edits_query_instead_of_appending() {
+    // NOTE: Vim in fuzzy pickers is currently DISABLED at the input layer
+    // (build_context leaves palette_vim_mode = None for fuzzy buffers, see
+    // bug-181) because it hijacked Esc-closes-picker and needs interactive
+    // verification. This test exercises only the engine plumbing — if a
+    // PaletteVimInput reaches the handler, it correctly edits the FuzzyState
+    // query — so the wiring stays correct for a future re-land. It does NOT
+    // assert the live feature is reachable from real keystrokes.
+    use crate::core::commands::PaletteVimKey;
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!("netherize_fuzzy_vim_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+
+    assert!(shell.handle_command(Command::OpenFileFinder));
+    assert!(shell.app_state.active_buffer_is_fuzzy_picker());
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("foo bar".to_string())));
+    assert_eq!(shell.app_state.command_palette_query_text(), "foo bar");
+
+    // Esc enters Normal sub-mode on the fuzzy buffer (not closing the picker).
+    assert!(shell.handle_command(Command::PaletteVimInput(PaletteVimKey::Esc)));
+    assert_eq!(
+        shell.app_state.active_fuzzy_picker_vim_mode(),
+        Some(crate::app::command_palette::PaletteVimMode::Normal)
+    );
+
+    // `0` then `dw` deletes "foo " — proving keys edit the query, not append.
+    assert!(shell.handle_command(Command::PaletteVimInput(PaletteVimKey::Char('0'))));
+    assert!(shell.handle_command(Command::PaletteVimInput(PaletteVimKey::Char('d'))));
+    assert!(shell.handle_command(Command::PaletteVimInput(PaletteVimKey::Char('w'))));
+    assert_eq!(shell.app_state.command_palette_query_text(), "bar");
+
+    // `i` returns to Insert; typing appends again.
+    assert!(shell.handle_command(Command::PaletteVimInput(PaletteVimKey::Char('i'))));
+    assert_eq!(
+        shell.app_state.active_fuzzy_picker_vim_mode(),
+        Some(crate::app::command_palette::PaletteVimMode::Insert)
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn close_buffer_submits_git_baseline_refresh_for_next_active_file() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = std::env::temp_dir().join(format!(

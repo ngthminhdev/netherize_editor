@@ -1145,6 +1145,41 @@ mode = "palette"
 key = "Ctrl+a"
 command = "search.toggle_case_sensitive"
 
+[[bindings]]
+mode = "palette"
+key = "ArrowLeft"
+command = "palette.move_cursor_left"
+
+[[bindings]]
+mode = "palette"
+key = "ArrowRight"
+command = "palette.move_cursor_right"
+
+[[bindings]]
+mode = "palette"
+key = "Home"
+command = "palette.move_cursor_to_start"
+
+[[bindings]]
+mode = "palette"
+key = "End"
+command = "palette.move_cursor_to_end"
+
+[[bindings]]
+mode = "palette"
+key = "Ctrl+a"
+command = "palette.move_cursor_to_start"
+
+[[bindings]]
+mode = "palette"
+key = "Ctrl+e"
+command = "palette.move_cursor_to_end"
+
+[[bindings]]
+mode = "palette"
+key = "Delete"
+command = "palette.delete_char_forward"
+
 # ───────────────── MULTIPLE CURSORS ─────────────────
 
 # Normal / Visual → start multi-cursor match phase

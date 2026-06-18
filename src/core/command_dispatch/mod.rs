@@ -310,6 +310,12 @@ fn dispatch_command_with_clipboard_once(
         | Command::GitBlameLine
         | Command::FilePickerAppendQuery(_)
         | Command::FilePickerBackspaceQuery
+        | Command::PaletteMoveCursorLeft
+        | Command::PaletteMoveCursorRight
+        | Command::PaletteMoveCursorToStart
+        | Command::PaletteMoveCursorToEnd
+        | Command::PaletteDeleteCharForward
+        | Command::PaletteVimInput(_)
         | Command::ToggleLiveGrepCaseSensitive
         | Command::ToggleInFileSearchCaseSensitive
         | Command::OverlaySelectNext

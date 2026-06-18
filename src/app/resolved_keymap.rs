@@ -821,6 +821,43 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("palette"), cmd(KeyCode::KeyV), EDITOR_PASTE);
 
+    // ── Palette cursor movement ───────────────────────────────────────────────
+    km.insert(
+        Some("palette"),
+        nk(NamedKey::ArrowLeft),
+        PALETTE_MOVE_CURSOR_LEFT,
+    );
+    km.insert(
+        Some("palette"),
+        nk(NamedKey::ArrowRight),
+        PALETTE_MOVE_CURSOR_RIGHT,
+    );
+    km.insert(
+        Some("palette"),
+        nk(NamedKey::Home),
+        PALETTE_MOVE_CURSOR_TO_START,
+    );
+    km.insert(
+        Some("palette"),
+        nk(NamedKey::End),
+        PALETTE_MOVE_CURSOR_TO_END,
+    );
+    km.insert(
+        Some("palette"),
+        KeySpec::CtrlPlus(KeyCode::KeyA),
+        PALETTE_MOVE_CURSOR_TO_START,
+    );
+    km.insert(
+        Some("palette"),
+        KeySpec::CtrlPlus(KeyCode::KeyE),
+        PALETTE_MOVE_CURSOR_TO_END,
+    );
+    km.insert(
+        Some("palette"),
+        nk(NamedKey::Delete),
+        PALETTE_DELETE_CHAR_FORWARD,
+    );
+
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_BACK);
     km.insert(

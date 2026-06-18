@@ -3127,8 +3127,93 @@
       "uiux",
       "user-reported"
     ],
-    "related_bugs": ["bug-176"],
+    "related_bugs": [
+      "bug-176"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-17T00:00:00+07:00"
+  },
+  {
+    "id": "bug-178",
+    "error_message": "Explorer paste popup: pressing Enter shows no new file is created even though the paste flow ran (user saw a toast but no file).",
+    "root_cause": "FilePickerConfirmSelection (Enter) in commands_palette.rs routed to confirm_explorer_prompt() only for ExplorerCreateFile/CreateFolder/RenameFull/RenameBase. The new ExplorerPasteFile mode was missing from that match, so Enter in the paste popup fell through to the generic file-picker confirm path, which never submits the async CopyFile WorkerRequest. confirm_explorer_prompt() (the only place that submits CopyFile) was therefore never reached for paste.",
+    "fix": "Added CommandPaletteMode::ExplorerPasteFile to the FilePickerConfirmSelection -> confirm_explorer_prompt() match arm in src/app/event_loop/commands_palette.rs (the Create/Rename routing block). Now Enter in the paste popup confirms the paste and submits CopyFile.",
+    "tags": [
+      "explorer",
+      "paste",
+      "command-palette",
+      "confirm-routing",
+      "ExplorerPasteFile",
+      "event-loop",
+      "user-reported"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T00:00:00+07:00"
+  },
+  {
+    "id": "bug-179",
+    "error_message": "Vim-mode command palette: in fuzzy pickers (file finder, command palette, symbol pickers, live grep) pressing Esc then keys still inserted text instead of acting as Normal-mode commands. Only overlay prompts (paste/rename/create) had working Vim.",
+    "root_cause": "The Vim engine (vim_input + vim_mode state) lived only on the CommandPalette overlay struct. Fuzzy pickers are separate BufferContent::FuzzyPicker(FuzzyState) center buffers with their own query and no vim state, and is_command_palette_visible() is false for them. build_context only populated KeybindingContext.palette_vim_mode when is_command_palette_visible(), so for fuzzy pickers it was None -> the Vim branch in resolve_fuzzy_picker_focus never fired and keys fell through to append. Even if routed, the engine edited CommandPalette.query (wrong struct), not FuzzyState.query.",
+    "fix": "Extracted the Vim state machine into a struct-agnostic free function vim_line_input(VimLineView, key, has_result_list) -> VimLineOutcome operating on borrowed fields (query/cursor/selection/mode/operator/register/selected_index). CommandPalette::vim_input is now a thin wrapper. Added the same vim fields to FuzzyState; added AppState::active_fuzzy_picker_vim_mode() and fuzzy_picker_vim_input(); build_context now falls back to active_fuzzy_picker_vim_mode() when the overlay isn't visible; handle_palette_vim_input branches to the fuzzy buffer and re-runs submit_active_palette_fzf_search()/preview on text change; FuzzyState.append/backspace keep vim_cursor_byte in sync; fuzzy picker header shows '-- NORMAL/VISUAL --'. Added integration test fuzzy_picker_vim_normal_mode_edits_query_instead_of_appending.",
+    "tags": [
+      "vim",
+      "command-palette",
+      "fuzzy-picker",
+      "FuzzyState",
+      "palette_vim_mode",
+      "build_context",
+      "shared-engine",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-178"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T00:00:00+07:00"
+  },
+  {
+    "id": "bug-180",
+    "error_message": "Vim palette overlay (paste/rename prompts): status showed -- NORMAL -- but typing letters (h, b, w, d, x...) inserted them into the query instead of acting as Vim motions/operators.",
+    "root_cause": "InputHandler short-circuits printable keys for visible overlay palettes BEFORE keybinding resolution: handler.rs ~430 (key text) and ~1568 (IME commit) both unconditionally emit Command::FilePickerAppendQuery when mode==PaletteFocus && command_palette_visible. So the Vim branch in resolve_palette_focus never saw letters (named keys like Esc/arrows skipped the block, which is why the mode indicator worked but letters appended). The earlier integration test passed because it called handle_command(PaletteVimInput) directly, bypassing the input handler where the bug lived.",
+    "fix": "Guard both handler short-circuits with vim_blocks_text = palette_vim_mode is Normal/Visual; when blocked, let the key fall through to input_map.resolve so resolve_palette_focus routes it to PaletteVimInput. Insert sub-mode keeps appending. Added handler-level regression test palette_focus_vim_normal_routes_letters_to_vim_not_text_append (route_normalized_input, the real path) asserting 'd' -> PaletteVimInput in Normal and -> FilePickerAppendQuery in Insert.",
+    "tags": [
+      "vim",
+      "command-palette",
+      "overlay",
+      "input-handler",
+      "handler.rs",
+      "IME",
+      "bypass",
+      "test-the-real-path",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-178",
+      "bug-179"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T00:00:00+07:00"
+  },
+  {
+    "id": "bug-181",
+    "error_message": "Enabling Vim in fuzzy-picker buffers (file finder, command palette, symbol picker, live grep) regressed them: Esc no longer closed the picker (it entered Vim Normal), no mode status visible, pickers felt broken. Root cause investigated blind (no GUI), causing repeated regressions.",
+    "root_cause": "Fuzzy pickers are center-editor buffers with their own mode/Esc handling. Populating KeybindingContext.palette_vim_mode for them (build_context) activated the Vim branch in resolve_fuzzy_picker_focus, whose Insert-mode arm intercepts Esc -> PaletteVimInput(Esc) -> Vim Normal, hijacking the established Esc-closes-picker behavior. The feature could not be validated without interactive GUI testing.",
+    "fix": "Reverted the activation: build_context sets palette_vim_mode = None for fuzzy pickers again (Vim wired ONLY for overlay prompts paste/rename/create, which work). Kept the harmless inert plumbing (shared vim_line_input engine, FuzzyState vim fields, fuzzy_picker_vim_input, header tag) for a future re-land done with the user in the testing loop. Overlay Vim + shared-engine refactor retained.",
+    "tags": [
+      "vim",
+      "fuzzy-picker",
+      "regression",
+      "revert",
+      "esc-handling",
+      "gui-untestable",
+      "scope-reduction"
+    ],
+    "related_bugs": [
+      "bug-178",
+      "bug-179",
+      "bug-180"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T00:00:00+07:00"
   }
 ]

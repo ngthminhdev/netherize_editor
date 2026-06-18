@@ -1,9 +1,83 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    app::match_ranges::compute_label_match_ranges, config::theme_config::ThemeConfig,
+    app::match_ranges::compute_label_match_ranges,
+    config::theme_config::ThemeConfig,
+    core::commands::PaletteVimKey,
     workspace::model::WorkspaceModel,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PaletteVimMode {
+    #[default]
+    Insert,
+    Normal,
+    Visual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PaletteVimOperator {
+    #[default]
+    Delete,
+    Change,
+    Yank,
+}
+
+/// What the event loop should do after a Vim keystroke is processed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteVimAction {
+    /// Text/cursor/mode/register changed — just redraw.
+    Consumed,
+    /// `k` in a list-picker — move result selection up.
+    ListPrev,
+    /// `j` in a list-picker — move result selection down.
+    ListNext,
+    /// `Enter` — run the active palette's confirm path.
+    Confirm,
+    /// `Esc` in Normal — close the palette.
+    Close,
+    /// Nothing happened.
+    Ignore,
+}
+
+/// A borrowed, struct-agnostic view of a single-line query editor's Vim state.
+/// Both [`CommandPalette`] (overlay prompts) and the fuzzy-picker `FuzzyState`
+/// buffers build one of these and run the shared [`vim_line_input`] engine, so
+/// there is exactly one Vim implementation for every palette surface.
+pub struct VimLineView<'a> {
+    pub query: &'a mut String,
+    pub cursor_byte: &'a mut usize,
+    pub selection_range: &'a mut Option<(usize, usize)>,
+    pub vim_mode: &'a mut PaletteVimMode,
+    pub pending_operator: &'a mut Option<PaletteVimOperator>,
+    pub register: &'a mut String,
+    /// Result-list cursor; reset to 0 whenever the query text changes so the
+    /// owner can re-filter from the top (mirrors the typing path).
+    pub selected_index: &'a mut usize,
+}
+
+/// Result of one [`vim_line_input`] keystroke. `text_changed` tells the owner
+/// whether to refresh its result list / re-run its search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VimLineOutcome {
+    pub action: PaletteVimAction,
+    pub text_changed: bool,
+}
+
+impl VimLineOutcome {
+    fn action(action: PaletteVimAction) -> Self {
+        Self {
+            action,
+            text_changed: false,
+        }
+    }
+    fn changed(action: PaletteVimAction) -> Self {
+        Self {
+            action,
+            text_changed: true,
+        }
+    }
+}
 
 const DEFAULT_MAX_RESULTS: usize = 24;
 
@@ -33,6 +107,8 @@ pub enum CommandPaletteMode {
     ExplorerRenameFull,
     /// Explorer prompt để đổi tên file, preselect base name và giữ extension.
     ExplorerRenameBase,
+    /// Explorer prompt to choose the destination name for a pasted file.
+    ExplorerPasteFile,
     /// Dirty buffer close confirmation overlay.
     BufferCloseConfirm,
     /// Recent Projects picker — hiện danh sách project đã mở gần đây.
@@ -72,6 +148,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFolder => "dir> ",
             Self::ExplorerDeleteConfirm => "delete> ",
             Self::ExplorerRenameFull | Self::ExplorerRenameBase => "rename> ",
+            Self::ExplorerPasteFile => "paste> ",
             Self::BufferCloseConfirm => "close> ",
             Self::RecentProjects => "project> ",
             Self::ThemeSelector => "Select Theme> ",
@@ -99,6 +176,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFolder => "enter a new folder path...",
             Self::ExplorerDeleteConfirm => "Delete selected item? (y/n)",
             Self::ExplorerRenameFull | Self::ExplorerRenameBase => "enter a new file name...",
+            Self::ExplorerPasteFile => "enter destination file name...",
             Self::BufferCloseConfirm => "Save changes before closing? (y/n)",
             Self::RecentProjects => "no recent projects",
             Self::ThemeSelector => "type to filter themes...",
@@ -126,6 +204,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFolder => "NEW FOLDER",
             Self::ExplorerDeleteConfirm => "DELETE",
             Self::ExplorerRenameFull | Self::ExplorerRenameBase => "RENAME",
+            Self::ExplorerPasteFile => "PASTE",
             Self::BufferCloseConfirm => "CLOSE",
             Self::RecentProjects => "RECENT",
             Self::ThemeSelector => "THEMES",
@@ -426,6 +505,10 @@ pub struct CommandPaletteRenderModel {
     pub item_tones: Vec<CommandPaletteItemTone>,
     pub item_preview_colors: Vec<Vec<[f32; 4]>>,
     pub search_case_sensitive: bool,
+    pub prompt_cursor_byte: usize,
+    pub prompt_selection_range: Option<(usize, usize)>,
+    pub vim_mode_label: Option<&'static str>,
+    pub vim_caret_block: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -438,6 +521,12 @@ pub struct CommandPalette {
     pub is_loading: bool,
     pub cursor_byte: usize,
     pub selection_range: Option<(usize, usize)>,
+    /// Current Vim sub-mode for the single-line query editor.
+    pub vim_mode: PaletteVimMode,
+    /// Pending operator (`d`/`c`/`y`) awaiting a motion.
+    pending_operator: Option<PaletteVimOperator>,
+    /// Internal unnamed register for `x`/`d`/`c`/`y` ↔ `p`/`P`.
+    vim_register: String,
     max_results: usize,
     /// Items pre-populated externally (e.g. recent projects). Used by
     /// RecentProjects mode where `refresh_results` would otherwise clear them.
@@ -455,6 +544,9 @@ impl Default for CommandPalette {
             is_loading: false,
             cursor_byte: 0,
             selection_range: None,
+            vim_mode: PaletteVimMode::Insert,
+            pending_operator: None,
+            vim_register: String::new(),
             max_results: DEFAULT_MAX_RESULTS,
             static_items: Vec::new(),
         }
@@ -470,6 +562,9 @@ impl CommandPalette {
         self.is_loading = false;
         self.cursor_byte = 0;
         self.selection_range = None;
+        self.vim_mode = PaletteVimMode::Insert;
+        self.pending_operator = None;
+        // vim_register intentionally persists across opens.
         self.static_items.clear();
         self.refresh_results(workspace);
         self.results.len()
@@ -587,6 +682,140 @@ impl CommandPalette {
         true
     }
 
+    pub fn move_cursor_left(&mut self) -> bool {
+        if !self.is_visible {
+            return false;
+        }
+        if let Some((start, _end)) = self.normalized_selection_range() {
+            self.cursor_byte = start;
+            self.selection_range = None;
+            return true;
+        }
+        if self.cursor_byte == 0 {
+            return false;
+        }
+        let new_byte = self.prev_char_boundary(self.cursor_byte);
+        let changed = new_byte != self.cursor_byte;
+        self.cursor_byte = new_byte;
+        changed
+    }
+
+    pub fn move_cursor_right(&mut self) -> bool {
+        if !self.is_visible {
+            return false;
+        }
+        if let Some((_start, end)) = self.normalized_selection_range() {
+            self.cursor_byte = end;
+            self.selection_range = None;
+            return true;
+        }
+        if self.cursor_byte >= self.query.len() {
+            return false;
+        }
+        let new_byte = self.next_char_boundary(self.cursor_byte);
+        let changed = new_byte != self.cursor_byte;
+        self.cursor_byte = new_byte;
+        changed
+    }
+
+    pub fn move_cursor_to_start(&mut self) -> bool {
+        if !self.is_visible {
+            return false;
+        }
+        if let Some((start, _end)) = self.normalized_selection_range() {
+            self.cursor_byte = start;
+            self.selection_range = None;
+            return true;
+        }
+        if self.cursor_byte == 0 {
+            return false;
+        }
+        self.cursor_byte = 0;
+        true
+    }
+
+    pub fn move_cursor_to_end(&mut self) -> bool {
+        if !self.is_visible {
+            return false;
+        }
+        if let Some((_start, end)) = self.normalized_selection_range() {
+            self.cursor_byte = end;
+            self.selection_range = None;
+            return true;
+        }
+        if self.cursor_byte >= self.query.len() {
+            return false;
+        }
+        self.cursor_byte = self.query.len();
+        true
+    }
+
+    pub fn delete_char_forward(&mut self, workspace: Option<&WorkspaceModel>) -> bool {
+        if !self.is_visible || self.query.is_empty() {
+            return false;
+        }
+        if let Some((start, end)) = self.normalized_selection_range() {
+            self.query.replace_range(start..end, "");
+            self.cursor_byte = start;
+            self.selection_range = None;
+        } else {
+            if self.cursor_byte >= self.query.len() {
+                return false;
+            }
+            let end = self.next_char_boundary(self.cursor_byte);
+            self.query.replace_range(self.cursor_byte..end, "");
+        }
+        self.selected_index = 0;
+        self.refresh_results(workspace);
+        true
+    }
+
+    fn prev_char_boundary(&self, byte: usize) -> usize {
+        if byte == 0 {
+            return 0;
+        }
+        let mut i = byte - 1;
+        while i > 0 && !self.query.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    }
+
+    fn next_char_boundary(&self, byte: usize) -> usize {
+        if byte >= self.query.len() {
+            return self.query.len();
+        }
+        let mut i = byte + 1;
+        while i < self.query.len() && !self.query.is_char_boundary(i) {
+            i += 1;
+        }
+        i
+    }
+
+    /// Run the shared Vim engine over this overlay palette's query, then refresh
+    /// the result list if the text changed. Thin wrapper over [`vim_line_input`].
+    pub fn vim_input(
+        &mut self,
+        key: PaletteVimKey,
+        has_result_list: bool,
+        workspace: Option<&WorkspaceModel>,
+    ) -> PaletteVimAction {
+        let mut view = VimLineView {
+            query: &mut self.query,
+            cursor_byte: &mut self.cursor_byte,
+            selection_range: &mut self.selection_range,
+            vim_mode: &mut self.vim_mode,
+            pending_operator: &mut self.pending_operator,
+            register: &mut self.vim_register,
+            selected_index: &mut self.selected_index,
+        };
+        let outcome = vim_line_input(&mut view, key, has_result_list);
+        if outcome.text_changed {
+            self.refresh_results(workspace);
+        }
+        outcome.action
+    }
+
     pub fn select_next(&mut self) -> bool {
         if self.results.is_empty() {
             return false;
@@ -700,6 +929,7 @@ impl CommandPalette {
             | CommandPaletteMode::ExplorerDeleteConfirm
             | CommandPaletteMode::ExplorerRenameFull
             | CommandPaletteMode::ExplorerRenameBase
+            | CommandPaletteMode::ExplorerPasteFile
             | CommandPaletteMode::LspRename
             | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
             CommandPaletteMode::LeetCodeProblemInput => Vec::new(),
@@ -1069,6 +1299,14 @@ impl CommandPalette {
                 .map(|entry| entry.preview_colors.clone())
                 .collect(),
             search_case_sensitive: false,
+            prompt_cursor_byte: self.cursor_byte,
+            prompt_selection_range: self.normalized_selection_range(),
+            vim_mode_label: match self.vim_mode {
+                PaletteVimMode::Insert => Some("INSERT"),
+                PaletteVimMode::Normal => Some("NORMAL"),
+                PaletteVimMode::Visual => Some("VISUAL"),
+            },
+            vim_caret_block: matches!(self.vim_mode, PaletteVimMode::Normal | PaletteVimMode::Visual),
         })
     }
 }
@@ -1303,10 +1541,412 @@ fn complex_picker_body_rows(
     (((available_height - reserved_height) / row_height).floor() as usize).clamp(1, preferred_rows)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VimCharClass {
+    Whitespace,
+    Word,
+    Punct,
+}
+
+fn vim_char_class(c: char) -> VimCharClass {
+    if c.is_whitespace() {
+        VimCharClass::Whitespace
+    } else if c.is_alphanumeric() || c == '_' {
+        VimCharClass::Word
+    } else {
+        VimCharClass::Punct
+    }
+}
+
+// ── Shared single-line Vim engine (used by CommandPalette + FuzzyState) ──────
+
+fn prev_boundary(s: &str, byte: usize) -> usize {
+    if byte == 0 {
+        return 0;
+    }
+    let mut i = byte - 1;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+fn next_boundary(s: &str, byte: usize) -> usize {
+    if byte >= s.len() {
+        return s.len();
+    }
+    let mut i = byte + 1;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+fn vim_word_forward_in(s: &str, byte: usize) -> usize {
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    if chars.is_empty() {
+        return 0;
+    }
+    let mut i = chars.iter().position(|(b, _)| *b >= byte).unwrap_or(chars.len());
+    if i >= chars.len() {
+        return s.len();
+    }
+    let start_class = vim_char_class(chars[i].1);
+    if start_class != VimCharClass::Whitespace {
+        while i < chars.len() && vim_char_class(chars[i].1) == start_class {
+            i += 1;
+        }
+    }
+    while i < chars.len() && vim_char_class(chars[i].1) == VimCharClass::Whitespace {
+        i += 1;
+    }
+    if i >= chars.len() { s.len() } else { chars[i].0 }
+}
+
+fn vim_word_backward_in(s: &str, byte: usize) -> usize {
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    if chars.is_empty() || byte == 0 {
+        return 0;
+    }
+    let mut i = chars.iter().position(|(b, _)| *b >= byte).unwrap_or(chars.len());
+    if i == 0 {
+        return 0;
+    }
+    i -= 1;
+    while i > 0 && vim_char_class(chars[i].1) == VimCharClass::Whitespace {
+        i -= 1;
+    }
+    let cls = vim_char_class(chars[i].1);
+    while i > 0 && vim_char_class(chars[i - 1].1) == cls {
+        i -= 1;
+    }
+    chars[i].0
+}
+
+fn vim_word_end_in(s: &str, byte: usize) -> usize {
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    if chars.is_empty() {
+        return 0;
+    }
+    let mut i = chars.iter().position(|(b, _)| *b >= byte).unwrap_or(chars.len());
+    i += 1; // move at least one forward (vim `e`)
+    while i < chars.len() && vim_char_class(chars[i].1) == VimCharClass::Whitespace {
+        i += 1;
+    }
+    if i >= chars.len() {
+        return chars.last().map(|(b, _)| *b).unwrap_or(0);
+    }
+    let cls = vim_char_class(chars[i].1);
+    while i + 1 < chars.len() && vim_char_class(chars[i + 1].1) == cls {
+        i += 1;
+    }
+    chars[i].0
+}
+
+fn normalized_range(s: &str, range: Option<(usize, usize)>) -> Option<(usize, usize)> {
+    range.and_then(|(start, end)| {
+        let start = start.min(s.len());
+        let end = end.min(s.len());
+        (start < end).then_some((start, end))
+    })
+}
+
+fn first_non_whitespace(s: &str) -> usize {
+    s.char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(b, _)| b)
+        .unwrap_or(0)
+}
+
+/// The single, struct-agnostic Vim state machine. Operates entirely on the
+/// borrowed [`VimLineView`]; never touches result lists or async search — the
+/// owner refreshes those when `VimLineOutcome::text_changed` is true.
+pub fn vim_line_input(
+    view: &mut VimLineView<'_>,
+    key: PaletteVimKey,
+    has_result_list: bool,
+) -> VimLineOutcome {
+    match *view.vim_mode {
+        PaletteVimMode::Insert => match key {
+            PaletteVimKey::Esc => {
+                *view.vim_mode = PaletteVimMode::Normal;
+                *view.selection_range = None;
+                *view.pending_operator = None;
+                if *view.cursor_byte > 0 {
+                    *view.cursor_byte = prev_boundary(view.query, *view.cursor_byte);
+                }
+                VimLineOutcome::action(PaletteVimAction::Consumed)
+            }
+            PaletteVimKey::Enter => VimLineOutcome::action(PaletteVimAction::Confirm),
+            PaletteVimKey::Char(_) => VimLineOutcome::action(PaletteVimAction::Ignore),
+        },
+        PaletteVimMode::Normal => vim_line_input_normal(view, key, has_result_list),
+        PaletteVimMode::Visual => vim_line_input_visual(view, key),
+    }
+}
+
+fn vim_line_input_normal(
+    view: &mut VimLineView<'_>,
+    key: PaletteVimKey,
+    has_result_list: bool,
+) -> VimLineOutcome {
+    let c = match key {
+        PaletteVimKey::Enter => return VimLineOutcome::action(PaletteVimAction::Confirm),
+        PaletteVimKey::Esc => {
+            if view.pending_operator.take().is_some() {
+                return VimLineOutcome::action(PaletteVimAction::Consumed);
+            }
+            return VimLineOutcome::action(PaletteVimAction::Close);
+        }
+        PaletteVimKey::Char(c) => c,
+    };
+
+    if view.pending_operator.is_some() {
+        return vim_apply_operator_motion(view, c);
+    }
+
+    let consumed = VimLineOutcome::action(PaletteVimAction::Consumed);
+    match c {
+        'h' => {
+            if *view.cursor_byte > 0 {
+                *view.cursor_byte = prev_boundary(view.query, *view.cursor_byte);
+            }
+            consumed
+        }
+        'l' => {
+            if *view.cursor_byte < view.query.len() {
+                *view.cursor_byte = next_boundary(view.query, *view.cursor_byte);
+            }
+            consumed
+        }
+        'w' => {
+            *view.cursor_byte = vim_word_forward_in(view.query, *view.cursor_byte);
+            consumed
+        }
+        'b' => {
+            *view.cursor_byte = vim_word_backward_in(view.query, *view.cursor_byte);
+            consumed
+        }
+        'e' => {
+            *view.cursor_byte = vim_word_end_in(view.query, *view.cursor_byte);
+            consumed
+        }
+        '0' => {
+            *view.cursor_byte = 0;
+            consumed
+        }
+        '^' => {
+            *view.cursor_byte = first_non_whitespace(view.query);
+            consumed
+        }
+        '$' => {
+            *view.cursor_byte = view.query.len();
+            consumed
+        }
+        'i' => {
+            *view.vim_mode = PaletteVimMode::Insert;
+            consumed
+        }
+        'a' => {
+            if *view.cursor_byte < view.query.len() {
+                *view.cursor_byte = next_boundary(view.query, *view.cursor_byte);
+            }
+            *view.vim_mode = PaletteVimMode::Insert;
+            consumed
+        }
+        'I' => {
+            *view.cursor_byte = first_non_whitespace(view.query);
+            *view.vim_mode = PaletteVimMode::Insert;
+            consumed
+        }
+        'A' => {
+            *view.cursor_byte = view.query.len();
+            *view.vim_mode = PaletteVimMode::Insert;
+            consumed
+        }
+        'x' => {
+            if *view.cursor_byte < view.query.len() {
+                let end = next_boundary(view.query, *view.cursor_byte);
+                *view.register = view.query[*view.cursor_byte..end].to_string();
+                view.query.replace_range(*view.cursor_byte..end, "");
+                if *view.cursor_byte > view.query.len() {
+                    *view.cursor_byte = view.query.len();
+                }
+                *view.selected_index = 0;
+                return VimLineOutcome::changed(PaletteVimAction::Consumed);
+            }
+            consumed
+        }
+        'v' => {
+            *view.vim_mode = PaletteVimMode::Visual;
+            *view.selection_range = Some((*view.cursor_byte, *view.cursor_byte));
+            consumed
+        }
+        'd' | 'c' | 'y' => {
+            *view.pending_operator = Some(match c {
+                'd' => PaletteVimOperator::Delete,
+                'c' => PaletteVimOperator::Change,
+                _ => PaletteVimOperator::Yank,
+            });
+            consumed
+        }
+        'p' | 'P' => vim_paste_register(view, c == 'p'),
+        'j' => {
+            if has_result_list {
+                VimLineOutcome::action(PaletteVimAction::ListNext)
+            } else {
+                VimLineOutcome::action(PaletteVimAction::Ignore)
+            }
+        }
+        'k' => {
+            if has_result_list {
+                VimLineOutcome::action(PaletteVimAction::ListPrev)
+            } else {
+                VimLineOutcome::action(PaletteVimAction::Ignore)
+            }
+        }
+        _ => VimLineOutcome::action(PaletteVimAction::Ignore),
+    }
+}
+
+fn vim_apply_operator_motion(view: &mut VimLineView<'_>, motion: char) -> VimLineOutcome {
+    let op = match view.pending_operator.take() {
+        Some(op) => op,
+        None => return VimLineOutcome::action(PaletteVimAction::Consumed),
+    };
+    let start = *view.cursor_byte;
+    let target = match (op, motion) {
+        (_, 'w') => vim_word_forward_in(view.query, start),
+        (_, 'b') => vim_word_backward_in(view.query, start),
+        (_, 'e') => next_boundary(view.query, vim_word_end_in(view.query, start)),
+        (_, '$') => view.query.len(),
+        (_, '0' | '^') => 0,
+        _ => return VimLineOutcome::action(PaletteVimAction::Consumed), // unsupported motion
+    };
+    let (lo, hi) = if target >= start { (start, target) } else { (target, start) };
+    let lo = lo.min(view.query.len());
+    let hi = hi.min(view.query.len());
+    if lo == hi {
+        return VimLineOutcome::action(PaletteVimAction::Consumed);
+    }
+    *view.register = view.query[lo..hi].to_string();
+    match op {
+        PaletteVimOperator::Yank => {
+            *view.cursor_byte = lo;
+            VimLineOutcome::action(PaletteVimAction::Consumed)
+        }
+        PaletteVimOperator::Delete | PaletteVimOperator::Change => {
+            view.query.replace_range(lo..hi, "");
+            *view.cursor_byte = lo;
+            *view.selected_index = 0;
+            if matches!(op, PaletteVimOperator::Change) {
+                *view.vim_mode = PaletteVimMode::Insert;
+            }
+            VimLineOutcome::changed(PaletteVimAction::Consumed)
+        }
+    }
+}
+
+fn vim_paste_register(view: &mut VimLineView<'_>, after: bool) -> VimLineOutcome {
+    if view.register.is_empty() {
+        return VimLineOutcome::action(PaletteVimAction::Consumed);
+    }
+    let at = if after && *view.cursor_byte < view.query.len() {
+        next_boundary(view.query, *view.cursor_byte)
+    } else {
+        *view.cursor_byte
+    };
+    let reg = view.register.clone();
+    view.query.insert_str(at, &reg);
+    *view.cursor_byte = at + reg.len();
+    *view.selected_index = 0;
+    VimLineOutcome::changed(PaletteVimAction::Consumed)
+}
+
+fn vim_line_input_visual(view: &mut VimLineView<'_>, key: PaletteVimKey) -> VimLineOutcome {
+    let anchor = view.selection_range.map(|(a, _)| a).unwrap_or(*view.cursor_byte);
+    let c = match key {
+        PaletteVimKey::Enter => return VimLineOutcome::action(PaletteVimAction::Confirm),
+        PaletteVimKey::Esc => {
+            *view.vim_mode = PaletteVimMode::Normal;
+            *view.selection_range = None;
+            return VimLineOutcome::action(PaletteVimAction::Consumed);
+        }
+        PaletteVimKey::Char(c) => c,
+    };
+
+    let moved = match c {
+        'h' => {
+            if *view.cursor_byte > 0 {
+                *view.cursor_byte = prev_boundary(view.query, *view.cursor_byte);
+            }
+            true
+        }
+        'l' => {
+            if *view.cursor_byte < view.query.len() {
+                *view.cursor_byte = next_boundary(view.query, *view.cursor_byte);
+            }
+            true
+        }
+        'w' => {
+            *view.cursor_byte = vim_word_forward_in(view.query, *view.cursor_byte);
+            true
+        }
+        'b' => {
+            *view.cursor_byte = vim_word_backward_in(view.query, *view.cursor_byte);
+            true
+        }
+        'e' => {
+            *view.cursor_byte = next_boundary(view.query, vim_word_end_in(view.query, *view.cursor_byte));
+            true
+        }
+        '0' => {
+            *view.cursor_byte = 0;
+            true
+        }
+        '$' => {
+            *view.cursor_byte = view.query.len();
+            true
+        }
+        _ => false,
+    };
+    if moved {
+        *view.selection_range = Some((anchor, *view.cursor_byte));
+        return VimLineOutcome::action(PaletteVimAction::Consumed);
+    }
+
+    if matches!(c, 'd' | 'c' | 'y') {
+        if let Some((lo, hi)) = normalized_range(view.query, *view.selection_range) {
+            *view.register = view.query[lo..hi].to_string();
+            let text_changed = c != 'y';
+            if c == 'y' {
+                *view.cursor_byte = lo;
+            } else {
+                view.query.replace_range(lo..hi, "");
+                *view.cursor_byte = lo;
+                *view.selected_index = 0;
+            }
+            *view.selection_range = None;
+            *view.vim_mode = if c == 'c' {
+                PaletteVimMode::Insert
+            } else {
+                PaletteVimMode::Normal
+            };
+            return VimLineOutcome {
+                action: PaletteVimAction::Consumed,
+                text_changed,
+            };
+        }
+        return VimLineOutcome::action(PaletteVimAction::Consumed);
+    }
+
+    VimLineOutcome::action(PaletteVimAction::Ignore)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::theme_config::ThemeConfig;
+    use crate::{config::theme_config::ThemeConfig, core::commands::PaletteVimKey};
 
     fn make_item(label: &str) -> CommandPaletteItem {
         CommandPaletteItem::command("test.command", label)
@@ -1504,5 +2144,276 @@ mod tests {
                 column: 8,
             }
         );
+    }
+
+    #[test]
+    fn cursor_moves_left_and_right() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.append_query("file (1).txt", None);
+        assert_eq!(p.cursor_byte, "file (1).txt".len());
+
+        p.move_cursor_left();
+        assert_eq!(p.cursor_byte, "file (1).tx".len());
+
+        p.move_cursor_right();
+        assert_eq!(p.cursor_byte, "file (1).txt".len());
+    }
+
+    #[test]
+    fn arrow_clears_selection_and_moves_to_edge() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("file (1).txt", None);
+        p.set_selection_range(Some((0, "file (1).txt".len())));
+
+        p.move_cursor_left();
+        assert_eq!(p.cursor_byte, 0);
+        assert!(p.selection_range.is_none());
+
+        p.set_selection_range(Some((0, "file (1).txt".len())));
+        p.move_cursor_right();
+        assert_eq!(p.cursor_byte, "file (1).txt".len());
+        assert!(p.selection_range.is_none());
+    }
+
+    #[test]
+    fn cursor_moves_to_start_and_end() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.append_query("file (1).txt", None);
+        assert_eq!(p.cursor_byte, "file (1).txt".len());
+
+        p.move_cursor_to_start();
+        assert_eq!(p.cursor_byte, 0);
+
+        p.move_cursor_to_end();
+        assert_eq!(p.cursor_byte, "file (1).txt".len());
+    }
+
+    #[test]
+    fn cursor_to_start_end_clears_selection() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("file (1).txt", None);
+        p.set_selection_range(Some((0, "file (1).txt".len())));
+
+        p.move_cursor_to_start();
+        assert_eq!(p.cursor_byte, 0);
+        assert!(p.selection_range.is_none());
+
+        p.set_selection_range(Some((0, "file (1).txt".len())));
+        p.move_cursor_to_end();
+        assert_eq!(p.cursor_byte, "file (1).txt".len());
+        assert!(p.selection_range.is_none());
+    }
+
+    #[test]
+    fn cursor_respects_utf8_boundaries() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        // "文件" is 6 bytes (3 bytes per CJK character) plus ASCII suffix.
+        p.set_query("文件.txt", None);
+        // Cursor starts at end (10 bytes: 3 + 3 + 1 + 3).
+        assert_eq!(p.cursor_byte, "文件.txt".len());
+
+        // Step left through the ASCII suffix one char at a time.
+        p.move_cursor_left(); // before 't' (byte 9)
+        assert_eq!(p.cursor_byte, 9);
+        p.move_cursor_left(); // before 'x' (byte 8)
+        assert_eq!(p.cursor_byte, 8);
+        p.move_cursor_left(); // before 't' (byte 7)
+        assert_eq!(p.cursor_byte, 7);
+
+        // Next step jumps over the '.' to before it (byte 6).
+        p.move_cursor_left();
+        assert_eq!(p.cursor_byte, 6);
+
+        // Next step jumps over the whole CJK char '件' (3 bytes) to byte 3.
+        p.move_cursor_left();
+        assert_eq!(p.cursor_byte, 3);
+
+        // Next step jumps over '文' to byte 0.
+        p.move_cursor_left();
+        assert_eq!(p.cursor_byte, 0);
+
+        // Step right over one CJK char (3 bytes).
+        p.move_cursor_right();
+        assert_eq!(p.cursor_byte, 3);
+
+        // Delete forward from before '件' should remove '件'.
+        p.cursor_byte = 3;
+        p.delete_char_forward(None);
+        assert_eq!(p.query, "文.txt");
+    }
+
+    #[test]
+    fn vim_word_motions_ascii() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("foo bar.baz qux", None);
+        // forward from 0: "foo" -> "bar"
+        assert_eq!(vim_word_forward_in(&p.query, 0), 4);
+        // forward from 4 ("bar"): punctuation '.' is its own word
+        assert_eq!(vim_word_forward_in(&p.query, 4), 7);
+        // word end from 0: end of "foo" is the 'o' at byte 2
+        assert_eq!(vim_word_end_in(&p.query, 0), 2);
+        // backward from 4 ("bar") -> start of "foo"
+        assert_eq!(vim_word_backward_in(&p.query, 4), 0);
+    }
+
+    #[test]
+    fn vim_esc_enters_normal_and_clamps_left() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("abc", None);
+        p.cursor_byte = 3;
+        let action = p.vim_input(PaletteVimKey::Esc, false, None);
+        assert_eq!(action, PaletteVimAction::Consumed);
+        assert_eq!(p.vim_mode, PaletteVimMode::Normal);
+        assert_eq!(p.cursor_byte, 2); // clamped one char left
+    }
+
+    #[test]
+    fn vim_normal_hl_and_word_motions() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("foo bar", None);
+        p.vim_input(PaletteVimKey::Esc, false, None); // -> Normal, cursor 6
+        p.cursor_byte = 0;
+        p.vim_input(PaletteVimKey::Char('l'), false, None);
+        assert_eq!(p.cursor_byte, 1);
+        p.vim_input(PaletteVimKey::Char('h'), false, None);
+        assert_eq!(p.cursor_byte, 0);
+        p.vim_input(PaletteVimKey::Char('w'), false, None);
+        assert_eq!(p.cursor_byte, 4); // start of "bar"
+        p.vim_input(PaletteVimKey::Char('$'), false, None);
+        assert_eq!(p.cursor_byte, "foo bar".len());
+        p.vim_input(PaletteVimKey::Char('0'), false, None);
+        assert_eq!(p.cursor_byte, 0);
+    }
+
+    #[test]
+    fn vim_insert_transitions_and_x() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("abc", None);
+        p.vim_input(PaletteVimKey::Esc, false, None); // Normal, cursor 2
+        p.cursor_byte = 0;
+        p.vim_input(PaletteVimKey::Char('x'), false, None);
+        assert_eq!(p.query, "bc");
+        assert_eq!(p.vim_register, "a");
+        p.vim_input(PaletteVimKey::Char('A'), false, None);
+        assert_eq!(p.vim_mode, PaletteVimMode::Insert);
+        assert_eq!(p.cursor_byte, "bc".len());
+    }
+
+    #[test]
+    fn vim_jk_in_list_picker_returns_list_actions() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::FilePicker, None);
+        p.set_query("x", None);
+        p.vim_input(PaletteVimKey::Esc, false, None); // Normal
+        assert_eq!(p.vim_input(PaletteVimKey::Char('j'), true, None), PaletteVimAction::ListNext);
+        assert_eq!(p.vim_input(PaletteVimKey::Char('k'), true, None), PaletteVimAction::ListPrev);
+        // single-line prompt: j/k ignored
+        assert_eq!(p.vim_input(PaletteVimKey::Char('j'), false, None), PaletteVimAction::Ignore);
+    }
+
+    #[test]
+    fn vim_enter_returns_confirm_esc_normal_returns_close() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("a", None);
+        assert_eq!(p.vim_input(PaletteVimKey::Enter, false, None), PaletteVimAction::Confirm);
+        p.vim_input(PaletteVimKey::Esc, false, None); // Insert -> Normal
+        assert_eq!(p.vim_input(PaletteVimKey::Esc, false, None), PaletteVimAction::Close);
+    }
+
+    #[test]
+    fn vim_dw_cw_yw_and_paste() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("foo bar baz", None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        p.cursor_byte = 0;
+        // dw deletes "foo " -> "bar baz", register = "foo "
+        p.vim_input(PaletteVimKey::Char('d'), false, None);
+        p.vim_input(PaletteVimKey::Char('w'), false, None);
+        assert_eq!(p.query, "bar baz");
+        assert_eq!(p.vim_register, "foo ");
+        // p pastes register after cursor
+        p.cursor_byte = p.query.len();
+        p.vim_input(PaletteVimKey::Char('p'), false, None);
+        assert_eq!(p.query, "bar bazfoo ");
+    }
+
+    #[test]
+    fn vim_cw_enters_insert() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("foo bar", None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        p.cursor_byte = 0;
+        p.vim_input(PaletteVimKey::Char('c'), false, None);
+        p.vim_input(PaletteVimKey::Char('w'), false, None);
+        assert_eq!(p.query, "bar"); // "foo " removed (cw)
+        assert_eq!(p.vim_mode, PaletteVimMode::Insert);
+    }
+
+    #[test]
+    fn vim_d_dollar_deletes_to_end() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("hello world", None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        p.cursor_byte = 5;
+        p.vim_input(PaletteVimKey::Char('d'), false, None);
+        p.vim_input(PaletteVimKey::Char('$'), false, None);
+        assert_eq!(p.query, "hello");
+        assert_eq!(p.vim_register, " world");
+    }
+
+    #[test]
+    fn vim_visual_select_and_delete() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("foo bar", None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        p.cursor_byte = 0;
+        p.vim_input(PaletteVimKey::Char('v'), false, None);
+        assert_eq!(p.vim_mode, PaletteVimMode::Visual);
+        p.vim_input(PaletteVimKey::Char('w'), false, None); // extend to "bar"
+        p.vim_input(PaletteVimKey::Char('d'), false, None); // delete selection
+        assert_eq!(p.query, "bar");
+        assert_eq!(p.vim_mode, PaletteVimMode::Normal);
+        assert_eq!(p.vim_register, "foo ");
+    }
+
+    #[test]
+    fn vim_visual_yank_keeps_text() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("hello", None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        p.cursor_byte = 0;
+        p.vim_input(PaletteVimKey::Char('v'), false, None);
+        p.vim_input(PaletteVimKey::Char('$'), false, None);
+        p.vim_input(PaletteVimKey::Char('y'), false, None);
+        assert_eq!(p.query, "hello");
+        assert_eq!(p.vim_mode, PaletteVimMode::Normal);
+        assert_eq!(p.vim_register, "hello");
+    }
+
+    #[test]
+    fn vim_visual_esc_returns_to_normal() {
+        let mut p = CommandPalette::default();
+        p.open(CommandPaletteMode::ExplorerPasteFile, None);
+        p.set_query("ab", None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        p.vim_input(PaletteVimKey::Char('v'), false, None);
+        p.vim_input(PaletteVimKey::Esc, false, None);
+        assert_eq!(p.vim_mode, PaletteVimMode::Normal);
+        assert!(p.selection_range.is_none());
     }
 }

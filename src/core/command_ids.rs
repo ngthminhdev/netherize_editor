@@ -277,6 +277,12 @@ pub const FILE_PICKER_SELECT_NEXT: &str = "file_picker.select_next";
 pub const FILE_PICKER_SELECT_PREV: &str = "file_picker.select_prev";
 pub const FILE_PICKER_BACKSPACE: &str = "file_picker.backspace";
 
+pub const PALETTE_MOVE_CURSOR_LEFT: &str = "palette.move_cursor_left";
+pub const PALETTE_MOVE_CURSOR_RIGHT: &str = "palette.move_cursor_right";
+pub const PALETTE_MOVE_CURSOR_TO_START: &str = "palette.move_cursor_to_start";
+pub const PALETTE_MOVE_CURSOR_TO_END: &str = "palette.move_cursor_to_end";
+pub const PALETTE_DELETE_CHAR_FORWARD: &str = "palette.delete_char_forward";
+
 pub const ALL_IDS: &[&str] = &[
     OPEN_FOLDER,
     OPEN_RECENT_PROJECTS,
@@ -477,6 +483,11 @@ pub const ALL_IDS: &[&str] = &[
     FILE_PICKER_SELECT_NEXT,
     FILE_PICKER_SELECT_PREV,
     FILE_PICKER_BACKSPACE,
+    PALETTE_MOVE_CURSOR_LEFT,
+    PALETTE_MOVE_CURSOR_RIGHT,
+    PALETTE_MOVE_CURSOR_TO_START,
+    PALETTE_MOVE_CURSOR_TO_END,
+    PALETTE_DELETE_CHAR_FORWARD,
     LEAP_START,
     MULTI_CURSOR_ADD_NEXT,
     MULTI_CURSOR_SKIP,
@@ -736,6 +747,11 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FILE_PICKER_CONFIRM => Some(Command::FilePickerConfirmSelection),
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),
         FILE_PICKER_BACKSPACE => Some(Command::FilePickerBackspaceQuery),
+        PALETTE_MOVE_CURSOR_LEFT => Some(Command::PaletteMoveCursorLeft),
+        PALETTE_MOVE_CURSOR_RIGHT => Some(Command::PaletteMoveCursorRight),
+        PALETTE_MOVE_CURSOR_TO_START => Some(Command::PaletteMoveCursorToStart),
+        PALETTE_MOVE_CURSOR_TO_END => Some(Command::PaletteMoveCursorToEnd),
+        PALETTE_DELETE_CHAR_FORWARD => Some(Command::PaletteDeleteCharForward),
         LEAP_START => Some(Command::LeapStart),
         MULTI_CURSOR_ADD_NEXT => Some(Command::MultiCursorAddNext),
         MULTI_CURSOR_SKIP => Some(Command::MultiCursorSkip),

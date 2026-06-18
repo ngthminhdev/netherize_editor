@@ -1950,6 +1950,12 @@ pub struct FuzzyState {
     pub preview_spans: Vec<StyledTextSpan>,
     pub results: Vec<CommandPaletteItem>,
     pub live_grep_case_sensitive: bool,
+    // ── Shared single-line Vim state (see command_palette::VimLineView) ──────
+    pub vim_mode: crate::app::command_palette::PaletteVimMode,
+    pub vim_cursor_byte: usize,
+    pub vim_selection_range: Option<(usize, usize)>,
+    pub vim_pending_operator: Option<crate::app::command_palette::PaletteVimOperator>,
+    pub vim_register: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1997,11 +2003,18 @@ impl FuzzyState {
             preview_spans: Vec::new(),
             results: Vec::new(),
             live_grep_case_sensitive: false,
+            vim_mode: crate::app::command_palette::PaletteVimMode::Insert,
+            vim_cursor_byte: 0,
+            vim_selection_range: None,
+            vim_pending_operator: None,
+            vim_register: String::new(),
         }
     }
 
     pub fn append_query(&mut self, text: &str) -> bool {
         self.query.push_str(text);
+        self.vim_cursor_byte = self.query.len();
+        self.vim_selection_range = None;
         self.selected_index = 0;
         self.preview_lines.clear();
         self.preview_text.clear();
@@ -2014,6 +2027,8 @@ impl FuzzyState {
             return false;
         }
         self.query.pop();
+        self.vim_cursor_byte = self.query.len();
+        self.vim_selection_range = None;
         self.selected_index = 0;
         self.preview_lines.clear();
         self.preview_text.clear();

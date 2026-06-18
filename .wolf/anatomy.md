@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T08:11:47.996Z
-> Files: 421 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T06:09:54.617Z
+> Files: 437 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -17,9 +17,10 @@
 
 - `feedback_never_auto_commit.md` (~239 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~195 tok)
+- `MEMORY.md` (~241 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
 - `project_leetcode_gen_model.md` (~519 tok)
+- `project_vim_palette_review.md` (~389 tok)
 
 ## ../../.config/netherize/
 
@@ -192,6 +193,20 @@
 
 - `taste.md` — ui (~179 tok)
 
+## .git/sdd/
+
+- `progress.md` — SDD Progress Ledger (~29 tok)
+- `task-1-report.md` — Task 1 Report: Add Command variants and IDs (~489 tok)
+- `task-10-report.md` — Task 10 Report: Render Selection Highlight and Caret (~417 tok)
+- `task-2-report.md` — Task 2 Report: Add ExplorerPasteFile palette mode (~305 tok)
+- `task-3-report.md` — Task 3 Report: Add Cursor Helpers to CommandPalette and AppState (~618 tok)
+- `task-4-report.md` — Task 4: Dispatch New Palette Cursor Commands — Report (~225 tok)
+- `task-5-report.md` — Task 5 Report: Add Keybindings (~279 tok)
+- `task-6-report.md` — Task 6 Report: Handle Cursor Commands in the Event Loop (~324 tok)
+- `task-7-report.md` — Task 7 Report: Add Pending Paste State to AppShell (~201 tok)
+- `task-8-report.md` — Task 8 Report: Open the Paste Popup from `ExplorerPasteFile` (~368 tok)
+- `task-9-report.md` — Task 9 Report: Confirm and Cancel the Paste Popup (~461 tok)
+
 ## .gitnexus/
 
 - `meta.json` (~105 tok)
@@ -234,7 +249,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5329 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5489 tok)
 
 ## config/themes/
 
@@ -335,6 +350,8 @@
 ## docs/superpowers/plans/
 
 - `2026-06-16-code-graph-hud.md` — Code Graph HUD & Blast Radius Implementation Plan (~11742 tok)
+- `2026-06-18-explorer-paste-rename-popup.md` — Explorer Paste Rename Popup Implementation Plan (~9603 tok)
+- `2026-06-18-vim-command-palette.md` — Vim-mode Command Palette Implementation Plan (~13477 tok)
 
 ## docs/superpowers/specs/
 
@@ -342,6 +359,8 @@
 - `2026-06-14-test-runner-field-editing-design.md` — Test Runner — Edit JSON fields via the real vim editor (~1569 tok)
 - `2026-06-15-test-generation-improvement-design.md` — Test Case Generation Improvement — Prompt, Verification, Stratification (~2022 tok)
 - `2026-06-16-code-graph-hud-design.md` — Code Graph HUD & Blast Radius — Design (~1972 tok)
+- `2026-06-18-explorer-paste-rename-popup-design.md` — Explorer Paste — Rename Popup Design (~2793 tok)
+- `2026-06-18-vim-command-palette-design.md` — Vim-mode Command Palette — Design (~3213 tok)
 
 ## scripts/
 
@@ -364,22 +383,22 @@
 - `ai_agents.rs` — AI agent CLIs that can be launched inside the right-dock terminal. (~635 tok)
 - `async_bridge.rs` — BridgePumpStats: new, pump (~3855 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~14954 tok)
+- `command_palette.rs` — VimLineView: prompt_prefix, empty_hint, title, is_complex_picker (~23858 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1823 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16287 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16557 tok)
 
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~25976 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26177 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~18583 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~19695 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
 - `tests.rs` — [cfg(test)] (~21719 tok)
@@ -391,18 +410,18 @@
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
-- `commands_explorer.rs` (~7394 tok)
+- `commands_explorer.rs` (~7483 tok)
 - `commands_lsp.rs` (~13253 tok)
-- `commands_palette.rs` (~8052 tok)
-- `commands_prompts.rs` (~7222 tok)
+- `commands_palette.rs` (~9170 tok)
+- `commands_prompts.rs` (~6720 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
-- `commands_tests.rs` — [derive(Default)] (~36163 tok)
+- `commands_tests.rs` — [derive(Default)] (~37757 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18603 tok)
-- `mod.rs` — Struct: AppShell (~6986 tok)
-- `setup.rs` — new, new_for_tests (~23112 tok)
+- `mod.rs` — Struct: AppShell (~7011 tok)
+- `setup.rs` — new, new_for_tests (~23297 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -424,16 +443,16 @@
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20549 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20690 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4366 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2406 tok)
-- `tests.rs` (~20758 tok)
+- `tests.rs` (~21677 tok)
 
 ## src/app/input_map/
 
-- `focus.rs` — Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close. (~11606 tok)
+- `focus.rs` — Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close. (~11896 tok)
 - `helpers.rs` (~180 tok)
 - `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6612 tok)
 - `tests.rs` (~15331 tok)
@@ -494,8 +513,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10115 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5996 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10362 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~6182 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -505,9 +524,9 @@
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~9958 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4649 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4706 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
-- `palette.rs` (~6779 tok)
+- `palette.rs` (~7803 tok)
 - `session.rs` (~4866 tok)
 - `tests.rs` (~18838 tok)
 
@@ -554,7 +573,7 @@
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5570 tok)
 - `completion.rs` — Declares COMPLETION_KIND_TEXT (~1959 tok)
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
-- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7928 tok)
+- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8278 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~26989 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
@@ -579,7 +598,7 @@
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
 - `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1951 tok)
 - `live_grep.rs` — Declares to (~2616 tok)
-- `minimal.rs` (~4802 tok)
+- `minimal.rs` (~5379 tok)
 - `recent_projects.rs` (~5250 tok)
 
 ## src/render/renderer/ui/

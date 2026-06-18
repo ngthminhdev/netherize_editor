@@ -107,6 +107,7 @@ pub struct KeybindingContext {
     pub focus: InputFocusContext,
     pub command_palette_visible: bool,
     pub command_palette_mode: Option<CommandPaletteMode>,
+    pub palette_vim_mode: Option<crate::app::command_palette::PaletteVimMode>,
     pub welcome_visible: bool,
     pub completion_visible: bool,
     /// True when AI ghost text is showing at the caret. Lets the input layer
@@ -137,6 +138,7 @@ impl KeybindingContext {
             focus,
             command_palette_visible: false,
             command_palette_mode: None,
+            palette_vim_mode: None,
             welcome_visible: false,
             completion_visible: false,
             inline_suggestion_visible: false,
@@ -164,6 +166,7 @@ impl KeybindingContext {
             focus,
             command_palette_visible: false,
             command_palette_mode: None,
+            palette_vim_mode: None,
             welcome_visible: false,
             completion_visible: false,
             inline_suggestion_visible: false,
@@ -252,6 +255,7 @@ impl InputMap {
                 input,
                 context.command_palette_visible,
                 context.command_palette_mode,
+                context.palette_vim_mode,
                 context.welcome_visible,
             );
         }

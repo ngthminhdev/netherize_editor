@@ -139,6 +139,8 @@ pub struct AppShell {
     explorer_snapshot_dirty: bool,
     /// Path of the file copied via ExplorerCopyFile command.
     explorer_clipboard_path: Option<PathBuf>,
+    pending_paste_source_path: Option<PathBuf>,
+    pending_paste_target_dir: Option<PathBuf>,
     pending_confirmation: Option<PendingConfirmation>,
     workspace_git_branch: Option<String>,
     active_lsp_server: Option<ActiveLspServer>,

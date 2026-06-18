@@ -293,6 +293,10 @@ impl AppState {
         }
     }
 
+    pub fn command_palette_vim_mode(&self) -> crate::app::command_palette::PaletteVimMode {
+        self.command_palette.vim_mode
+    }
+
     pub fn command_palette_query_text(&self) -> &str {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
@@ -434,6 +438,109 @@ impl AppState {
             self.sync_file_picker_cache();
         }
         Ok(changed)
+    }
+
+    pub fn command_palette_move_cursor_left(&mut self) -> Result<bool, String> {
+        let changed = self.command_palette.move_cursor_left();
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        Ok(changed)
+    }
+
+    pub fn command_palette_move_cursor_right(&mut self) -> Result<bool, String> {
+        let changed = self.command_palette.move_cursor_right();
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        Ok(changed)
+    }
+
+    pub fn command_palette_move_cursor_to_start(&mut self) -> Result<bool, String> {
+        let changed = self.command_palette.move_cursor_to_start();
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        Ok(changed)
+    }
+
+    pub fn command_palette_move_cursor_to_end(&mut self) -> Result<bool, String> {
+        let changed = self.command_palette.move_cursor_to_end();
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        Ok(changed)
+    }
+
+    pub fn command_palette_delete_char_forward(&mut self) -> Result<bool, String> {
+        let workspace = self.workspace_model.as_ref();
+        let changed = self.command_palette.delete_char_forward(workspace);
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        Ok(changed)
+    }
+
+    pub fn command_palette_vim_input(
+        &mut self,
+        key: crate::core::commands::PaletteVimKey,
+        has_result_list: bool,
+    ) -> crate::app::command_palette::PaletteVimAction {
+        let workspace = self.workspace_model.as_ref();
+        let action = self.command_palette.vim_input(key, has_result_list, workspace);
+        self.sync_file_picker_cache();
+        action
+    }
+
+    /// Vim sub-mode of the active fuzzy-picker buffer (file finder, command
+    /// palette, symbol pickers, live grep), or `None` if no fuzzy buffer active.
+    pub fn active_fuzzy_picker_vim_mode(
+        &self,
+    ) -> Option<crate::app::command_palette::PaletteVimMode> {
+        self.active_fuzzy_picker_buffer().map(|state| state.vim_mode)
+    }
+
+    /// Run the shared Vim engine over the active fuzzy-picker buffer's query.
+    /// Returns the full outcome so the event loop can re-run the picker search
+    /// when the query text changed (it owns the async search plumbing).
+    pub fn fuzzy_picker_vim_input(
+        &mut self,
+        key: crate::core::commands::PaletteVimKey,
+        has_result_list: bool,
+    ) -> crate::app::command_palette::VimLineOutcome {
+        use crate::app::command_palette::{vim_line_input, PaletteVimAction, VimLineOutcome, VimLineView};
+        let no_op = VimLineOutcome {
+            action: PaletteVimAction::Ignore,
+            text_changed: false,
+        };
+        let Some(index) = self.active_buffer_index else {
+            return no_op;
+        };
+        let Some(BufferEntry {
+            content: BufferContent::FuzzyPicker(state),
+            ..
+        }) = self.buffers.get_mut(index)
+        else {
+            return no_op;
+        };
+        let mut view = VimLineView {
+            query: &mut state.query,
+            cursor_byte: &mut state.vim_cursor_byte,
+            selection_range: &mut state.vim_selection_range,
+            vim_mode: &mut state.vim_mode,
+            pending_operator: &mut state.vim_pending_operator,
+            register: &mut state.vim_register,
+            selected_index: &mut state.selected_index,
+        };
+        let outcome = vim_line_input(&mut view, key, has_result_list);
+        if outcome.text_changed {
+            // Mirror the typing path's buffer-side bookkeeping.
+            state.preview_lines.clear();
+            state.preview_text.clear();
+            state.preview_spans.clear();
+            self.bump_revision();
+        }
+        outcome
     }
 
     pub fn command_palette_select_next(&mut self) -> bool {

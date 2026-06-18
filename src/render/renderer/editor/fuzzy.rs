@@ -116,6 +116,12 @@ impl Renderer {
             crate::app::command_palette::CommandPaletteMode::FileHistory => "File History",
             _ => "Search",
         };
+        // Vim sub-mode indicator (Insert is the default, shown without a tag).
+        let vim_tag = match fuzzy_state.vim_mode {
+            crate::app::command_palette::PaletteVimMode::Normal => "  -- NORMAL --",
+            crate::app::command_palette::PaletteVimMode::Visual => "  -- VISUAL --",
+            crate::app::command_palette::PaletteVimMode::Insert => "",
+        };
         let unique_file_count = if is_live_grep {
             let mut paths = Vec::<String>::new();
             for item in &fuzzy_state.results {
@@ -136,13 +142,14 @@ impl Renderer {
         };
         let left_header = if is_live_grep {
             format!(
-                "{}  {} results · {} files",
+                "{}{}  {} results · {} files",
                 title,
+                vim_tag,
                 fuzzy_state.results.len(),
                 unique_file_count
             )
         } else {
-            format!("{}  > {}", title, fuzzy_state.query)
+            format!("{}{}  > {}", title, vim_tag, fuzzy_state.query)
         };
 
         self.editor_overlay_text_system

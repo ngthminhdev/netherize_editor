@@ -207,6 +207,83 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 "Dispatch: file picker query backspace failed -> {err}"
             )),
         },
+        Command::PaletteMoveCursorLeft => match ctx.app_state.command_palette_move_cursor_left() {
+            Ok(changed) => DispatchReport::success(
+                if changed {
+                    "Dispatch: palette cursor left".to_string()
+                } else {
+                    "Dispatch: palette cursor left ignored".to_string()
+                },
+                changed,
+            ),
+            Err(err) => DispatchReport::failure(format!(
+                "Dispatch: palette cursor left failed -> {err}"
+            )),
+        },
+        Command::PaletteMoveCursorRight => {
+            match ctx.app_state.command_palette_move_cursor_right() {
+                Ok(changed) => DispatchReport::success(
+                    if changed {
+                        "Dispatch: palette cursor right".to_string()
+                    } else {
+                        "Dispatch: palette cursor right ignored".to_string()
+                    },
+                    changed,
+                ),
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: palette cursor right failed -> {err}"
+                )),
+            }
+        }
+        Command::PaletteMoveCursorToStart => {
+            match ctx.app_state.command_palette_move_cursor_to_start() {
+                Ok(changed) => DispatchReport::success(
+                    if changed {
+                        "Dispatch: palette cursor to start".to_string()
+                    } else {
+                        "Dispatch: palette cursor to start ignored".to_string()
+                    },
+                    changed,
+                ),
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: palette cursor to start failed -> {err}"
+                )),
+            }
+        }
+        Command::PaletteMoveCursorToEnd => {
+            match ctx.app_state.command_palette_move_cursor_to_end() {
+                Ok(changed) => DispatchReport::success(
+                    if changed {
+                        "Dispatch: palette cursor to end".to_string()
+                    } else {
+                        "Dispatch: palette cursor to end ignored".to_string()
+                    },
+                    changed,
+                ),
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: palette cursor to end failed -> {err}"
+                )),
+            }
+        }
+        Command::PaletteDeleteCharForward => {
+            match ctx.app_state.command_palette_delete_char_forward() {
+                Ok(changed) => DispatchReport::success(
+                    if changed {
+                        "Dispatch: palette delete char forward".to_string()
+                    } else {
+                        "Dispatch: palette delete char forward ignored".to_string()
+                    },
+                    changed,
+                ),
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: palette delete char forward failed -> {err}"
+                )),
+            }
+        }
+        Command::PaletteVimInput(_) => DispatchReport::success(
+            "Dispatch: palette Vim input routed by event loop".to_string(),
+            false,
+        ),
         Command::OverlaySelectNext | Command::FilePickerSelectNext => {
             let changed = ctx.app_state.command_palette_select_next();
             DispatchReport::success(

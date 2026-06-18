@@ -1,6 +1,88 @@
 use super::*;
+use crate::{
+    app::command_palette::PaletteVimAction,
+    core::commands::PaletteVimKey,
+};
 
 impl AppShell {
+    pub(super) fn handle_palette_vim_input(&mut self, key: PaletteVimKey) -> Option<bool> {
+        let mode = self.app_state.command_palette_mode();
+        let has_result_list = !matches!(
+            mode,
+            Some(
+                CommandPaletteMode::ExplorerCreateFile
+                    | CommandPaletteMode::ExplorerCreateFolder
+                    | CommandPaletteMode::ExplorerRenameFull
+                    | CommandPaletteMode::ExplorerRenameBase
+                    | CommandPaletteMode::ExplorerPasteFile
+                    | CommandPaletteMode::LspRename
+            )
+        );
+
+        // Fuzzy-picker buffers store their query (and Vim state) on the buffer,
+        // not the overlay palette, and refresh results through the async search
+        // plumbing the event loop owns — so route them separately.
+        if self.app_state.active_buffer_is_fuzzy_picker() {
+            let outcome = self
+                .app_state
+                .fuzzy_picker_vim_input(key, has_result_list);
+            if outcome.text_changed {
+                self.submit_active_palette_fzf_search();
+                self.submit_fuzzy_picker_preview_load();
+            }
+            return match outcome.action {
+                PaletteVimAction::Consumed | PaletteVimAction::Ignore => Some(true),
+                PaletteVimAction::ListNext => self.handle_palette_and_open_command(
+                    &Command::OverlaySelectNext,
+                    1,
+                    &Command::OverlaySelectNext,
+                ),
+                PaletteVimAction::ListPrev => self.handle_palette_and_open_command(
+                    &Command::OverlaySelectPrev,
+                    1,
+                    &Command::OverlaySelectPrev,
+                ),
+                PaletteVimAction::Confirm => self.handle_palette_and_open_command(
+                    &Command::FilePickerConfirmSelection,
+                    1,
+                    &Command::FilePickerConfirmSelection,
+                ),
+                PaletteVimAction::Close => self.handle_palette_and_open_command(
+                    &Command::CloseFilePicker,
+                    1,
+                    &Command::CloseFilePicker,
+                ),
+            };
+        }
+
+        match self
+            .app_state
+            .command_palette_vim_input(key, has_result_list)
+        {
+            PaletteVimAction::Consumed | PaletteVimAction::Ignore => Some(true),
+            PaletteVimAction::ListNext => self.handle_palette_and_open_command(
+                &Command::OverlaySelectNext,
+                1,
+                &Command::OverlaySelectNext,
+            ),
+            PaletteVimAction::ListPrev => self.handle_palette_and_open_command(
+                &Command::OverlaySelectPrev,
+                1,
+                &Command::OverlaySelectPrev,
+            ),
+            PaletteVimAction::Confirm => self.handle_palette_and_open_command(
+                &Command::FilePickerConfirmSelection,
+                1,
+                &Command::FilePickerConfirmSelection,
+            ),
+            PaletteVimAction::Close => self.handle_palette_and_open_command(
+                &Command::CloseFilePicker,
+                1,
+                &Command::CloseFilePicker,
+            ),
+        }
+    }
+
     pub(super) fn handle_palette_and_open_command(
         &mut self,
         command: &Command,
@@ -8,6 +90,7 @@ impl AppShell {
         command_for_post_hooks: &Command,
     ) -> Option<bool> {
         match command {
+            Command::PaletteVimInput(key) => self.handle_palette_vim_input(*key),
             Command::OpenFilePicker
             | Command::OpenFileFinder
             | Command::OpenCommandPalette
@@ -212,6 +295,11 @@ impl AppShell {
 
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
+            | Command::PaletteMoveCursorLeft
+            | Command::PaletteMoveCursorRight
+            | Command::PaletteMoveCursorToStart
+            | Command::PaletteMoveCursorToEnd
+            | Command::PaletteDeleteCharForward
             | Command::ToggleLiveGrepCaseSensitive
             | Command::ToggleInFileSearchCaseSensitive
             | Command::EditorPaste
@@ -283,12 +371,22 @@ impl AppShell {
                             | CommandPaletteMode::ExplorerRenameFull
                             | CommandPaletteMode::ExplorerRenameBase
                             | CommandPaletteMode::ExplorerDeleteConfirm
+                            | CommandPaletteMode::ExplorerPasteFile
                     )
                 );
                 let was_terminal_search = self.terminal_search_palette_active;
                 self.terminal_search_palette_active = false;
                 let was_theme_selector = self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::ThemeSelector);
+                let is_paste_popup = matches!(
+                    self.app_state.command_palette_mode(),
+                    Some(CommandPaletteMode::ExplorerPasteFile)
+                );
+                if is_paste_popup {
+                    self.pending_paste_source_path = None;
+                    self.pending_paste_target_dir = None;
+                }
+
                 let restored_theme_preview = if was_theme_selector {
                     self.restore_theme_picker_preview()
                 } else {
@@ -334,6 +432,7 @@ impl AppShell {
                                 | CommandPaletteMode::ExplorerCreateFolder
                                 | CommandPaletteMode::ExplorerRenameFull
                                 | CommandPaletteMode::ExplorerRenameBase
+                                | CommandPaletteMode::ExplorerPasteFile
                         )
                     )
                 {

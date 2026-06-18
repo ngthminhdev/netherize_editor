@@ -2,6 +2,7 @@ use winit::keyboard::KeyCode;
 
 use super::helpers::palette_query_from_text;
 use super::*;
+use crate::app::command_palette::PaletteVimMode;
 
 impl InputMap {
     /// Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close.
@@ -801,6 +802,7 @@ impl InputMap {
         input: &NormalizedInput,
         palette_visible: bool,
         palette_mode: Option<CommandPaletteMode>,
+        palette_vim_mode: Option<PaletteVimMode>,
         welcome_visible: bool,
     ) -> Option<KeybindingMatch> {
         if !palette_visible {
@@ -928,6 +930,44 @@ impl InputMap {
             }
         }
 
+        // Vim routing: in Normal/Visual forward keys to the palette state machine;
+        // in Insert, only Esc is intercepted (to enter Normal) — everything else
+        // falls through to the normal type-and-go handling below.
+        if let Some(vim_mode) = palette_vim_mode {
+            use crate::core::commands::PaletteVimKey;
+            let to_vim = |key: PaletteVimKey, reason: &'static str| {
+                Some(KeybindingMatch {
+                    command: Command::PaletteVimInput(key),
+                    reason,
+                })
+            };
+            match vim_mode {
+                PaletteVimMode::Insert => {
+                    if input.named_key == Some(NamedKey::Escape) {
+                        return to_vim(PaletteVimKey::Esc, "palette Vim: Esc -> Normal");
+                    }
+                    // fall through to existing Insert handling
+                }
+                PaletteVimMode::Normal | PaletteVimMode::Visual => {
+                    if input.named_key == Some(NamedKey::Escape) {
+                        return to_vim(PaletteVimKey::Esc, "palette Vim: Esc");
+                    }
+                    if input.named_key == Some(NamedKey::Enter) {
+                        return to_vim(PaletteVimKey::Enter, "palette Vim: Enter");
+                    }
+                    // Preserve existing list-nav keys (arrows) so they keep working.
+                    if matches!(
+                        input.named_key,
+                        Some(NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::ArrowLeft | NamedKey::ArrowRight)
+                    ) {
+                        // fall through to existing named-key handling
+                    } else if let Some(ch) = single_char(input.text.as_deref().unwrap_or("")) {
+                        return to_vim(PaletteVimKey::Char(ch), "palette Vim: char");
+                    }
+                }
+            }
+        }
+
         if let Some(named) = input.named_key {
             let mapped = match named {
                 NamedKey::Escape => Some(KeybindingMatch {
@@ -953,6 +993,26 @@ impl InputMap {
                 NamedKey::Space => Some(KeybindingMatch {
                     command: Command::FilePickerAppendQuery(" ".to_string()),
                     reason: "palette focus: Space -> AppendQueryChar",
+                }),
+                NamedKey::ArrowLeft => Some(KeybindingMatch {
+                    command: Command::PaletteMoveCursorLeft,
+                    reason: "palette focus: ArrowLeft -> move cursor left",
+                }),
+                NamedKey::ArrowRight => Some(KeybindingMatch {
+                    command: Command::PaletteMoveCursorRight,
+                    reason: "palette focus: ArrowRight -> move cursor right",
+                }),
+                NamedKey::Home => Some(KeybindingMatch {
+                    command: Command::PaletteMoveCursorToStart,
+                    reason: "palette focus: Home -> move cursor to start",
+                }),
+                NamedKey::End => Some(KeybindingMatch {
+                    command: Command::PaletteMoveCursorToEnd,
+                    reason: "palette focus: End -> move cursor to end",
+                }),
+                NamedKey::Delete => Some(KeybindingMatch {
+                    command: Command::PaletteDeleteCharForward,
+                    reason: "palette focus: Delete -> delete char forward",
                 }),
                 _ => None,
             };
@@ -995,6 +1055,47 @@ impl InputMap {
                     command: Command::ToggleLiveGrepCaseSensitive,
                     reason: "fuzzy picker live grep: Ctrl+A -> ToggleCaseSensitive",
                 });
+            }
+            if let Some(vim_mode) = context.palette_vim_mode {
+                use crate::core::commands::PaletteVimKey;
+                match vim_mode {
+                    PaletteVimMode::Insert => {
+                        if input.named_key == Some(NamedKey::Escape) {
+                            return Some(KeybindingMatch {
+                                command: Command::PaletteVimInput(PaletteVimKey::Esc),
+                                reason: "fuzzy picker Vim: Esc -> Normal",
+                            });
+                        }
+                    }
+                    PaletteVimMode::Normal | PaletteVimMode::Visual => {
+                        if input.named_key == Some(NamedKey::Escape) {
+                            return Some(KeybindingMatch {
+                                command: Command::PaletteVimInput(PaletteVimKey::Esc),
+                                reason: "fuzzy picker Vim: Esc",
+                            });
+                        }
+                        if input.named_key == Some(NamedKey::Enter) {
+                            return Some(KeybindingMatch {
+                                command: Command::PaletteVimInput(PaletteVimKey::Enter),
+                                reason: "fuzzy picker Vim: Enter",
+                            });
+                        }
+                        // Keep Ctrl+N/P and arrows working (fall through to existing handlers).
+                        let is_navlike = input.modifiers.control_key()
+                            || matches!(
+                                input.named_key,
+                                Some(NamedKey::ArrowUp | NamedKey::ArrowDown)
+                            );
+                        if !is_navlike {
+                            if let Some(ch) = single_char(input.text.as_deref().unwrap_or("")) {
+                                return Some(KeybindingMatch {
+                                    command: Command::PaletteVimInput(PaletteVimKey::Char(ch)),
+                                    reason: "fuzzy picker Vim: char",
+                                });
+                            }
+                        }
+                    }
+                }
             }
             if input.named_key == Some(NamedKey::Escape) {
                 return Some(KeybindingMatch {
@@ -1146,5 +1247,13 @@ impl InputMap {
             });
         }
         None
+    }
+}
+
+fn single_char(text: &str) -> Option<char> {
+    let mut it = text.chars();
+    match (it.next(), it.next()) {
+        (Some(c), None) if !c.is_control() => Some(c),
+        _ => None,
     }
 }

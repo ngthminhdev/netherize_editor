@@ -181,6 +181,8 @@ impl AppShell {
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
             explorer_clipboard_path: None,
+            pending_paste_source_path: None,
+            pending_paste_target_dir: None,
             pending_confirmation: None,
             workspace_git_branch,
             active_lsp_server: None,
@@ -823,6 +825,16 @@ impl AppShell {
             focus,
             command_palette_visible: self.app_state.is_command_palette_visible(),
             command_palette_mode: self.app_state.command_palette_mode(),
+            // Vim sub-mode is wired ONLY for overlay prompts (paste/rename/create)
+            // for now. Fuzzy-picker buffers (file finder, command palette, symbol
+            // pickers, live grep) are intentionally left on their known-good
+            // behavior (Esc closes, Ctrl+N/P navigates) — enabling Vim there
+            // hijacked Esc and needs interactive verification before re-landing.
+            palette_vim_mode: if self.app_state.is_command_palette_visible() {
+                Some(self.app_state.command_palette_vim_mode())
+            } else {
+                None
+            },
             welcome_visible,
             completion_visible: self.app_state.has_completion(),
             inline_suggestion_visible: self.app_state.inline_suggestion().is_some(),

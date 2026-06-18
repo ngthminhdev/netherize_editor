@@ -2244,3 +2244,45 @@ fn outline_navigation_supports_key_repeat_and_first_last_shortcuts() {
         "G should select the last Outline symbol, got {uppercase_g:?}"
     );
 }
+
+#[test]
+fn palette_focus_vim_normal_routes_letters_to_vim_not_text_append() {
+    // Regression: the input handler short-circuits printable keys to
+    // FilePickerAppendQuery for visible overlay palettes BEFORE keybinding
+    // resolution. In Vim Normal/Visual that bypass must be suppressed so letters
+    // reach resolve_palette_focus and become PaletteVimInput commands.
+    use crate::app::command_palette::{CommandPaletteMode, PaletteVimMode};
+    use crate::core::commands::PaletteVimKey;
+
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let now = std::time::Instant::now();
+
+    let mut context = KeybindingContext::for_mode(EditorMode::PaletteFocus);
+    context.command_palette_visible = true;
+    context.command_palette_mode = Some(CommandPaletteMode::ExplorerPasteFile);
+
+    // Normal mode: 'd' is a Vim operator, must NOT append.
+    context.palette_vim_mode = Some(PaletteVimMode::Normal);
+    let normal = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+    match normal {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(
+            t.command,
+            Command::PaletteVimInput(PaletteVimKey::Char('d')),
+            "letters in Normal must route to PaletteVimInput"
+        ),
+        other => panic!("expected PaletteVimInput for 'd' in Normal, got {other:?}"),
+    }
+
+    // Insert mode: the same key appends to the query as before.
+    context.palette_vim_mode = Some(PaletteVimMode::Insert);
+    let insert = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+    match insert {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(
+            t.command,
+            Command::FilePickerAppendQuery("d".to_string()),
+            "letters in Insert must append to the query"
+        ),
+        other => panic!("expected FilePickerAppendQuery for 'd' in Insert, got {other:?}"),
+    }
+}

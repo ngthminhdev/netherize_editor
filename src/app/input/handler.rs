@@ -428,7 +428,19 @@ impl InputHandler {
         }
 
         if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
-            if let Some(text) = normalized.text.as_deref()
+            // In Vim Normal/Visual sub-mode, printable keys are commands (motions,
+            // operators) — NOT text. Let them fall through to keybinding resolution
+            // (resolve_palette_focus routes them to PaletteVimInput); only auto-append
+            // in Insert (or when Vim is inactive).
+            let vim_blocks_text = matches!(
+                context.palette_vim_mode,
+                Some(
+                    crate::app::command_palette::PaletteVimMode::Normal
+                        | crate::app::command_palette::PaletteVimMode::Visual
+                )
+            );
+            if !vim_blocks_text
+                && let Some(text) = normalized.text.as_deref()
                 && !text.is_empty()
                 && !text.chars().any(char::is_control)
                 && !normalized.has_command_modifier()
@@ -1566,16 +1578,26 @@ impl InputHandler {
         }
 
         if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
-            return Some(TranslatedInput {
-                input_debug: format!("IME Commit({text:?})"),
-                route_debug: format!(
-                    "mode={} focus={} -> IME commit -> CommandPaletteAppendQuery",
-                    context.mode.as_str(),
-                    context.focus.as_str()
-                ),
-                command: Command::FilePickerAppendQuery(text.to_string()),
-                repeat_count: 1,
-            });
+            // Don't append composed text while in Vim Normal/Visual sub-mode.
+            let vim_blocks_text = matches!(
+                context.palette_vim_mode,
+                Some(
+                    crate::app::command_palette::PaletteVimMode::Normal
+                        | crate::app::command_palette::PaletteVimMode::Visual
+                )
+            );
+            if !vim_blocks_text {
+                return Some(TranslatedInput {
+                    input_debug: format!("IME Commit({text:?})"),
+                    route_debug: format!(
+                        "mode={} focus={} -> IME commit -> CommandPaletteAppendQuery",
+                        context.mode.as_str(),
+                        context.focus.as_str()
+                    ),
+                    command: Command::FilePickerAppendQuery(text.to_string()),
+                    repeat_count: 1,
+                });
+            }
         }
 
         if context.focus != InputFocusContext::Editor {

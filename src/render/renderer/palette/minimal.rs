@@ -341,6 +341,67 @@ impl Renderer {
             prompt_y,
             query_color,
         ));
+        // Selection highlight + caret for editable palette modes
+        let is_editable_prompt = matches!(
+            model.mode,
+            crate::app::command_palette::CommandPaletteMode::ExplorerPasteFile
+                | crate::app::command_palette::CommandPaletteMode::ExplorerRenameFull
+                | crate::app::command_palette::CommandPaletteMode::ExplorerRenameBase
+                | crate::app::command_palette::CommandPaletteMode::ExplorerCreateFile
+                | crate::app::command_palette::CommandPaletteMode::ExplorerCreateFolder
+                | crate::app::command_palette::CommandPaletteMode::LspRename
+        );
+        if is_editable_prompt {
+            let query_display = crate::render::renderer::helpers::clamp_monospace_text(
+                &model.prompt_query,
+                query_w,
+                font_size,
+            );
+            let visible_len = query_display.len();
+            let prefix_x = text_x + prefix_w;
+
+            if let Some((sel_start, sel_end)) = model.prompt_selection_range {
+                let sel_start = sel_start.min(visible_len);
+                let sel_end = sel_end.min(visible_len);
+                let before_w = estimate_monospace_width(&query_display[..sel_start], font_size);
+                let sel_w = estimate_monospace_width(&query_display[sel_start..sel_end], font_size);
+                let mut sel_bg = model.selection_bg;
+                sel_bg[3] = sel_bg[3].max(0.55);
+                quads.push(RegionDrawInstance::new(
+                    [prefix_x + before_w, prompt_y - 2.0, sel_w, line_h + 4.0],
+                    sel_bg,
+                ));
+            } else {
+                let cursor_byte = model.prompt_cursor_byte.min(visible_len);
+                let before_w = estimate_monospace_width(&query_display[..cursor_byte], font_size);
+                let caret_w = if model.vim_caret_block {
+                    estimate_monospace_width("M", font_size).max(2.0)
+                } else {
+                    2.0_f32
+                };
+                let mut caret_color = model.text_color;
+                caret_color[3] = if model.vim_caret_block { 0.45 } else { 0.9 };
+                quads.push(RegionDrawInstance::new(
+                    [prefix_x + before_w, prompt_y - 2.0, caret_w, line_h + 4.0],
+                    caret_color,
+                ));
+            }
+
+            if let Some(label) = model.vim_mode_label {
+                let text = format!("-- {label} --");
+                let label_w = estimate_monospace_width(&text, font_size);
+                let label_x = panel_x + panel_w - model.panel_padding - label_w;
+                glyphs.extend(layout_panel_text(
+                    &text,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    label_x,
+                    prompt_y,
+                    model.hint_color,
+                ));
+            }
+        }
         if model.mode == crate::app::command_palette::CommandPaletteMode::InFileSearch {
             let aa_box_x = panel_x + panel_w - model.panel_padding - option_w;
             let aa_box_y = prompt_y - 2.0;

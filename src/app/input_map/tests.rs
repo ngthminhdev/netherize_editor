@@ -4,12 +4,12 @@ use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
 use crate::{
     app::{
-        command_palette::CommandPaletteMode,
+        command_palette::{CommandPaletteMode, PaletteVimMode},
         resolved_keymap::{build, builtin_defaults},
     },
     config::keymap_loader::KeymapLoader,
     core::{
-        commands::Command,
+        commands::{Command, PaletteVimKey},
         mode::{EditorMode, ModeEvent},
     },
 };
@@ -1597,4 +1597,40 @@ fn leader_sequence_is_not_started_in_insert_mode() {
     let start_input = input_from_named(NamedKey::Space);
     let context = KeybindingContext::for_mode(EditorMode::Insert);
     assert!(map.resolve_sequence_start(&start_input, context).is_none());
+}
+
+#[test]
+fn fuzzy_picker_normal_mode_routes_jk_to_vim_input() {
+    let input_map = InputMap::new(PathBuf::from("test_open.txt"));
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.command_palette_visible = true;
+    context.command_palette_mode = Some(CommandPaletteMode::FilePicker);
+    context.palette_vim_mode = Some(PaletteVimMode::Normal);
+
+    let j = input_map
+        .resolve(&input_from_physical(KeyCode::KeyJ, "j"), context)
+        .expect("should resolve");
+    assert_eq!(j.command, Command::PaletteVimInput(PaletteVimKey::Char('j')));
+}
+
+#[test]
+fn palette_focus_normal_mode_routes_chars_to_vim_input() {
+    let input_map = InputMap::new(PathBuf::from("test_open.txt"));
+    let mut context = KeybindingContext::for_mode(EditorMode::PaletteFocus);
+    context.command_palette_visible = true;
+    context.command_palette_mode = Some(CommandPaletteMode::ExplorerPasteFile);
+    context.palette_vim_mode = Some(PaletteVimMode::Normal);
+
+    // 'd' in Normal must become PaletteVimInput, not an AppendQuery.
+    let m = input_map
+        .resolve(&input_from_physical(KeyCode::KeyD, "d"), context)
+        .expect("should resolve");
+    assert_eq!(m.command, Command::PaletteVimInput(PaletteVimKey::Char('d')));
+
+    // Esc in Insert routes to PaletteVimInput(Esc) (enter Normal), not close.
+    context.palette_vim_mode = Some(PaletteVimMode::Insert);
+    let esc = input_map
+        .resolve(&input_from_named(NamedKey::Escape), context)
+        .expect("should resolve");
+    assert_eq!(esc.command, Command::PaletteVimInput(PaletteVimKey::Esc));
 }
