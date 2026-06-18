@@ -1,5 +1,29 @@
 [
   {
+    "id": "bug-015",
+    "timestamp": "2026-06-18T00:00:00+00:00",
+    "error_message": "Code Graph HUD (gp) stopped working; HUD reports the codegraph module is 'not installed' in the extensions manager, even though the `codegraph` CLI is installed.",
+    "file": "src/async_runtime/scheduler/codegraph.rs",
+    "root_cause": "run_cg() spawned `Command::new(\"codegraph\")` with the editor process's bare inherited PATH and no enrichment. The `codegraph` binary is a global npm package living in an nvm version-specific bin dir (~/.nvm/versions/node/<ver>/bin), which is NOT on the minimal launchd PATH a GUI app bundle inherits (verified: NOT FOUND with PATH=/usr/bin:/bin:/usr/sbin:/sbin). The spawn failed with ErrorKind::NotFound, which the runner maps to not_installed=true -> async_results sets code_graph_hud.set_not_installed(). Every OTHER subprocess runner (LSP, run_extension_command, run_system_dep_install) already calls .env(\"PATH\", resolve_system_path()) which scans nvm bin dirs; the codegraph runner was the only one missing it.",
+    "fix": "Added `command.env(\"PATH\", super::syntax_jobs::resolve_system_path())` in run_cg before spawning, mirroring the other runners so nvm/cargo/asdf/etc. bin dirs are on PATH for GUI launches.",
+    "tags": [
+      "codegraph",
+      "path",
+      "subprocess",
+      "nvm",
+      "gui-bundle",
+      "not-installed",
+      "consistency",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-013",
+      "bug-014"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-18T00:00:00+00:00"
+  },
+  {
     "id": "bug-014",
     "timestamp": "2026-06-17T00:00:00+00:00",
     "error_message": "Code Graph HUD: left (caller) edges drawn wrong/mirrored vs right; pressing hjkl moved focus (Enter jumped to the right node) but the focus ring did not visually move.",

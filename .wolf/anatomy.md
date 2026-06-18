@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T06:59:45.222Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T08:03:33.841Z
 > Files: 437 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -469,7 +469,7 @@
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1916 tok)
-- `codegraph.rs` — Code Graph HUD worker job — spawns the external `codegraph` CLI and builds (~1307 tok)
+- `codegraph.rs` — Code Graph HUD worker job — spawns the external `codegraph` CLI and builds (~1431 tok)
 - `dispatch.rs` (~7205 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)

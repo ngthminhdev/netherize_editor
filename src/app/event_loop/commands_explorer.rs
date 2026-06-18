@@ -101,6 +101,8 @@ impl AppShell {
         self.active_lsp_guide = None;
         self.highlight_spans.clear();
         self.semantic_highlight_spans.clear();
+        self.cached_document_symbols.clear();
+        self.cached_document_symbols_path = None;
     }
 
     pub(super) fn reload_workspace(&mut self) -> bool {

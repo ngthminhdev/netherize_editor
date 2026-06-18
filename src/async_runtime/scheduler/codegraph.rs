@@ -124,6 +124,12 @@ async fn run_cg(args: &[&str], cwd: &Path) -> Result<String, (bool, String)> {
     use tokio::process::Command;
     let mut command = Command::new("codegraph");
     command.kill_on_drop(true);
+    // Enrich PATH the same way every other subprocess runner does (LSP,
+    // extension-command, system-dep). `codegraph` is commonly installed into an
+    // nvm version-specific bin dir which isn't on the PATH a GUI bundle inherits;
+    // without this it spawns with a bare PATH and fails with NotFound -> the HUD
+    // wrongly reports "not installed". See syntax_jobs::resolve_system_path.
+    command.env("PATH", super::syntax_jobs::resolve_system_path());
     let output: Output = command
         .args(args)
         .current_dir(cwd)

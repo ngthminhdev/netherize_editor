@@ -33,6 +33,15 @@ impl Renderer {
         self.editor_overlay_glyph_instances.clear();
         self.editor_overlay_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+        self.editor_overlay_icon_instances.clear();
+        self.editor_overlay_icon_pipeline.upload_instances(
+            &self.device,
+            &[],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
     }
 
     pub fn update_references_buffer_content(

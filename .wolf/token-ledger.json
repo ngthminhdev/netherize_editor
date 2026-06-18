@@ -2,14 +2,14 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 24511796,
-    "total_reads": 2554,
-    "total_writes": 4270,
-    "total_sessions": 134,
-    "anatomy_hits": 2373,
+    "total_tokens_estimated": 24523563,
+    "total_reads": 2556,
+    "total_writes": 4271,
+    "total_sessions": 136,
+    "anatomy_hits": 2375,
     "anatomy_misses": 136,
     "repeated_reads_blocked": 3071,
-    "estimated_savings_vs_bare_cli": 38410602
+    "estimated_savings_vs_bare_cli": 38411002
   },
   "sessions": [
     {
@@ -40770,6 +40770,40 @@
         "writes_count": 8,
         "repeated_reads_blocked": 0,
         "anatomy_lookups": 5
+      }
+    },
+    {
+      "id": "session-2026-06-18-1444",
+      "started": "2026-06-18T07:44:11.843Z",
+      "ended": "2026-06-18T08:04:22.915Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/codegraph.rs",
+          "tokens_estimated": 1307,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/syntax_jobs.rs",
+          "tokens_estimated": 10267,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/codegraph.rs",
+          "tokens_estimated": 193,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 11574,
+        "output_tokens_estimated": 193,
+        "reads_count": 2,
+        "writes_count": 1,
+        "repeated_reads_blocked": 0,
+        "anatomy_lookups": 2
       }
     }
   ],
