@@ -1263,17 +1263,13 @@ impl AppShell {
         false
     }
 
-    /// Tối ưu 3: Caret Blink — tick timer nhấp nháy, chỉ set caret_blink_dirty.
-    /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
-    /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
+    /// Caret blink is disabled — the caret stays solid (always visible).
+    ///
+    /// Previously this toggled `caret_blink_visible` every 1 s. Now it's a no-op:
+    /// every cursor move / mode change / viewport scroll already resets
+    /// `caret_blink_visible = true` (see application.rs, viewport.rs, terminal.rs),
+    /// so with the toggle gone the caret never blinks off.
     fn tick_caret_blink(&mut self) -> bool {
-        let now = Instant::now();
-        if now.duration_since(self.last_caret_blink_tick) >= Duration::from_millis(1000) {
-            self.last_caret_blink_tick = now;
-            self.caret_blink_visible = !self.caret_blink_visible;
-            self.caret_blink_dirty = true;
-            return true;
-        }
         false
     }
 
