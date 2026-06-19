@@ -614,6 +614,8 @@ impl Command {
                 | Self::PaletteMoveCursorToStart
                 | Self::PaletteMoveCursorToEnd
                 | Self::PaletteDeleteCharForward
+                | Self::PaletteVimInput(PaletteVimKey::Char('j'))
+                | Self::PaletteVimInput(PaletteVimKey::Char('k'))
                 | Self::CompletionNext
                 | Self::CompletionPrev
                 | Self::ReferencesSelectNext

@@ -1193,6 +1193,56 @@ fn repeated_motion_key_dispatches_while_holding() {
 }
 
 #[test]
+fn repeated_j_in_palette_normal_dispatches_vim_input() {
+    use crate::app::command_palette::PaletteVimMode;
+    use crate::core::commands::PaletteVimKey;
+
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    context.palette_vim_mode = Some(PaletteVimMode::Normal);
+
+    let repeated =
+        handler.route_repeated_normalized_input(char_input('j', KeyCode::KeyJ), &map, context);
+    match repeated {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::PaletteVimInput(PaletteVimKey::Char('j'))
+            );
+            assert_eq!(translated.repeat_count, 1);
+        }
+        other => panic!("expected repeated palette j dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn repeated_k_in_palette_normal_dispatches_vim_input() {
+    use crate::app::command_palette::PaletteVimMode;
+    use crate::core::commands::PaletteVimKey;
+
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    context.palette_vim_mode = Some(PaletteVimMode::Normal);
+
+    let repeated =
+        handler.route_repeated_normalized_input(char_input('k', KeyCode::KeyK), &map, context);
+    match repeated {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::PaletteVimInput(PaletteVimKey::Char('k'))
+            );
+            assert_eq!(translated.repeat_count, 1);
+        }
+        other => panic!("expected repeated palette k dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn repeated_backspace_dispatches_while_holding() {
     let mut handler = InputHandler::new();
     let map = make_map();
