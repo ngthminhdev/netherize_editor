@@ -2594,6 +2594,15 @@ impl AppShell {
             }
         }
 
+        // NetherCanvas full-screen layer: build it while active, clear otherwise.
+        if let Some(renderer) = self.renderer.as_mut() {
+            if let Some(canvas) = self.app_state.canvas() {
+                renderer.update_canvas_content(canvas);
+            } else {
+                renderer.clear_canvas();
+            }
+        }
+
         if let Some(bottom) = bottom_region {
             let center_has_terminal = self.app_state.active_terminal_session_id().is_some();
             let zen_allows_terminal = self.panel_state.maximized_region.is_none()

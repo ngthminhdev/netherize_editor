@@ -54,6 +54,8 @@ pub enum InputFocusContext {
     Outline,
     /// Code Graph HUD overlay (gp) — owns hjkl/Enter/Esc while open.
     CodeGraph,
+    /// NetherCanvas spatial canvas (gc) — full-screen modal owning hjkl/Tab/Enter/Esc.
+    Canvas,
 }
 
 impl InputFocusContext {
@@ -77,6 +79,7 @@ impl InputFocusContext {
             Self::SettingsTab => "settings_tab",
             Self::Outline => "outline",
             Self::CodeGraph => "code_graph",
+            Self::Canvas => "canvas",
         }
     }
 
@@ -371,6 +374,9 @@ impl InputMap {
             }
         }
 
+        if context.focus == InputFocusContext::Canvas {
+            return self.resolve_canvas_focus(input);
+        }
         if context.focus == InputFocusContext::CodeGraph {
             return self.resolve_code_graph_focus(input);
         }
@@ -663,6 +669,7 @@ impl InputMap {
             InputFocusContext::SettingsTab => editor_mode_str(context.mode),
             InputFocusContext::Outline => "normal",
             InputFocusContext::CodeGraph => "code_graph",
+            InputFocusContext::Canvas => "canvas",
         }
     }
 

@@ -235,6 +235,8 @@ impl AppShell {
             hover_loading_request_id: None,
             latest_hover_request_id: None,
             latest_definition_request_id: None,
+            canvas_def_request_id: None,
+            canvas_refs_request_id: None,
             document_symbols_request_revision: 0,
             lsp_rename_request_revision: 0,
             latest_rename_request_id: None,
@@ -743,7 +745,11 @@ impl AppShell {
             && (!self.app_state.is_command_palette_visible()
                 || self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::RecentProjects));
-        let focus = if self.app_state.code_graph_hud.open {
+        let focus = if self.app_state.is_canvas_active() {
+            // NetherCanvas is full-screen modal: it owns hjkl/Tab/Enter/Esc while
+            // open, regardless of the underlying editor/sidebar focus.
+            InputFocusContext::Canvas
+        } else if self.app_state.code_graph_hud.open {
             // The Code Graph HUD is modal: it owns hjkl/Enter/Esc while open,
             // regardless of the underlying editor/sidebar focus.
             InputFocusContext::CodeGraph

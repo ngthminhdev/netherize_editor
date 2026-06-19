@@ -439,6 +439,24 @@ fn dispatch_command_with_clipboard_once(
         | Command::CodeGraphNavDown
         | Command::CodeGraphJump
         | Command::CodeGraphClose
+        | Command::CanvasOpen
+        | Command::CanvasClose
+        | Command::CanvasFocusLeft
+        | Command::CanvasFocusRight
+        | Command::CanvasFocusUp
+        | Command::CanvasFocusDown
+        | Command::CanvasCycleNext
+        | Command::CanvasCyclePrev
+        | Command::CanvasSpawnRelations
+        | Command::CanvasExpandCallee
+        | Command::CanvasExpandCaller
+        | Command::CanvasTogglePin
+        | Command::CanvasZoomIn
+        | Command::CanvasZoomOut
+        | Command::CanvasPanLeft
+        | Command::CanvasPanRight
+        | Command::CanvasPanUp
+        | Command::CanvasPanDown
         | Command::LspFormatDocument
         | Command::TriggerCompletion
         | Command::CodeAction

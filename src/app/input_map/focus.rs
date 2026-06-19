@@ -5,6 +5,119 @@ use super::*;
 use crate::app::command_palette::PaletteVimMode;
 
 impl InputMap {
+    /// NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter
+    /// spawns relations, +/- zoom, Esc closes.
+    pub(super) fn resolve_canvas_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasClose,
+                reason: "canvas: Esc -> close",
+            });
+        }
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasSpawnRelations,
+                reason: "canvas: Enter -> spawn relations",
+            });
+        }
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Tab) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasCycleNext,
+                reason: "canvas: Tab -> cycle focus",
+            });
+        }
+        if input.has_command_modifier() {
+            return None;
+        }
+        // Arrows navigate focus between blocks.
+        if input.named_key == Some(NamedKey::ArrowLeft) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasFocusLeft,
+                reason: "canvas: ← focus left",
+            });
+        }
+        if input.named_key == Some(NamedKey::ArrowRight) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasFocusRight,
+                reason: "canvas: → focus right",
+            });
+        }
+        if input.named_key == Some(NamedKey::ArrowUp) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasFocusUp,
+                reason: "canvas: ↑ focus up",
+            });
+        }
+        if input.named_key == Some(NamedKey::ArrowDown) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasFocusDown,
+                reason: "canvas: ↓ focus down",
+            });
+        }
+        // hjkl pans the canvas.
+        if input.physical_key == Some(KeyH) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasPanLeft,
+                reason: "canvas: h pan left",
+            });
+        }
+        if input.physical_key == Some(KeyL) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasPanRight,
+                reason: "canvas: l pan right",
+            });
+        }
+        if input.physical_key == Some(KeyK) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasPanUp,
+                reason: "canvas: k pan up",
+            });
+        }
+        if input.physical_key == Some(KeyJ) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasPanDown,
+                reason: "canvas: j pan down",
+            });
+        }
+        // E expand callee, R expand caller, P pin.
+        if input.physical_key == Some(KeyE) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasExpandCallee,
+                reason: "canvas: E expand callee",
+            });
+        }
+        if input.physical_key == Some(KeyR) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasExpandCaller,
+                reason: "canvas: R expand caller",
+            });
+        }
+        if input.physical_key == Some(KeyP) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasTogglePin,
+                reason: "canvas: P toggle pin",
+            });
+        }
+        if input.physical_key == Some(Equal) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasZoomIn,
+                reason: "canvas: + zoom in",
+            });
+        }
+        if input.physical_key == Some(Minus) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasZoomOut,
+                reason: "canvas: - zoom out",
+            });
+        }
+        None
+    }
+
     /// Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close.
     pub(super) fn resolve_code_graph_focus(
         &self,

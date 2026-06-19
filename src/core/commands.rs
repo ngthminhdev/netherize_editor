@@ -358,6 +358,32 @@ pub enum Command {
     BufferCloseCurrent,
     BufferGoto(usize),
 
+    // ── NetherCanvas (Spatial Canvas, Phase A) ───────────────────────────────────
+    /// Open the spatial canvas on the symbol under the cursor.
+    CanvasOpen,
+    /// Close the canvas and return to the editor.
+    CanvasClose,
+    CanvasFocusLeft,
+    CanvasFocusRight,
+    CanvasFocusUp,
+    CanvasFocusDown,
+    CanvasCycleNext,
+    CanvasCyclePrev,
+    /// Spawn def/caller/callee blocks for the focused block (LSP-sourced).
+    CanvasSpawnRelations,
+    /// Expand the callees (outgoing) of the focused block.
+    CanvasExpandCallee,
+    /// Expand the callers (incoming) of the focused block.
+    CanvasExpandCaller,
+    /// Pin/unpin the focused block.
+    CanvasTogglePin,
+    CanvasZoomIn,
+    CanvasZoomOut,
+    CanvasPanLeft,
+    CanvasPanRight,
+    CanvasPanUp,
+    CanvasPanDown,
+
     // ── Mode transitions ────────────────────────────────────────────────────────
     /// Request a mode change; actual transition decided by dispatcher / app state.
     SwitchMode(ModeEvent),

@@ -1,5 +1,6 @@
 pub mod app;
 pub mod async_runtime;
+pub mod canvas;
 pub mod codegraph;
 pub mod config;
 pub mod core;

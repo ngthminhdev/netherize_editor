@@ -964,6 +964,11 @@ command = "codegraph.open_graph_hud"
 
 [[bindings]]
 mode = "normal"
+key = "g c"
+command = "canvas.open"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>r n"
 command = "lsp.rename"
 

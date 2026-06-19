@@ -97,6 +97,8 @@ impl Renderer {
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let palette_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let canvas_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let test_runner_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let markdown_preview_header_image_pipeline =
@@ -134,6 +136,7 @@ impl Renderer {
         let topbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let statusbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let palette_text_system = make_text_system(ui_metrics, font_family.as_deref());
+        let canvas_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let system_dep_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
@@ -166,6 +169,8 @@ impl Renderer {
         let statusbar_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let palette_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let canvas_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let lsp_guide_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
@@ -284,6 +289,13 @@ impl Renderer {
             palette_scissor: None,
             last_palette_model: None,
             last_palette_sample: None,
+            canvas_text_system,
+            canvas_text_pipeline,
+            canvas_glyph_instances: Vec::new(),
+            canvas_chrome_instances: Vec::new(),
+            canvas_icon_pipeline,
+            canvas_icon_instances: Vec::new(),
+            canvas_scissor: None,
             lsp_guide_text_system,
             lsp_guide_text_pipeline,
             lsp_guide_scissor: None,

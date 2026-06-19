@@ -36,6 +36,7 @@ use crate::text::text_system::StyledTextSpan;
 use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
 
 mod buffers;
+mod canvas;
 pub mod code_graph_hud;
 mod editor;
 mod multi_cursor;
@@ -2206,6 +2207,9 @@ struct ClipboardRecord {
 pub struct AppState {
     text: Rope,
     pub code_graph_hud: code_graph_hud::CodeGraphHudState,
+    /// Active NetherCanvas session (Phase A: read-only spatial canvas). `None`
+    /// when not in Canvas mode. See `src/canvas/`.
+    pub(crate) canvas: Option<crate::canvas::CanvasState>,
     cursor_char_idx: usize,
     target_col: usize,
     revision: u64,
@@ -2326,6 +2330,7 @@ impl AppState {
             workspace_model: None,
             command_palette: CommandPalette::default(),
             code_graph_hud: code_graph_hud::CodeGraphHudState::default(),
+            canvas: None,
             file_picker_results_cache: Vec::new(),
             last_search_query: String::new(),
             search_highlights: Vec::new(),
@@ -2452,6 +2457,7 @@ impl AppState {
             workspace_model: None,
             command_palette: CommandPalette::default(),
             code_graph_hud: code_graph_hud::CodeGraphHudState::default(),
+            canvas: None,
             file_picker_results_cache: Vec::new(),
             last_search_query: String::new(),
             search_highlights: Vec::new(),

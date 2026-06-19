@@ -227,6 +227,11 @@ pub struct AppShell {
     /// arrival to avoid a flicker (or a wrong jump) if the server replies out
     /// of order.
     latest_definition_request_id: Option<u64>,
+    /// In-flight LSP request ids whose results should populate the NetherCanvas
+    /// (definition → Definition block, references → Caller blocks) instead of the
+    /// normal peek/references-buffer flow.
+    canvas_def_request_id: Option<u64>,
+    canvas_refs_request_id: Option<u64>,
     /// Request id of the latest `textDocument/rename`; stale responses are dropped.
     latest_rename_request_id: Option<u64>,
     fzf_search_revision: u64,

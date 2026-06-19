@@ -239,6 +239,13 @@ pub(super) fn handle_lsp_result(
             locations, jump, ..
         } => {
             use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+            // NetherCanvas redirect: a canvas-issued definition request becomes a
+            // Definition block instead of the editor peek overlay.
+            if app.canvas_def_request_id == Some(request_id) {
+                app.canvas_def_request_id = None;
+                attach_canvas_relations(app, locations, crate::canvas::BlockRelation::Definition);
+                return;
+            }
             if app
                 .latest_definition_request_id
                 .is_some_and(|latest| latest != request_id)
@@ -362,6 +369,12 @@ pub(super) fn handle_lsp_result(
             }
         }
         WorkerResultPayload::LspReferencesResult { locations, .. } => {
+            // NetherCanvas redirect: canvas-issued references become Caller blocks.
+            if app.canvas_refs_request_id == Some(request_id) {
+                app.canvas_refs_request_id = None;
+                attach_canvas_relations(app, locations, crate::canvas::BlockRelation::Caller);
+                return;
+            }
             if revision_id < app.references_request_revision {
                 if app
                     .app_state
@@ -782,6 +795,55 @@ pub(super) fn handle_lsp_missing_dependency(app: &mut AppShell, tool_name: Strin
         install_cmd,
     });
     app.request_redraw();
+}
+
+/// Convert LSP locations into NetherCanvas relation blocks and append them.
+/// `Definition` keeps the first location; `Caller` keeps several. Each block's
+/// snapshot is a read-only preview of the lines around the location.
+fn attach_canvas_relations(
+    app: &mut AppShell,
+    locations: Vec<crate::async_runtime::message::LspLocation>,
+    relation: crate::canvas::BlockRelation,
+) {
+    use crate::canvas::{BlockOrigin, BlockRelation, BlockSnapshot};
+    let cap = if relation == BlockRelation::Caller { 6 } else { 1 };
+    let mut rels = Vec::new();
+    for loc in locations.into_iter().take(cap) {
+        let Some(path) = lsp_uri_to_path(&loc.uri) else {
+            continue;
+        };
+        let preview = super::preview::read_file_preview(&path, loc.line as usize, 6);
+        if preview.is_empty() {
+            continue;
+        }
+        let text = preview.join("\n");
+        let file = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let title = format!("{file} : {}", loc.line + 1);
+        rels.push((
+            relation,
+            BlockOrigin {
+                path,
+                start_byte: 0,
+                end_byte: 0,
+                symbol_name: String::new(),
+                lsp_line: loc.line,
+                lsp_character: loc.character,
+            },
+            BlockSnapshot { title, text },
+        ));
+    }
+    if rels.is_empty() {
+        return;
+    }
+    if app.app_state.canvas_add_relations(rels) {
+        let w = app.window_size.width as f32;
+        let h = app.window_size.height as f32;
+        app.app_state.canvas_anchor_for_relations(w, h);
+        app.request_redraw();
+    }
 }
 
 pub(crate) fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {

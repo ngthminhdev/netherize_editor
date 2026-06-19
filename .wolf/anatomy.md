@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-19T06:54:31.802Z
-> Files: 444 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-19T10:26:19.321Z
+> Files: 454 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -18,9 +18,10 @@
 - `feedback_never_auto_commit.md` (~239 tok)
 - `feedback_no_panel_lightening.md` (~279 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~321 tok)
+- `MEMORY.md` (~364 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
 - `project_leetcode_gen_model.md` (~519 tok)
+- `project_spatial_canvas.md` (~1816 tok)
 - `project_vim_palette_review.md` (~389 tok)
 - `project_workbench_motion.md` (~1059 tok)
 
@@ -251,7 +252,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5489 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5506 tok)
 
 ## config/themes/
 
@@ -355,6 +356,7 @@
 - `2026-06-18-explorer-paste-rename-popup.md` — Explorer Paste Rename Popup Implementation Plan (~9603 tok)
 - `2026-06-18-panel-surface-elevation.md` — Panel Surface Elevation Implementation Plan (~4206 tok)
 - `2026-06-18-vim-command-palette.md` — Vim-mode Command Palette Implementation Plan (~13477 tok)
+- `2026-06-19-spatial-canvas-phaseA.md` — Spatial Canvas — Phase A Implementation Plan (~1976 tok)
 - `2026-06-19-workbench-motion-panel-slide.md` — Workbench Motion — Panel Slide Animation — Implementation Plan (~7161 tok)
 
 ## docs/superpowers/specs/
@@ -366,6 +368,7 @@
 - `2026-06-18-explorer-paste-rename-popup-design.md` — Explorer Paste — Rename Popup Design (~2793 tok)
 - `2026-06-18-panel-surface-elevation-design.md` — Panel Surface Elevation — Design (~1652 tok)
 - `2026-06-18-vim-command-palette-design.md` — Vim-mode Command Palette — Design (~3213 tok)
+- `2026-06-19-spatial-canvas-phaseA-design.md` — Spatial Canvas (NetherCanvas) — Phase A: Navigable Read-Only Canvas — Design (~2669 tok)
 - `2026-06-19-workbench-motion-panel-slide-design.md` — Workbench Motion — Panel Slide Animation — Design (~2966 tok)
 
 ## scripts/
@@ -381,7 +384,7 @@
 ## src/
 
 - `editor_core.rs` — Editor core buffer tối thiểu cho single-file workflow. (~7620 tok)
-- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~127 tok)
+- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~131 tok)
 - `main.rs` (~42 tok)
 
 ## src/app/
@@ -399,9 +402,10 @@
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~3573 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26177 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26245 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~19695 tok)
@@ -412,8 +416,9 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37058 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37150 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
+- `commands_canvas.rs` — World-units the camera pans per keypress. (~1405 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7483 tok)
@@ -424,10 +429,10 @@
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
 - `commands_tests.rs` — [derive(Default)] (~37757 tok)
-- `commands.rs` — [path = "commands_ai_agent.rs"] (~11140 tok)
+- `commands.rs` — [path = "commands_ai_agent.rs"] (~11224 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
-- `mod.rs` — Struct: AppShell (~7186 tok)
-- `setup.rs` — new, new_for_tests (~23337 tok)
+- `mod.rs` — Struct: AppShell (~7263 tok)
+- `setup.rs` — new, new_for_tests (~23425 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -438,7 +443,7 @@
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` (~9497 tok)
+- `lsp.rs` (~10254 tok)
 - `mod.rs` (~9344 tok)
 - `preview.rs` (~993 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
@@ -458,9 +463,9 @@
 
 ## src/app/input_map/
 
-- `focus.rs` — Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close. (~11896 tok)
+- `focus.rs` — NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter (~14319 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6612 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6746 tok)
 - `tests.rs` (~15331 tok)
 
 ## src/async_runtime/
@@ -491,6 +496,13 @@
 - `syntax_jobs.rs` (~10267 tok)
 - `tests.rs` (~1915 tok)
 
+## src/canvas/
+
+- `layout.rs` — Deterministic placement of spawned relation blocks around a focal block. (~1092 tok)
+- `mod.rs` — NetherCanvas — Spatial Canvas (Phase A: navigable read-only canvas). (~214 tok)
+- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~2842 tok)
+- `navigation.rs` — Spatial focus navigation: given block centers, pick the nearest block in a (~698 tok)
+
 ## src/codegraph/
 
 - `cli_json.rs` — Serde structs matching the `codegraph` CLI `--json` output. (~724 tok)
@@ -519,8 +531,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10362 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~6182 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10387 tok)
+- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~6551 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -530,10 +542,10 @@
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~9958 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4706 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4891 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
 - `palette.rs` (~7803 tok)
-- `session.rs` (~4866 tok)
+- `session.rs` (~5030 tok)
 - `tests.rs` (~18838 tok)
 
 ## src/lsp/
@@ -554,16 +566,17 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~5003 tok)
+- `renderer.rs` — Core renderer types and module layout. (~5130 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
+- `canvas.rs` — Render layer for NetherCanvas (Phase A, overlay model). (~3476 tok)
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2136 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7032 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7195 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3917 tok)
 - `ui.rs` — Panel UI rendering modules. (~48 tok)
 
@@ -596,7 +609,7 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~10107 tok)
+- `frame.rs` — render (~10540 tok)
 
 ## src/render/renderer/palette/
 

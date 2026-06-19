@@ -86,8 +86,12 @@ impl Renderer {
         let diag_hover_start = toast_start + toast_count;
         let diag_hover_count = self.diagnostic_hover_chrome_instances.len() as u32;
 
+        // NetherCanvas draws last (on top of everything) when active.
+        let canvas_start = diag_hover_start + diag_hover_count;
+        let canvas_count = self.canvas_chrome_instances.len() as u32;
+
         // Build the flat merged Vec (immutable borrows all end here before upload).
-        let total = (diag_hover_start + diag_hover_count) as usize;
+        let total = (canvas_start + canvas_count) as usize;
         let mut all_instances: Vec<RegionDrawInstance> = Vec::with_capacity(total.max(64));
         all_instances.extend_from_slice(region_instances);
         all_instances.extend_from_slice(&self.editor_overlay_chrome_instances);
@@ -108,6 +112,7 @@ impl Renderer {
         all_instances.extend_from_slice(&self.whichkey_chrome_instances);
         all_instances.extend_from_slice(&self.toast_chrome_instances);
         all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
+        all_instances.extend_from_slice(&self.canvas_chrome_instances);
 
         // Single upload — all borrows above are released.
         self.region_pipeline
@@ -929,6 +934,40 @@ impl Renderer {
                     self.diagnostic_hover_text_pipeline.draw(render_pass);
                 },
             );
+
+            // 13. NetherCanvas full-screen layer — drawn last so its opaque
+            // backdrop + blocks occlude the editor while the canvas is active.
+            if canvas_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.canvas_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
+                        self.region_pipeline
+                            .draw_range(render_pass, canvas_start, canvas_count);
+                    },
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.canvas_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.canvas_icon_pipeline.draw(render_pass);
+                    },
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.canvas_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.canvas_text_pipeline.draw(render_pass);
+                    },
+                );
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

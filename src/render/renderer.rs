@@ -8,6 +8,7 @@
 //! - [`helpers`]        — pure free functions shared by all render modules
 
 mod components;
+mod canvas;
 mod editor;
 mod helpers;
 mod lifecycle;
@@ -302,6 +303,15 @@ pub struct Renderer {
     /// the memo key so an animating sample re-uploads each frame even when the
     /// model is unchanged.
     pub(super) last_palette_sample: Option<crate::workbench::motion::RevealSample>,
+
+    // ── NetherCanvas (Spatial Canvas) full-screen layer ───────────────────────
+    pub(super) canvas_text_system: TextSystem,
+    pub(super) canvas_text_pipeline: TextPipeline,
+    pub(super) canvas_glyph_instances: Vec<GlyphInstance>,
+    pub(super) canvas_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) canvas_icon_pipeline: IconPipeline,
+    pub(super) canvas_icon_instances: Vec<IconDrawInstance>,
+    pub(super) canvas_scissor: Option<[u32; 4]>,
 
     // ── Window overlays ──────────────────────────────────────────────────────
     pub(super) lsp_guide_text_system: TextSystem,
