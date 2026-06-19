@@ -179,6 +179,15 @@ pub struct AppShell {
     sidebar_needs_layout: bool,
     terminal_needs_layout: bool,
     buffer_terminal_needs_layout: bool,
+    /// Active workbench layout slide (dock toggle / zen). `None` when settled.
+    panel_transition: Option<crate::workbench::motion::LayoutTransition>,
+    /// The authoritative (non-animated) layout currently on screen, used as the
+    /// `from` snapshot when a new transition starts.
+    last_committed_layout: Option<crate::workbench::layout_engine::WorkbenchLayout>,
+    /// Active command-palette enter/leave motion (fade + pop). `None` when settled.
+    palette_motion: Option<crate::workbench::motion::OverlayMotion>,
+    /// Whether the command palette was rendered last frame, to detect the open edge.
+    palette_was_visible: bool,
     /// Track whether the InFileSearch palette was opened from terminal context
     /// (via `TerminalSearchOpen`), so focus returns to the terminal when the
     /// palette closes instead of the center editor.

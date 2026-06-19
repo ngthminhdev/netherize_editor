@@ -298,6 +298,10 @@ pub struct Renderer {
     pub(super) palette_icon_instances: Vec<IconDrawInstance>,
     pub(super) palette_scissor: Option<[u32; 4]>,
     pub(super) last_palette_model: Option<CommandPaletteRenderModel>,
+    /// Overlay enter/leave motion last applied to the palette instances. Part of
+    /// the memo key so an animating sample re-uploads each frame even when the
+    /// model is unchanged.
+    pub(super) last_palette_sample: Option<crate::workbench::motion::RevealSample>,
 
     // ── Window overlays ──────────────────────────────────────────────────────
     pub(super) lsp_guide_text_system: TextSystem,

@@ -1042,6 +1042,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
+        if self.tick_panel_animation() {
+            self.request_redraw();
+        }
+        if self.tick_palette_motion() {
+            self.request_redraw();
+        }
         if self.tick_lsp_loading_animation() {
             self.request_redraw();
         }
@@ -1153,6 +1159,22 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 None => ripple_deadline,
             });
         }
+        // Drive frames at ~120 Hz while a panel slide runs.
+        if self.panel_transition.is_some() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
+        // Same ~120 Hz cadence while the command-palette enter motion runs.
+        if self.palette_motion.is_some() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
 
         if let Some(deadline) = next_deadline {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
@@ -1219,6 +1241,37 @@ impl AppShell {
         } else {
             false
         }
+    }
+
+    /// Advance the workbench layout slide (dock toggle / zen). While active,
+    /// marks panels dirty each frame so content follows the animated bounds;
+    /// on completion commits the authoritative target layout and clears it.
+    fn tick_panel_animation(&mut self) -> bool {
+        let now = Instant::now();
+        let Some(tr) = &self.panel_transition else {
+            return false;
+        };
+        if tr.is_done(now) {
+            self.last_committed_layout = Some(tr.target().clone());
+            self.panel_transition = None;
+            self.mark_all_panels_dirty();
+            return true;
+        }
+        self.mark_all_panels_dirty();
+        true
+    }
+
+    /// Drive the command-palette enter motion. Returns `true` while a motion is
+    /// live (request a redraw); when it completes, clears the motion so the next
+    /// redraw samples `None` and renders the palette at its settled identity.
+    fn tick_palette_motion(&mut self) -> bool {
+        let Some(m) = self.palette_motion else {
+            return false;
+        };
+        if m.is_done(Instant::now()) {
+            self.palette_motion = None;
+        }
+        true
     }
 
     fn tick_lsp_loading_animation(&mut self) -> bool {
@@ -1329,6 +1382,68 @@ impl AppShell {
         Some(changed)
     }
 
+    /// Mark every panel/editor surface dirty so its content is re-laid-out at
+    /// the (possibly animated) bounds on the next frame.
+    fn mark_all_panels_dirty(&mut self) {
+        self.editor_needs_layout = true;
+        self.sidebar_needs_layout = true;
+        self.terminal_needs_layout = true;
+        self.buffer_terminal_needs_layout = true;
+        self.right_terminal_needs_layout = true;
+    }
+
+    /// Layout-affecting panel state that should trigger a slide when it changes:
+    /// dock visibility + zen target. `size_px` is deliberately excluded so
+    /// drag-resize stays direct (un-animated).
+    pub(super) fn panel_layout_signature(&self) -> (bool, bool, bool, Option<FocusTarget>) {
+        (
+            self.panel_state.left.visible,
+            self.panel_state.right.visible,
+            self.panel_state.bottom.visible,
+            self.panel_state.maximized_region,
+        )
+    }
+
+    /// The layout to render this frame: the sampled transition while animating,
+    /// otherwise the plain computed layout.
+    pub(super) fn current_render_layout(
+        &self,
+        now: Instant,
+    ) -> crate::workbench::layout_engine::WorkbenchLayout {
+        if let Some(tr) = &self.panel_transition {
+            tr.sample(now)
+        } else {
+            self.layout_engine.compute(self.window_size, &self.panel_state)
+        }
+    }
+
+    /// Capture the current on-screen layout as `from`, compute the new target as
+    /// `to`, and install a transition (or snap instantly if animations are off).
+    pub(super) fn begin_layout_transition(&mut self, now: Instant) {
+        let to = self.layout_engine.compute(self.window_size, &self.panel_state);
+        let anim = self.ui_config.animation;
+        if !anim.enabled {
+            self.panel_transition = None;
+            self.last_committed_layout = Some(to);
+            self.mark_all_panels_dirty();
+            return;
+        }
+        let from = self
+            .panel_transition
+            .as_ref()
+            .map(|tr| tr.sample(now))
+            .or_else(|| self.last_committed_layout.clone())
+            .unwrap_or_else(|| to.clone());
+        self.panel_transition = Some(crate::workbench::motion::LayoutTransition::new(
+            from,
+            to,
+            now,
+            anim.dock_duration(),
+            anim.curve,
+        ));
+        self.mark_all_panels_dirty();
+    }
+
     pub(super) fn redraw(&mut self) {
         let mode = self.app_state.current_mode();
         if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
@@ -1348,9 +1463,11 @@ impl AppShell {
 
         let got_new_data = self.pump_bridge();
         self.update_frame_metrics_snapshot(Instant::now());
-        let layout = self
-            .layout_engine
-            .compute(self.window_size, &self.panel_state);
+        let now = Instant::now();
+        let layout = self.current_render_layout(now);
+        if self.panel_transition.is_none() {
+            self.last_committed_layout = Some(layout.clone());
+        }
 
         let flat_regions: Vec<_> = layout.model.flatten();
         let sidebar_region = flat_regions
@@ -2445,6 +2562,17 @@ impl AppShell {
             && self.app_state.command_palette_mode() == Some(CommandPaletteMode::RecentProjects);
 
         if self.app_state.is_command_palette_visible() && !welcome_recent_projects_active {
+            let now = Instant::now();
+            // Rising edge: palette just opened → start the enter (fade + pop) motion.
+            if !self.palette_was_visible && self.ui_config.animation.enabled {
+                self.palette_motion = Some(crate::workbench::motion::OverlayMotion::enter(
+                    now,
+                    self.ui_config.animation.overlay_duration(),
+                    self.ui_config.animation.curve,
+                ));
+            }
+            self.palette_was_visible = true;
+            let sample = self.palette_motion.map(|m| m.reveal_sample(now));
             let overlay_bounds = [
                 0.0,
                 0.0,
@@ -2456,10 +2584,14 @@ impl AppShell {
                 .command_palette_render_model(&self.theme, overlay_bounds)
                 && let Some(renderer) = self.renderer.as_mut()
             {
-                renderer.update_palette_content(&model);
+                renderer.update_palette_content(&model, sample);
             }
-        } else if let Some(renderer) = self.renderer.as_mut() {
-            renderer.clear_palette();
+        } else {
+            self.palette_was_visible = false;
+            self.palette_motion = None;
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_palette();
+            }
         }
 
         if let Some(bottom) = bottom_region {

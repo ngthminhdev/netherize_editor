@@ -255,6 +255,7 @@ impl AppShell {
         repeat_count: usize,
     ) -> bool {
         let test_edit_before = self.app_state.test_field_edit.is_some();
+        let layout_sig_before = self.panel_layout_signature();
         let res = self.handle_command_with_count_impl(command, repeat_count);
         let test_edit_after = self.app_state.test_field_edit.is_some();
         if test_edit_before && !test_edit_after {
@@ -263,6 +264,11 @@ impl AppShell {
                 .right
                 .switch_to_tab(crate::workbench::panel_state::PanelTabId::TestRunner);
             self.focus_manager.set(FocusTarget::RightSidebar);
+        }
+        // Animate any dock toggle / zen change with a layout slide. Drag-resize
+        // (size_px only) is intentionally excluded so it stays direct.
+        if self.panel_layout_signature() != layout_sig_before {
+            self.begin_layout_transition(std::time::Instant::now());
         }
         let outline_focused = match self.focus_manager.current() {
             FocusTarget::LeftSidebar => {

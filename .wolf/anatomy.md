@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-18T11:04:08.732Z
-> Files: 440 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-19T06:54:31.802Z
+> Files: 444 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -18,10 +18,11 @@
 - `feedback_never_auto_commit.md` (~239 tok)
 - `feedback_no_panel_lightening.md` (~279 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~277 tok)
+- `MEMORY.md` (~321 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
 - `project_leetcode_gen_model.md` (~519 tok)
 - `project_vim_palette_review.md` (~389 tok)
+- `project_workbench_motion.md` (~1059 tok)
 
 ## ../../.config/netherize/
 
@@ -340,7 +341,7 @@
 
 ## config/ui/
 
-- `default.toml` (~391 tok)
+- `default.toml` (~411 tok)
 
 ## docs/
 
@@ -354,6 +355,7 @@
 - `2026-06-18-explorer-paste-rename-popup.md` — Explorer Paste Rename Popup Implementation Plan (~9603 tok)
 - `2026-06-18-panel-surface-elevation.md` — Panel Surface Elevation Implementation Plan (~4206 tok)
 - `2026-06-18-vim-command-palette.md` — Vim-mode Command Palette Implementation Plan (~13477 tok)
+- `2026-06-19-workbench-motion-panel-slide.md` — Workbench Motion — Panel Slide Animation — Implementation Plan (~7161 tok)
 
 ## docs/superpowers/specs/
 
@@ -364,6 +366,7 @@
 - `2026-06-18-explorer-paste-rename-popup-design.md` — Explorer Paste — Rename Popup Design (~2793 tok)
 - `2026-06-18-panel-surface-elevation-design.md` — Panel Surface Elevation — Design (~1652 tok)
 - `2026-06-18-vim-command-palette-design.md` — Vim-mode Command Palette — Design (~3213 tok)
+- `2026-06-19-workbench-motion-panel-slide-design.md` — Workbench Motion — Panel Slide Animation — Design (~2966 tok)
 
 ## scripts/
 
@@ -409,7 +412,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~35699 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37058 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -421,10 +424,10 @@
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
 - `commands_tests.rs` — [derive(Default)] (~37757 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
+- `commands.rs` — [path = "commands_ai_agent.rs"] (~11140 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
-- `mod.rs` — Struct: AppShell (~7011 tok)
-- `setup.rs` — new, new_for_tests (~23297 tok)
+- `mod.rs` — Struct: AppShell (~7186 tok)
+- `setup.rs` — new, new_for_tests (~23337 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -505,7 +508,7 @@
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
 - `theme_config.rs` — Theme configuration entrypoint. (~176 tok)
-- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~8633 tok)
+- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9374 tok)
 
 ## src/config/theme_config/
 
@@ -551,7 +554,7 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4930 tok)
+- `renderer.rs` — Core renderer types and module layout. (~5003 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
@@ -560,8 +563,8 @@
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2136 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7021 tok)
-- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3160 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7032 tok)
+- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3917 tok)
 - `ui.rs` — Panel UI rendering modules. (~48 tok)
 
 ## src/render/renderer/components/
@@ -578,7 +581,7 @@
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8342 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
-- `overlays.rs` — update_editor_overlays (~26989 tok)
+- `overlays.rs` — update_editor_overlays (~27547 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7304 tok)
@@ -743,7 +746,8 @@
 - `focus_manager.rs` — FocusManager: label, current, set, ensure_valid + 3 more (~1406 tok)
 - `inspector_panel.rs` — InspectorNode: title, leaf, branch, sync_from_debug_state + 6 more (~3078 tok)
 - `layout_engine.rs` — Height (logical px) of the clickable tab strip reserved at the top of the (~10632 tok)
-- `mod.rs` (~54 tok)
+- `mod.rs` (~55 tok)
+- `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~3008 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
 - `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1943 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)

@@ -78,6 +78,18 @@ impl Renderer {
                 divider,
             ));
 
+            // `editor_overlay_text_system` is SHARED across editor overlays. The
+            // file picker, diagnostics panel and Code Graph HUD leave a constrained
+            // `set_size` (wrap width) and/or smaller `set_metrics` on it that would
+            // otherwise leak into the breadcrumb on the next frame — causing the
+            // segments to wrap and their spacing to drift. Reset to the editor's
+            // metrics with an unbounded width so each segment lays out on one line.
+            // (Same shared-state-leak family as the earlier HUD breadcrumb bug.)
+            self.editor_overlay_text_system
+                .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
+            self.editor_overlay_text_system
+                .set_size(None, Some(header_h.max(geometry.line_height)));
+
             let mut x = geometry.viewport_text_left;
             let text_y = header_y + ((header_h - geometry.line_height).max(0.0) * 0.5);
             let max_x = header_x + header_w - self.editor_padding_x;

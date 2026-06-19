@@ -3277,5 +3277,20 @@
     ],
     "occurrences": 1,
     "last_seen": "2026-06-18T17:09:03Z"
+  },
+  {
+    "id": 187,
+    "error_message": "Editor breadcrumb segments rendered with wide letter spacing and wrapped to a second line after opening the command palette / file picker.",
+    "root_cause": "editor_overlay_text_system is a TextSystem shared across editor overlays. The file picker (fuzzy.rs) and diagnostics panel call set_size(Some(width), Some(height)) on it and never reset it; that constrained wrap-width persists across frames. The breadcrumb render block in overlays.rs laid out its segments via layout_panel_text WITHOUT first resetting metrics/size, so the leaked narrow width caused the breadcrumb text to wrap and its spacing (estimate_monospace_width advances vs actual shaped glyphs) to drift. Same shared-state-leak family as the earlier HUD->breadcrumb metrics bug; the prior fix only restored set_metrics in the HUD, not set_size from other consumers.",
+    "fix": "In overlays.rs update_editor_overlays, before laying out breadcrumb segments, reset the shared system: self.editor_overlay_text_system.set_metrics(Metrics::new(geometry.font_size, geometry.line_height)) and set_size(None, Some(header_h.max(line_height))) — unbounded width forces single-line layout regardless of prior overlay state.",
+    "tags": [
+      "breadcrumb",
+      "overlay",
+      "editor_overlay_text_system",
+      "shared-state-leak",
+      "set_size",
+      "wrap",
+      "rendering"
+    ]
   }
 ]

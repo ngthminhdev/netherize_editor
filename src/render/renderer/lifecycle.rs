@@ -283,6 +283,7 @@ impl Renderer {
             palette_icon_instances: Vec::new(),
             palette_scissor: None,
             last_palette_model: None,
+            last_palette_sample: None,
             lsp_guide_text_system,
             lsp_guide_text_pipeline,
             lsp_guide_scissor: None,

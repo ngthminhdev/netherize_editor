@@ -933,7 +933,7 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
         javascript: parse_file_icon(
             "icons.javascript",
             raw.javascript.as_ref(),
-            "built_in:node",
+            "built_in:javascript",
             ui.amber,
         )?,
         typescript: parse_file_icon(

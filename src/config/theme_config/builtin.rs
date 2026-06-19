@@ -147,7 +147,7 @@ fn builtin_icon_tokens(ui: &UiThemeTokens) -> IconThemeTokens {
         folder_open: icon("built_in:folder_open", ui.amber),
         default_file: icon("built_in:file", ui.fg_ghost),
         rust: icon("built_in:rust", ui.warning),
-        javascript: icon("built_in:node", ui.amber),
+        javascript: icon("built_in:javascript", ui.amber),
         typescript: icon("built_in:typescript", ui.info),
         tsx: icon("built_in:typescript", ui.info),
         jsx: icon("built_in:reactjs", ui.amber),
