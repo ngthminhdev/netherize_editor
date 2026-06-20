@@ -70,6 +70,29 @@ pub(super) fn active_diagnostics_preview_target(
     Some((item.file_path.clone(), Some(item.line + 1)))
 }
 
+/// Read raw lines (no gutter baked) around `center_line`. Returns
+/// `(lines, start_line_0based)` for callers that render their own gutter.
+pub(super) fn read_file_lines(
+    path: &std::path::Path,
+    center_line: usize,
+    context: usize,
+) -> (Vec<String>, usize) {
+    use std::io::{BufRead, BufReader};
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return (Vec::new(), 0),
+    };
+    let start = center_line.saturating_sub(context);
+    let end = center_line + context + 1;
+    let lines: Vec<String> = BufReader::new(file)
+        .lines()
+        .enumerate()
+        .take(end) // stop reading once past the window (don't scan the whole file)
+        .filter_map(|(i, line)| (i >= start).then(|| line.unwrap_or_default()))
+        .collect();
+    (lines, start)
+}
+
 pub(super) fn read_file_preview(
     path: &std::path::Path,
     center_line: usize,

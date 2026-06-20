@@ -223,12 +223,24 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::CanvasExpandCallee
         | Command::CanvasExpandCaller
         | Command::CanvasTogglePin
-        | Command::CanvasZoomIn
-        | Command::CanvasZoomOut
+        | Command::CanvasNoop
+        | Command::CanvasContextExpand
+        | Command::CanvasContextShrink
+        | Command::CanvasWidthExpand
+        | Command::CanvasWidthShrink
         | Command::CanvasPanLeft
         | Command::CanvasPanRight
         | Command::CanvasPanUp
         | Command::CanvasPanDown
+        | Command::CanvasMoveLeft
+        | Command::CanvasMoveRight
+        | Command::CanvasMoveUp
+        | Command::CanvasMoveDown
+        | Command::CanvasCloseFocused
+        | Command::CanvasEnterEdit
+        | Command::CanvasOpenCardBuffer
+        | Command::CanvasExitEdit
+        | Command::CanvasEnterBackground
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection

@@ -26,6 +26,7 @@ impl Renderer {
     pub fn update_statusbar_content(
         &mut self,
         mode: EditorMode,
+        canvas_label: Option<&str>,
         pending_keys: &str,
         git_branch: &str,
         is_dirty: bool,
@@ -59,6 +60,7 @@ impl Renderer {
 
         let layout_key = StatusbarLayoutKey {
             mode,
+            canvas_label: canvas_label.map(str::to_string),
             pending_keys: pending_keys.to_string(),
             git_branch: git_branch.to_string(),
             is_dirty,
@@ -98,7 +100,13 @@ impl Renderer {
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
 
         // ── Colors ───────────────────────────────────────────────────────────────
-        let mode_color = mode_pill_color(mode, &self.theme);
+        // When the NetherCanvas overlay has focus, the pill shows "CANVAS" in a
+        // distinct accent so it's obvious focus is on the canvas, not the editor.
+        let (mode_label, mode_color): (&str, [f32; 4]) = if let Some(label) = canvas_label {
+            (label, self.theme.ui.cyan.as_f32())
+        } else {
+            (mode_display_label(mode), mode_pill_color(mode, &self.theme))
+        };
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.85);
         let fg_ghost = with_alpha(self.theme.ui.fg_ghost.as_f32(), 0.75);
@@ -132,7 +140,6 @@ impl Renderer {
         let dot_text_gap = (font_size * 0.32).max(3.0);
         let pill_pad_r = (font_size * 0.45).max(4.0);
         let pill_radius = if self.round_ui { 4.0_f32 } else { 0.0 };
-        let mode_label = mode_display_label(mode);
         let label_w = estimate_monospace_width(mode_label, font_size);
         let pill_width = dot_pad_l + dot_size + dot_text_gap + label_w + pill_pad_r;
         let pill_x = bounds[0] + left_pad;

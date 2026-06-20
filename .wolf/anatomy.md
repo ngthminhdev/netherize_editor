@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-19T10:26:19.321Z
-> Files: 454 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-20T15:41:26.849Z
+> Files: 458 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -18,10 +18,10 @@
 - `feedback_never_auto_commit.md` (~239 tok)
 - `feedback_no_panel_lightening.md` (~279 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~364 tok)
+- `MEMORY.md` (~382 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
 - `project_leetcode_gen_model.md` (~519 tok)
-- `project_spatial_canvas.md` (~1816 tok)
+- `project_spatial_canvas.md` (~8393 tok)
 - `project_vim_palette_review.md` (~389 tok)
 - `project_workbench_motion.md` (~1059 tok)
 
@@ -369,7 +369,10 @@
 - `2026-06-18-panel-surface-elevation-design.md` — Panel Surface Elevation — Design (~1652 tok)
 - `2026-06-18-vim-command-palette-design.md` — Vim-mode Command Palette — Design (~3213 tok)
 - `2026-06-19-spatial-canvas-phaseA-design.md` — Spatial Canvas (NetherCanvas) — Phase A: Navigable Read-Only Canvas — Design (~2669 tok)
+- `2026-06-19-spatial-canvas-v2-design.md` — NetherCanvas v2 — Overlay Redesign (target-driven) — Design (~1149 tok)
 - `2026-06-19-workbench-motion-panel-slide-design.md` — Workbench Motion — Panel Slide Animation — Design (~2966 tok)
+- `2026-06-20-spatial-canvas-incard-edit-v2-design.md` — NetherCanvas — In-Card Editing v2 (no buffer switch) (~7324 tok)
+- `2026-06-20-spatial-canvas-phaseB-design.md` — NetherCanvas — Spatial Canvas Phase B: Edit-in-Card (~3421 tok)
 
 ## scripts/
 
@@ -401,11 +404,12 @@
 
 ## src/app/app_state/
 
-- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
-- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~3573 tok)
+- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
+- `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~3780 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~18286 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26245 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~19695 tok)
@@ -416,9 +420,9 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37150 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37610 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
-- `commands_canvas.rs` — World-units the camera pans per keypress. (~1405 tok)
+- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~7915 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7483 tok)
@@ -428,24 +432,24 @@
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
-- `commands_tests.rs` — [derive(Default)] (~37757 tok)
-- `commands.rs` — [path = "commands_ai_agent.rs"] (~11224 tok)
+- `commands_tests.rs` — [derive(Default)] (~38287 tok)
+- `commands.rs` — [path = "commands_ai_agent.rs"] (~12024 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
-- `mod.rs` — Struct: AppShell (~7263 tok)
-- `setup.rs` — new, new_for_tests (~23425 tok)
+- `mod.rs` — Struct: AppShell (~7686 tok)
+- `setup.rs` — new, new_for_tests (~23861 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
-- `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2878 tok)
+- `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2325 tok)
 - `failure.rs` — Consecutive inline-completion failures before the user is told once and (~1604 tok)
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` (~10254 tok)
-- `mod.rs` (~9344 tok)
-- `preview.rs` (~993 tok)
+- `lsp.rs` (~11966 tok)
+- `mod.rs` (~9364 tok)
+- `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~421 tok)
@@ -459,13 +463,13 @@
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2406 tok)
-- `tests.rs` (~21677 tok)
+- `tests.rs` (~23545 tok)
 
 ## src/app/input_map/
 
-- `focus.rs` — NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter (~14319 tok)
+- `focus.rs` — NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter (~15131 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6746 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~7365 tok)
 - `tests.rs` (~15331 tok)
 
 ## src/async_runtime/
@@ -499,8 +503,8 @@
 ## src/canvas/
 
 - `layout.rs` — Deterministic placement of spawned relation blocks around a focal block. (~1092 tok)
-- `mod.rs` — NetherCanvas — Spatial Canvas (Phase A: navigable read-only canvas). (~214 tok)
-- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~2842 tok)
+- `mod.rs` — NetherCanvas — Spatial Canvas (Phase A: navigable read-only canvas). (~232 tok)
+- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~6523 tok)
 - `navigation.rs` — Spatial focus navigation: given block centers, pick the nearest block in a (~698 tok)
 
 ## src/codegraph/
@@ -532,7 +536,7 @@
 ## src/core/
 
 - `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10387 tok)
-- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~6551 tok)
+- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~7892 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -542,10 +546,10 @@
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~9958 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4891 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~5008 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
 - `palette.rs` (~7803 tok)
-- `session.rs` (~5030 tok)
+- `session.rs` (~5148 tok)
 - `tests.rs` (~18838 tok)
 
 ## src/lsp/
@@ -566,17 +570,17 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~5130 tok)
+- `renderer.rs` — Core renderer types and module layout. (~5360 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
-- `canvas.rs` — Render layer for NetherCanvas (Phase A, overlay model). (~3476 tok)
+- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~10558 tok)
 - `components.rs` (~123 tok)
-- `editor.rs` — Editor viewport rendering modules. (~2136 tok)
+- `editor.rs` — Editor viewport rendering modules. (~2139 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7195 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7391 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3917 tok)
 - `ui.rs` — Panel UI rendering modules. (~48 tok)
 
@@ -590,14 +594,14 @@
 ## src/render/renderer/editor/
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5570 tok)
-- `completion.rs` — Declares COMPLETION_KIND_TEXT (~1959 tok)
+- `completion.rs` — Declares MAX_VISIBLE_ROWS (~4455 tok)
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8342 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
-- `overlays.rs` — update_editor_overlays (~27547 tok)
+- `overlays.rs` — update_editor_overlays (~19503 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7304 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~8154 tok)
 
 ## src/render/renderer/editor/buffers/
 
@@ -626,7 +630,7 @@
 - `markdown_preview.rs` — Right-sidebar markdown preview text rendering. (~6778 tok)
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
 - `sidebar.rs` — update_sidebar_content, clear_sidebar, update_left_dock_panel (~8559 tok)
-- `statusbar.rs` — Render the three-zone status bar. (~5840 tok)
+- `statusbar.rs` — Render the three-zone status bar. (~5944 tok)
 - `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~10622 tok)
 - `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~11022 tok)
 - `topbar.rs` — update_topbar_content (~4633 tok)

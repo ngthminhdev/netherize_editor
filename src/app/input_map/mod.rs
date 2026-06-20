@@ -128,6 +128,10 @@ pub struct KeybindingContext {
     /// True when the AI Chat tab is showing its in-panel agent picker (no agent
     /// running). Lets the input layer route j/k/Enter to the picker.
     pub ai_agent_picker_active: bool,
+    /// NetherCanvas Phase B sub-state (None when no canvas is open). Lets the
+    /// input layer route the staged Esc (exit edit / close canvas) while the
+    /// editor holds focus during edit/background states.
+    pub canvas_interaction: Option<crate::canvas::CanvasInteraction>,
 }
 
 impl KeybindingContext {
@@ -150,6 +154,7 @@ impl KeybindingContext {
             right_sidebar_terminal: false,
             test_runner_editing: false,
             ai_agent_picker_active: false,
+            canvas_interaction: None,
         }
     }
 
@@ -178,6 +183,7 @@ impl KeybindingContext {
             right_sidebar_terminal: false,
             test_runner_editing: false,
             ai_agent_picker_active: false,
+            canvas_interaction: None,
         }
     }
 }
@@ -225,6 +231,11 @@ fn humanize_command_id(id: &str) -> String {
 pub struct InputMap {
     open_file_path: PathBuf,
     keymap: ResolvedKeymap,
+    /// Pending `g` prefix while in Canvas focus (for `gd`/`gr`). Interior
+    /// mutability so `resolve` (which takes `&self`) can track the sequence.
+    canvas_pending_g: std::cell::Cell<bool>,
+    /// Pending `space` prefix while in Canvas focus (for `space x` = close card).
+    canvas_pending_space: std::cell::Cell<bool>,
 }
 
 impl InputMap {
@@ -234,6 +245,8 @@ impl InputMap {
         Self {
             open_file_path,
             keymap,
+            canvas_pending_g: std::cell::Cell::new(false),
+            canvas_pending_space: std::cell::Cell::new(false),
         }
     }
 
@@ -241,6 +254,8 @@ impl InputMap {
         Self {
             open_file_path,
             keymap,
+            canvas_pending_g: std::cell::Cell::new(false),
+            canvas_pending_space: std::cell::Cell::new(false),
         }
     }
 
@@ -335,6 +350,34 @@ impl InputMap {
                     return Some(KeybindingMatch {
                         command: Command::ScrollHalfPageUp,
                         reason: "hover overlay: Ctrl+u -> scroll hover up",
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        // NetherCanvas Phase B: while a card is being edited (S2) or the canvas
+        // sits in the background (S3), the editor holds focus for full editing,
+        // but the canvas state machine owns Esc (the staged exit). Guarded to the
+        // EDITOR focus only — if the user focuses a sidebar/terminal/panel while
+        // the canvas is backgrounded, that panel keeps its own Esc. Normal mode
+        // only, so Esc still drops Insert → Normal first (vim).
+        if input.named_key == Some(NamedKey::Escape)
+            && !input.has_command_modifier()
+            && context.mode == EditorMode::Normal
+            && context.focus == InputFocusContext::Editor
+        {
+            match context.canvas_interaction {
+                Some(crate::canvas::CanvasInteraction::EditCard { .. }) => {
+                    return Some(KeybindingMatch {
+                        command: Command::CanvasExitEdit,
+                        reason: "canvas edit: Esc -> exit edit (S2->S1)",
+                    });
+                }
+                Some(crate::canvas::CanvasInteraction::Background) => {
+                    return Some(KeybindingMatch {
+                        command: Command::CanvasClose,
+                        reason: "canvas background: Esc -> close canvas (S3->S0)",
                     });
                 }
                 _ => {}

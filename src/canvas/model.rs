@@ -36,12 +36,28 @@ pub struct BlockOrigin {
     pub lsp_character: u32,
 }
 
-/// Read-only text shown inside a block (Phase A). Highlight spans are computed
-/// at render time from the file's syntax, so the core model stays pure.
+/// A syntax-highlight span over `BlockSnapshot.text` (byte offsets). Mirrors the
+/// renderer's `StyledTextSpan` but keeps the canvas core decoupled from the text
+/// layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanvasSpan {
+    pub start: usize,
+    pub end: usize,
+    pub color: [u8; 4],
+    pub bold: bool,
+    pub italic: bool,
+}
+
+/// Read-only code shown inside a card. `text` is the raw snippet (newline-
+/// separated, no gutter); `start_line` (1-based) drives the line-number gutter;
+/// `spans` carry syntax colors (computed at sourcing time).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BlockSnapshot {
     pub title: String,
+    pub symbol: String,
+    pub start_line: u32,
     pub text: String,
+    pub spans: Vec<CanvasSpan>,
 }
 
 /// A single code block positioned on the infinite plane (world coordinates).
@@ -52,6 +68,17 @@ pub struct CanvasBlock {
     pub origin: BlockOrigin,
     pub snapshot: BlockSnapshot,
     pub world: WorldRect,
+    /// Pinned cards are immovable by `hjkl` (move-focused-card) — they stay put
+    /// while other cards are rearranged.
+    pub pinned: bool,
+    /// Lines of context this card reads above/below its origin line. `+`/`-`
+    /// adjust ONLY the focused card (re-sourced in place, top-left fixed).
+    /// Seeded from the session default at spawn; clamped by the app layer.
+    pub context_lines: usize,
+    /// The card this one was spawned from via in-card `gd`/`gr`, if any. `None`
+    /// when spawned from the focal symbol (the connector then starts at the
+    /// editor caret); `Some` makes the connector run from the parent card.
+    pub parent: Option<BlockId>,
 }
 
 /// An axis-aligned rectangle in world space.
@@ -83,6 +110,22 @@ impl WorldRect {
 
 pub const MIN_ZOOM: f32 = 0.2;
 pub const MAX_ZOOM: f32 = 5.0;
+
+/// Card title-bar height as a multiple of the code line height. The renderer
+/// MUST use the same factor for the card's tab header so card sizing (here) and
+/// drawing (renderer) agree — otherwise capacity math drifts. Kept compact (~1.5)
+/// so the header hugs its single row of text without a tall empty band.
+pub const CARD_HEADER_LINES: f32 = 1.5;
+/// Breathing room below the last code line, in line-heights. Kept ≥ the
+/// renderer's body margin so a card sized to N lines never clips its Nth line.
+pub const CARD_BOTTOM_LINES: f32 = 1.0;
+/// A relation card shows between `CARD_MIN_LINES` and `CARD_MAX_LINES` lines of
+/// code; its height tracks the snapshot's actual line count within these bounds
+/// so short snippets don't leave a tall empty gap and `+` (more context) grows
+/// the card to fit the extra code. `CARD_MAX_LINES` is the plateau beyond which
+/// the renderer shows a "+N more" marker instead of an ever-taller card.
+pub const CARD_MIN_LINES: usize = 3;
+pub const CARD_MAX_LINES: usize = 30;
 
 /// Maps the infinite world plane onto the screen. `screen = (world - offset) *
 /// zoom`. `offset` is in world units; `zoom` is a uniform scale.
@@ -136,22 +179,73 @@ impl Camera {
     }
 }
 
+/// Phase B interaction sub-state of an open canvas. Drives input routing,
+/// rendering, and the status pill. `Navigate` is the Phase A behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CanvasInteraction {
+    /// S1: hjkl move the focused card; Enter edits it; Esc pushes to background.
+    #[default]
+    Navigate,
+    /// S2: a card is promoted to a live mini-editor. The active editor buffer is
+    /// the card's file; `cursor_line`/`cursor_col` mirror the live cursor so the
+    /// renderer can draw the caret and scroll the card to follow it.
+    EditCard {
+        block: BlockId,
+        cursor_line: u32,
+        cursor_col: u32,
+    },
+    /// S3: canvas pushed to the background — the editor regains focus and cards
+    /// float dimmed (no scrim, no hints); a second Esc closes the canvas.
+    Background,
+}
+
 /// The full state of one canvas session.
 #[derive(Debug, Clone, Default)]
 pub struct CanvasState {
     pub blocks: Vec<CanvasBlock>,
     pub focused: Option<BlockId>,
     pub camera: Camera,
-    /// World size used for every block this session (set at open from the
-    /// viewport so cards are a sensible fraction of the screen at any DPI).
+    /// World width used for every card this session, and the *maximum* card
+    /// height (a full `CARD_MAX_LINES` card, also the focal anchor's height).
+    /// Set at open from the editor font so cards fit code at zoom 1.
     pub block_w: f32,
     pub block_h: f32,
+    /// Code line height in world units (editor `font_size * 1.4` at zoom 1).
+    /// Drives per-card height via [`CanvasState::card_height`].
+    pub line_h: f32,
+    /// Lines of context read above/below the focal line in each relation card
+    /// (`+`/`-` adjust it). A larger value re-reads MORE code from the file and
+    /// the card grows to fit — it never scales the card box or the font. Set at
+    /// open from the canvas default; clamped by the app layer.
+    pub context_lines: usize,
+    /// Phase B interaction sub-state (Navigate / EditCard / Background).
+    pub interaction: CanvasInteraction,
+    /// Set once the user hand-arranges the layout (moves or pins a card). While
+    /// `false`, newly-spawned relation cards are auto-arranged to fit the
+    /// viewport; once `true`, auto-arrange is frozen (manual placement wins).
+    pub user_arranged: bool,
+    /// `K` hover doc lines for the card being edited, anchored at its caret
+    /// (Phase 2 in-card LSP). Completion is rendered separately from the app
+    /// layer's `CompletionState`. `None` clears.
+    pub card_hover: Option<Vec<String>>,
+    /// Stashed (hidden) while the user opened a card as a buffer tab (`o`): the
+    /// state is kept but NOT rendered; `gc` un-stashes it. Distinct from
+    /// `Background` (which floats dimmed cards over the editor).
+    pub stashed: bool,
     next_id: BlockId,
 }
 
 impl CanvasState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// World height of a card showing `line_count` lines of code, clamped to
+    /// `[CARD_MIN_LINES, CARD_MAX_LINES]`. Derived from `line_h` so the card
+    /// hugs its content at zoom 1 (no tall empty gap below short snippets).
+    pub fn card_height(&self, line_count: usize) -> f32 {
+        let n = line_count.clamp(CARD_MIN_LINES, CARD_MAX_LINES) as f32;
+        self.line_h * (CARD_HEADER_LINES + n + CARD_BOTTOM_LINES)
     }
 
     /// Allocate the next unique block id.
@@ -224,6 +318,141 @@ impl CanvasState {
         let target = self.blocks[next].id;
         self.focus(target)
     }
+
+    /// Toggle the focused block's pinned state. Returns whether a block toggled.
+    pub fn toggle_pin(&mut self) -> bool {
+        let Some(id) = self.focused else {
+            return false;
+        };
+        match self.blocks.iter_mut().find(|b| b.id == id) {
+            Some(b) => {
+                b.pinned = !b.pinned;
+                // Pinning is a manual layout choice — freeze auto-arrange.
+                self.user_arranged = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Move the focused block by `(dx, dy)` world units. No-op (false) when the
+    /// focused block is pinned or absent.
+    pub fn move_focused(&mut self, dx: f32, dy: f32) -> bool {
+        let Some(id) = self.focused else {
+            return false;
+        };
+        match self.blocks.iter_mut().find(|b| b.id == id) {
+            Some(b) if !b.pinned => {
+                b.world.x += dx;
+                b.world.y += dy;
+                // The user took manual control of the layout — stop auto-arranging.
+                self.user_arranged = true;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Close (remove) the focused block unless it's the `Focal` anchor. Focus
+    /// moves to a remaining relation block (or None). Returns whether removed.
+    pub fn close_focused(&mut self) -> bool {
+        let Some(id) = self.focused else {
+            return false;
+        };
+        let Some(idx) = self.blocks.iter().position(|b| b.id == id) else {
+            return false;
+        };
+        if self.blocks[idx].relation == BlockRelation::Focal {
+            return false;
+        }
+        self.blocks.remove(idx);
+        self.focused = self
+            .blocks
+            .iter()
+            .find(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id);
+        true
+    }
+
+    // ── Phase B: interaction state machine ───────────────────────────────────
+
+    /// S1→S2: begin editing the focused relation card. Returns its [`BlockOrigin`]
+    /// so the caller can switch the active buffer to that file and position the
+    /// cursor. Returns `None` (and stays in Navigate) when no block is focused or
+    /// the focused block is the `Focal` anchor — the live editor *is* the focal,
+    /// so there is nothing to promote into an editable card.
+    pub fn begin_edit(&mut self) -> Option<BlockOrigin> {
+        let id = self.focused?;
+        let block = self.blocks.iter().find(|b| b.id == id)?;
+        if block.relation == BlockRelation::Focal {
+            return None;
+        }
+        let origin = block.origin.clone();
+        self.interaction = CanvasInteraction::EditCard {
+            block: id,
+            cursor_line: origin.lsp_line,
+            cursor_col: origin.lsp_character,
+        };
+        Some(origin)
+    }
+
+    /// S2→S1: leave edit mode back to Navigate. Returns whether it was editing.
+    pub fn end_edit(&mut self) -> bool {
+        if matches!(self.interaction, CanvasInteraction::EditCard { .. }) {
+            self.interaction = CanvasInteraction::Navigate;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// S1→S3: push the canvas to the background (editor regains focus). No-op
+    /// (false) unless currently navigating.
+    pub fn enter_background(&mut self) -> bool {
+        if self.interaction == CanvasInteraction::Navigate {
+            self.interaction = CanvasInteraction::Background;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// S3→S1: re-grab the canvas from the background. No-op (false) unless
+    /// currently in the background (never force-exits an edit).
+    pub fn focus_navigate(&mut self) -> bool {
+        if self.interaction == CanvasInteraction::Background {
+            self.interaction = CanvasInteraction::Navigate;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The block currently being edited (S2), if any.
+    pub fn editing_block(&self) -> Option<BlockId> {
+        match self.interaction {
+            CanvasInteraction::EditCard { block, .. } => Some(block),
+            _ => None,
+        }
+    }
+
+    /// True when the canvas is in the background (S3).
+    pub fn is_background(&self) -> bool {
+        self.interaction == CanvasInteraction::Background
+    }
+
+    /// Update the live cursor shown in the edit card (S2). No-op otherwise.
+    pub fn set_edit_cursor(&mut self, line: u32, col: u32) {
+        if let CanvasInteraction::EditCard {
+            cursor_line,
+            cursor_col,
+            ..
+        } = &mut self.interaction
+        {
+            *cursor_line = line;
+            *cursor_col = col;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -244,7 +473,111 @@ mod tests {
             },
             snapshot: BlockSnapshot::default(),
             world: rect,
+            pinned: false,
+            context_lines: 8,
+            parent: None,
+            // (test helper)
         }
+    }
+
+    #[test]
+    fn toggle_pin_blocks_move_focused() {
+        let mut st = CanvasState::new();
+        let id = st.alloc_id();
+        st.push(block(id, BlockRelation::Caller, WorldRect::new(10.0, 10.0, 5.0, 5.0)));
+        // Unpinned: move works.
+        assert!(st.move_focused(4.0, -2.0));
+        assert_eq!(st.block(id).unwrap().world.x, 14.0);
+        assert_eq!(st.block(id).unwrap().world.y, 8.0);
+        // Pinned: move is blocked.
+        assert!(st.toggle_pin());
+        assert!(st.block(id).unwrap().pinned);
+        assert!(!st.move_focused(4.0, 0.0));
+        assert_eq!(st.block(id).unwrap().world.x, 14.0);
+        // Unpinned again: move works.
+        assert!(st.toggle_pin());
+        assert!(st.move_focused(1.0, 0.0));
+        assert_eq!(st.block(id).unwrap().world.x, 15.0);
+    }
+
+    #[test]
+    fn close_focused_removes_relation_and_refocuses_but_not_focal() {
+        let mut st = CanvasState::new();
+        let focal = st.alloc_id();
+        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        let a = st.alloc_id();
+        st.push(block(a, BlockRelation::Caller, WorldRect::new(20.0, 0.0, 5.0, 5.0)));
+        let b = st.alloc_id();
+        st.push(block(b, BlockRelation::Caller, WorldRect::new(20.0, 20.0, 5.0, 5.0)));
+        st.focus(a);
+        assert!(st.close_focused());
+        assert!(st.block(a).is_none());
+        assert_eq!(st.focused, Some(b)); // refocused to the remaining relation
+        // The focal anchor is not closeable.
+        st.focus(focal);
+        assert!(!st.close_focused());
+        assert_eq!(st.blocks.len(), 2);
+    }
+
+    #[test]
+    fn interaction_state_machine_transitions() {
+        let mut st = CanvasState::new();
+        let focal = st.alloc_id();
+        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        let a = st.alloc_id();
+        st.push(block(a, BlockRelation::Caller, WorldRect::new(20.0, 0.0, 5.0, 5.0)));
+        // Default is Navigate.
+        assert_eq!(st.interaction, CanvasInteraction::Navigate);
+        // S1 → S3 background and back; idempotent at each end.
+        assert!(st.enter_background());
+        assert!(st.is_background());
+        assert!(!st.enter_background());
+        assert!(st.focus_navigate());
+        assert!(!st.is_background());
+        assert!(!st.focus_navigate());
+        // S1 → S2: edit the focused relation card.
+        st.focus(a);
+        let origin = st.begin_edit().expect("a relation card is editable");
+        assert_eq!(st.editing_block(), Some(a));
+        assert_eq!(origin.lsp_line, 0);
+        // The live cursor can be updated while editing.
+        st.set_edit_cursor(12, 4);
+        match st.interaction {
+            CanvasInteraction::EditCard {
+                cursor_line,
+                cursor_col,
+                ..
+            } => assert_eq!((cursor_line, cursor_col), (12, 4)),
+            other => panic!("expected EditCard, got {other:?}"),
+        }
+        // S2 → S1: exit; idempotent.
+        assert!(st.end_edit());
+        assert_eq!(st.interaction, CanvasInteraction::Navigate);
+        assert!(!st.end_edit());
+    }
+
+    #[test]
+    fn cannot_edit_the_focal_anchor() {
+        let mut st = CanvasState::new();
+        let focal = st.alloc_id();
+        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        st.focus(focal);
+        assert!(st.begin_edit().is_none());
+        assert_eq!(st.interaction, CanvasInteraction::Navigate);
+    }
+
+    #[test]
+    fn focus_navigate_does_not_force_exit_an_edit() {
+        let mut st = CanvasState::new();
+        let focal = st.alloc_id();
+        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        let a = st.alloc_id();
+        st.push(block(a, BlockRelation::Caller, WorldRect::new(20.0, 0.0, 5.0, 5.0)));
+        st.focus(a);
+        st.begin_edit().unwrap();
+        // gc (focus_navigate) must NOT yank you out of an active edit.
+        assert!(!st.focus_navigate());
+        assert_eq!(st.editing_block(), Some(a));
     }
 
     #[test]

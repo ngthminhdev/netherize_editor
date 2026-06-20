@@ -16,6 +16,7 @@ mod system;
 mod terminal;
 
 pub(crate) use lsp::apply_lsp_text_edits;
+pub(crate) use lsp::{build_canvas_relation_snapshot, canvas_snapshot_spans};
 
 use lsp::{friendly_references_status, stale_references_status};
 

@@ -3577,6 +3577,54 @@ fn manual_trigger_completion_dismisses_ghost_text_and_invalidates_inflight_ai() 
 }
 
 #[test]
+fn ai_inline_result_yields_to_open_completion_menu() {
+    // LSP completion wins: a VALID (current-revision, current-anchor) AI inline
+    // result that arrives while the completion menu is open must be dropped — it
+    // must neither show ghost text nor close the menu the user is picking from.
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("ai_yields_to_completion");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("post", "post")],
+        0,
+        "axios.p".chars().count(),
+        "axios.".chars().count(),
+        "p".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    assert!(shell.app_state.set_completion(completion));
+    assert!(shell.app_state.has_completion());
+    // Anchor the AI pipeline at the current caret so the anchor guard would PASS —
+    // proving the result is dropped by the completion-open guard, not the anchor one.
+    shell.reanchor_ai_inline();
+    let revision = shell.ai_inline_revision;
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 999,
+        revision_id: revision,
+        topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionResult {
+            suggestion: "ost()".to_string(),
+        },
+    });
+
+    assert!(
+        shell.app_state.inline_suggestion().is_none(),
+        "AI ghost text must not show over the completion menu"
+    );
+    assert!(
+        shell.app_state.has_completion(),
+        "the LSP completion menu must stay open (AI inline yields to it)"
+    );
+}
+
+#[test]
 fn test_outline_navigation_commands() {
     use crate::async_runtime::message::{LspDocumentSymbol, LspPosition, LspRange};
 

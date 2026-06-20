@@ -14,6 +14,7 @@ pub mod navigation;
 
 pub use layout::{PlacedRelation, place_relations};
 pub use model::{
-    BlockId, BlockOrigin, BlockRelation, BlockSnapshot, Camera, CanvasBlock, CanvasState, WorldRect,
+    BlockId, BlockOrigin, BlockRelation, BlockSnapshot, CARD_HEADER_LINES, CARD_MAX_LINES, Camera,
+    CanvasBlock, CanvasInteraction, CanvasSpan, CanvasState, WorldRect,
 };
 pub use navigation::Dir;

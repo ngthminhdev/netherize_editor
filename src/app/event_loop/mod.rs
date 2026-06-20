@@ -232,6 +232,29 @@ pub struct AppShell {
     /// normal peek/references-buffer flow.
     canvas_def_request_id: Option<u64>,
     canvas_refs_request_id: Option<u64>,
+    /// The card a pending canvas def/refs request was spawned FROM (in-card
+    /// `gd`/`gr`), so the resulting cards record their parent + the connector is
+    /// drawn from that card. `None` when spawned from the focal symbol.
+    canvas_def_parent: Option<crate::canvas::BlockId>,
+    canvas_refs_parent: Option<crate::canvas::BlockId>,
+    /// The card file we registered with the LSP (`didOpen`) for the active in-card
+    /// edit session, so `gd`/`gr`/completion resolve against it. `None` when no
+    /// card doc is ours to manage (the file is the active buffer / already open).
+    /// Cleared on `didClose`. (In-card LSP Phase 1: document lifecycle.)
+    canvas_card_lsp_open: Option<PathBuf>,
+    /// Monotonic LSP document version for the card doc above (separate from the
+    /// main buffer revision); bumped on each `didChange`.
+    canvas_card_lsp_version: i32,
+    /// In-flight in-card `K` hover request id; its result fills the card overlay
+    /// (Phase 2 in-card LSP) instead of the main editor's FloatingBox.
+    canvas_hover_request_id: Option<u64>,
+    /// In-flight in-card completion request id; its result fills the card
+    /// completion menu (Phase 3 in-card LSP), not the main editor's.
+    canvas_completion_request_id: Option<u64>,
+    /// Card-scoped completion state (the source of truth for navigate/accept while
+    /// editing a card); mirrored to `CanvasState.card_overlay` for rendering. Kept
+    /// separate from `app_state.completion` so the main editor is untouched.
+    canvas_completion: Option<crate::app::app_state::CompletionState>,
     /// Request id of the latest `textDocument/rename`; stale responses are dropped.
     latest_rename_request_id: Option<u64>,
     fzf_search_revision: u64,

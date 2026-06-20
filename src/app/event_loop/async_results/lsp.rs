@@ -162,6 +162,26 @@ pub(super) fn handle_lsp_result(
             parsed_blocks,
             ..
         } => {
+            // In-card hover (Phase 2): a card-issued `K` hover fills the card
+            // overlay (a doc box at the caret), never the main editor's FloatingBox.
+            if app.canvas_hover_request_id == Some(request_id) {
+                app.canvas_hover_request_id = None;
+                if content.is_empty() {
+                    return;
+                }
+                let blocks = match parsed_blocks {
+                    Some(raw) => convert_worker_hover_blocks(raw, &app.theme),
+                    None => parse_hover_markdown_blocks(&content, &app.theme),
+                };
+                let lines = flatten_hover_blocks_to_lines(&blocks);
+                if lines.is_empty() {
+                    return;
+                }
+                if app.app_state.canvas_set_card_hover(lines) {
+                    app.request_redraw();
+                }
+                return;
+            }
             if app.hover_loading_request_id == Some(request_id) {
                 app.hover_loading_request_id = None;
             }
@@ -243,7 +263,13 @@ pub(super) fn handle_lsp_result(
             // Definition block instead of the editor peek overlay.
             if app.canvas_def_request_id == Some(request_id) {
                 app.canvas_def_request_id = None;
-                attach_canvas_relations(app, locations, crate::canvas::BlockRelation::Definition);
+                let parent = app.canvas_def_parent.take();
+                attach_canvas_relations(
+                    app,
+                    locations,
+                    crate::canvas::BlockRelation::Definition,
+                    parent,
+                );
                 return;
             }
             if app
@@ -372,7 +398,13 @@ pub(super) fn handle_lsp_result(
             // NetherCanvas redirect: canvas-issued references become Caller blocks.
             if app.canvas_refs_request_id == Some(request_id) {
                 app.canvas_refs_request_id = None;
-                attach_canvas_relations(app, locations, crate::canvas::BlockRelation::Caller);
+                let parent = app.canvas_refs_parent.take();
+                attach_canvas_relations(
+                    app,
+                    locations,
+                    crate::canvas::BlockRelation::Caller,
+                    parent,
+                );
                 return;
             }
             if revision_id < app.references_request_revision {
@@ -611,6 +643,36 @@ pub(super) fn handle_lsp_result(
             prefix_start_col,
             prefix,
         } => {
+            // In-card completion (Phase 3): a card-issued request fills the card
+            // menu (card-scoped state), never the main editor's completion.
+            if app.canvas_completion_request_id == Some(request_id) {
+                app.canvas_completion_request_id = None;
+                if app.app_state.canvas_edit_session_block().is_none()
+                    || app.app_state.current_mode() != EditorMode::Insert
+                {
+                    return;
+                }
+                let language_id = app.app_state.canvas_edit_session_path().and_then(|p| {
+                    crate::lsp::registry::language_profile_for_path(&p)
+                        .map(|pr| pr.key.to_string())
+                });
+                let completion = crate::app::app_state::CompletionState::from_lsp_items(
+                    items,
+                    cursor_line,
+                    cursor_col,
+                    prefix_start_col,
+                    prefix,
+                    app.app_state.workspace_symbol_cache(),
+                    language_id.as_deref(),
+                );
+                if completion.filtered_items.is_empty() {
+                    app.dismiss_canvas_card_completion();
+                    return;
+                }
+                app.canvas_set_card_completion(completion);
+                app.request_redraw();
+                return;
+            }
             if app.active_lsp_completion_request_id != Some(request_id) {
                 return;
             }
@@ -797,53 +859,155 @@ pub(super) fn handle_lsp_missing_dependency(app: &mut AppShell, tool_name: Strin
     app.request_redraw();
 }
 
+/// Syntax-highlight a code snippet and pack the spans into the canvas-core
+/// [`crate::canvas::CanvasSpan`] form. Shared by relation-card snapshots
+/// (read from disk) and the live edit-card snapshot (read from the buffer).
+pub(crate) fn canvas_snapshot_spans(
+    theme: &crate::config::theme_config::ThemeConfig,
+    text: &str,
+    extension: &str,
+) -> Vec<crate::canvas::CanvasSpan> {
+    use crate::canvas::CanvasSpan;
+    syntax_spans_to_styled(
+        &crate::syntax::highlight::highlight_snippet(text, extension, theme),
+        text,
+        theme,
+    )
+    .into_iter()
+    .map(|s| CanvasSpan {
+        start: s.start,
+        end: s.end,
+        color: s.color_rgba,
+        bold: s.bold,
+        italic: s.italic,
+    })
+    .collect()
+}
+
+/// Build a relation card's `(origin, snapshot)` from a file location: read
+/// `context` lines around `line`, syntax-highlight them, and pack the spans
+/// into the canvas-core [`crate::canvas::CanvasSpan`] form. Shared by the
+/// initial LSP attach and the `+`/`-` context re-source so both produce
+/// identical snapshots. Returns `None` when the file can't be read (no lines).
+pub(crate) fn build_canvas_relation_snapshot(
+    theme: &crate::config::theme_config::ThemeConfig,
+    path: &Path,
+    line: u32,
+    character: u32,
+    symbol: &str,
+    context: usize,
+) -> Option<(crate::canvas::BlockOrigin, crate::canvas::BlockSnapshot)> {
+    use crate::canvas::{BlockOrigin, BlockSnapshot};
+    let (lines, start0) = super::preview::read_file_lines(path, line as usize, context);
+    if lines.is_empty() {
+        return None;
+    }
+    let text = lines.join("\n");
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let spans = canvas_snapshot_spans(theme, &text, extension);
+    let file = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Some((
+        BlockOrigin {
+            path: path.to_path_buf(),
+            start_byte: 0,
+            end_byte: 0,
+            symbol_name: symbol.to_string(),
+            lsp_line: line,
+            lsp_character: character,
+        },
+        BlockSnapshot {
+            title: file,
+            symbol: symbol.to_string(),
+            start_line: start0 as u32 + 1,
+            text,
+            spans,
+        },
+    ))
+}
+
 /// Convert LSP locations into NetherCanvas relation blocks and append them.
 /// `Definition` keeps the first location; `Caller` keeps several. Each block's
-/// snapshot is a read-only preview of the lines around the location.
+/// snapshot is a read-only preview of the lines around the location, sized to
+/// the canvas's current context-line count.
 fn attach_canvas_relations(
     app: &mut AppShell,
     locations: Vec<crate::async_runtime::message::LspLocation>,
     relation: crate::canvas::BlockRelation,
+    parent: Option<crate::canvas::BlockId>,
 ) {
-    use crate::canvas::{BlockOrigin, BlockRelation, BlockSnapshot};
+    use crate::canvas::BlockRelation;
     let cap = if relation == BlockRelation::Caller { 6 } else { 1 };
+    let focal_symbol = app
+        .app_state
+        .canvas_focal_origin()
+        .map(|o| o.symbol_name)
+        .unwrap_or_default();
+    let context = app.app_state.canvas_context_lines();
     let mut rels = Vec::new();
     for loc in locations.into_iter().take(cap) {
         let Some(path) = lsp_uri_to_path(&loc.uri) else {
             continue;
         };
-        let preview = super::preview::read_file_preview(&path, loc.line as usize, 6);
-        if preview.is_empty() {
-            continue;
+        if let Some((origin, snapshot)) = build_canvas_relation_snapshot(
+            &app.theme,
+            &path,
+            loc.line,
+            loc.character,
+            &focal_symbol,
+            context,
+        ) {
+            rels.push((relation, origin, snapshot));
         }
-        let text = preview.join("\n");
-        let file = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let title = format!("{file} : {}", loc.line + 1);
-        rels.push((
-            relation,
-            BlockOrigin {
-                path,
-                start_byte: 0,
-                end_byte: 0,
-                symbol_name: String::new(),
-                lsp_line: loc.line,
-                lsp_character: loc.character,
-            },
-            BlockSnapshot { title, text },
-        ));
     }
     if rels.is_empty() {
         return;
     }
-    if app.app_state.canvas_add_relations(rels) {
+    if app.app_state.canvas_add_relations_with_parent(rels, parent) {
+        // In-card gd/gr: focus already jumped to the spawned child card. Leave
+        // EditCard (→ Navigate) so the focus visibly lands on the child instead of
+        // waiting for an Esc, and release the parent card's LSP document. Only when
+        // we're still editing the very card that spawned this (don't yank focus if
+        // the user has moved on to another card meanwhile).
+        if let Some(parent_id) = parent
+            && app.app_state.canvas_end_edit_for_spawn(parent_id)
+        {
+            app.dismiss_canvas_card_completion();
+            app.canvas_hover_request_id = None;
+            app.submit_canvas_card_did_close();
+        }
         let w = app.window_size.width as f32;
         let h = app.window_size.height as f32;
-        app.app_state.canvas_anchor_for_relations(w, h);
+        // Tidy the freshly-spawned cards into viewport-fitting columns (no-op once
+        // the user has hand-arranged), then anchor the camera to show them.
+        app.app_state.canvas_auto_arrange(h);
+        app.app_state.canvas_anchor_cards_right(w, h);
         app.request_redraw();
     }
+}
+
+/// Flatten hover doc blocks into plain display lines for the card overlay box
+/// (the card popup renders monospace lines, not the rich main-editor FloatingBox).
+fn flatten_hover_blocks_to_lines(
+    blocks: &[crate::app::app_state::FloatingBoxBlock],
+) -> Vec<String> {
+    use crate::app::app_state::FloatingBoxBlock;
+    let mut lines = Vec::new();
+    for block in blocks {
+        match block {
+            FloatingBoxBlock::Prose(text) | FloatingBoxBlock::Code { text, .. } => {
+                for line in text.split('\n') {
+                    lines.push(line.to_string());
+                }
+            }
+        }
+    }
+    while lines.last().is_some_and(|l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    lines
 }
 
 pub(crate) fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {

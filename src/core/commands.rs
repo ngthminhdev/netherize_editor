@@ -377,12 +377,39 @@ pub enum Command {
     CanvasExpandCaller,
     /// Pin/unpin the focused block.
     CanvasTogglePin,
-    CanvasZoomIn,
-    CanvasZoomOut,
+    /// Consume a key with no effect (e.g. the `g` prefix of `gd`/`gr`).
+    CanvasNoop,
+    /// `+`: read more context lines into each card (cards grow to fit).
+    CanvasContextExpand,
+    /// `-`: read fewer context lines (cards shrink to fit).
+    CanvasContextShrink,
+    /// `Shift`+`+`: widen the focused card (more horizontal code visible).
+    CanvasWidthExpand,
+    /// `Shift`+`-`: narrow the focused card.
+    CanvasWidthShrink,
+    /// Pan the camera (Shift+hjkl).
     CanvasPanLeft,
     CanvasPanRight,
     CanvasPanUp,
     CanvasPanDown,
+    /// Move the focused card (hjkl); a no-op when the card is pinned.
+    CanvasMoveLeft,
+    CanvasMoveRight,
+    CanvasMoveUp,
+    CanvasMoveDown,
+    /// Close the focused relation card (space then x).
+    CanvasCloseFocused,
+    /// Enter edit mode on the focused card (Phase B): promote it to a live
+    /// mini-editor backed by the card's file as the active buffer.
+    CanvasEnterEdit,
+    /// `o`: open the focused card's file as a real buffer tab (cursor at the
+    /// symbol) and stash the canvas so it can be restored with `gc`.
+    CanvasOpenCardBuffer,
+    /// Leave edit mode back to card navigation.
+    CanvasExitEdit,
+    /// Push the canvas to the background so the editor regains focus (1st Esc);
+    /// a second Esc then closes the canvas.
+    CanvasEnterBackground,
 
     // ── Mode transitions ────────────────────────────────────────────────────────
     /// Request a mode change; actual transition decided by dispatcher / app state.
@@ -601,6 +628,81 @@ impl Command {
         )
     }
 
+    /// True for editor text/cursor/mode commands that should target an active
+    /// NetherCanvas in-card edit session (via the scoped swap) instead of the
+    /// main editor. Excludes `SaveFile` (handled specially — the card is not a
+    /// buffer slot), search (search state isn't swapped), folds, multi-cursor,
+    /// and all panel/app/canvas commands (which run on the real state).
+    pub fn is_card_editing_command(&self) -> bool {
+        matches!(
+            self,
+            // Insert / append / open-line
+            Self::InsertChar(_)
+                | Self::InsertText(_)
+                | Self::Newline
+                | Self::Backspace
+                | Self::InsertTab
+                | Self::InsertLineBelow
+                | Self::InsertLineAbove
+                | Self::InsertAtLineStart
+                | Self::AppendAtLineEnd
+                | Self::AppendAfterCursor
+                | Self::SubstituteLine
+                // Delete / change / replace / join
+                | Self::DeleteChar
+                | Self::DeleteSelection
+                | Self::DeleteCurrentLine
+                | Self::DeleteToLineEnd
+                | Self::DeleteWordForward
+                | Self::DeleteWordBackward
+                | Self::ChangeSelection
+                | Self::ChangeWordForward
+                | Self::ChangeWordBackward
+                | Self::ChangeToLineEnd
+                | Self::ReplaceChar(_)
+                | Self::JoinLines
+                // Yank / paste
+                | Self::YankSelection
+                | Self::YankCurrentLine
+                | Self::YankToWordEnd
+                | Self::PasteAfter
+                | Self::PasteBefore
+                | Self::EditorPaste
+                | Self::PasteSystemClipboard
+                | Self::VisualPaste
+                // Comment / wrap
+                | Self::ToggleLineComment
+                | Self::ToggleSelectionComment
+                | Self::WrapSelectionWithStar
+                // Undo / redo
+                | Self::Undo
+                | Self::Redo
+                // Motions
+                | Self::MoveLeft
+                | Self::MoveRight
+                | Self::MoveUp
+                | Self::MoveDown
+                | Self::MoveWordForward
+                | Self::MoveWordBackward
+                | Self::MoveWordEnd
+                | Self::MoveToLineStart
+                | Self::MoveToLineEnd
+                | Self::MoveToFirstNonWhitespace
+                | Self::MoveToFirstLine
+                | Self::MoveToLastLine
+                | Self::MoveParagraphUp
+                | Self::MoveParagraphDown
+                | Self::MatchBracket
+                | Self::MoveFindChar(..)
+                | Self::CenterCursorLine
+                | Self::ScrollHalfPageUp
+                | Self::ScrollHalfPageDown
+                // Operators (d/c/y + motion) and mode switches (i/a/v/Esc…)
+                | Self::Operate { .. }
+                | Self::SwitchMode(_)
+        )
+    }
+
     pub fn supports_press_and_hold_repeat(&self) -> bool {
         matches!(
             self,
@@ -684,6 +786,24 @@ impl Command {
                 | Self::CodeGraphNavRight
                 | Self::CodeGraphNavUp
                 | Self::CodeGraphNavDown
+                // NetherCanvas Navigate: hold hjkl to glide a card, Shift+hjkl to
+                // pan, arrows to sweep focus, and +/- to ramp a card's context.
+                | Self::CanvasMoveLeft
+                | Self::CanvasMoveRight
+                | Self::CanvasMoveUp
+                | Self::CanvasMoveDown
+                | Self::CanvasPanLeft
+                | Self::CanvasPanRight
+                | Self::CanvasPanUp
+                | Self::CanvasPanDown
+                | Self::CanvasFocusLeft
+                | Self::CanvasFocusRight
+                | Self::CanvasFocusUp
+                | Self::CanvasFocusDown
+                | Self::CanvasContextExpand
+                | Self::CanvasContextShrink
+                | Self::CanvasWidthExpand
+                | Self::CanvasWidthShrink
         )
     }
 }

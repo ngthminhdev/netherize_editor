@@ -13,16 +13,58 @@ impl InputMap {
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
-        if input.named_key == Some(NamedKey::Escape) {
+        // `g`-prefix sequences: `gd` = definition, `gr` = references (synced with
+        // the main editor). The pending flag is cleared on every keypress.
+        let pending_g = self.canvas_pending_g.replace(false);
+        if pending_g && !input.has_command_modifier() {
+            if input.physical_key == Some(KeyD) {
+                return Some(KeybindingMatch {
+                    command: Command::CanvasExpandCallee,
+                    reason: "canvas: gd -> definition",
+                });
+            }
+            if input.physical_key == Some(KeyR) {
+                return Some(KeybindingMatch {
+                    command: Command::CanvasExpandCaller,
+                    reason: "canvas: gr -> references",
+                });
+            }
+            // Any other key: `g` was a false start — fall through and treat it
+            // as a normal canvas key.
+        }
+
+        // `space`-prefix sequence: `space x` closes the focused card.
+        let pending_space = self.canvas_pending_space.replace(false);
+        if pending_space && !input.has_command_modifier() && input.physical_key == Some(KeyX) {
             return Some(KeybindingMatch {
-                command: Command::CanvasClose,
-                reason: "canvas: Esc -> close",
+                command: Command::CanvasCloseFocused,
+                reason: "canvas: space x -> close focused card",
             });
         }
+
+        // Phase B two-stage Esc: from card-navigation the first Esc pushes the
+        // canvas to the background (editor regains focus, cards stay floating);
+        // a second Esc — handled by the editor-focus interceptor — closes it.
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasEnterBackground,
+                reason: "canvas: Esc -> background (1st stage)",
+            });
+        }
+        // Enter promotes the focused card to a live mini-editor (Phase B). Def +
+        // refs spawning lives on gd/gr (and the initial gc).
         if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
             return Some(KeybindingMatch {
-                command: Command::CanvasSpawnRelations,
-                reason: "canvas: Enter -> spawn relations",
+                command: Command::CanvasEnterEdit,
+                reason: "canvas: Enter -> edit focused card",
+            });
+        }
+        // `o` opens the focused card's file as a real buffer tab (cursor at the
+        // symbol) and stashes the canvas; `gc` restores it.
+        if !input.has_command_modifier() && input.physical_key == Some(KeyO) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasOpenCardBuffer,
+                reason: "canvas: o -> open focused card as a buffer tab",
             });
         }
         if !input.has_command_modifier() && input.named_key == Some(NamedKey::Tab) {
@@ -59,42 +101,46 @@ impl InputMap {
                 reason: "canvas: ↓ focus down",
             });
         }
-        // hjkl pans the canvas.
+        // hjkl move the FOCUSED card; Shift+hjkl pan the whole canvas.
+        let shift = input.modifiers.shift_key();
         if input.physical_key == Some(KeyH) {
             return Some(KeybindingMatch {
-                command: Command::CanvasPanLeft,
-                reason: "canvas: h pan left",
+                command: if shift { Command::CanvasPanLeft } else { Command::CanvasMoveLeft },
+                reason: "canvas: h move card / ⇧ pan left",
             });
         }
         if input.physical_key == Some(KeyL) {
             return Some(KeybindingMatch {
-                command: Command::CanvasPanRight,
-                reason: "canvas: l pan right",
+                command: if shift { Command::CanvasPanRight } else { Command::CanvasMoveRight },
+                reason: "canvas: l move card / ⇧ pan right",
             });
         }
         if input.physical_key == Some(KeyK) {
             return Some(KeybindingMatch {
-                command: Command::CanvasPanUp,
-                reason: "canvas: k pan up",
+                command: if shift { Command::CanvasPanUp } else { Command::CanvasMoveUp },
+                reason: "canvas: k move card / ⇧ pan up",
             });
         }
         if input.physical_key == Some(KeyJ) {
             return Some(KeybindingMatch {
-                command: Command::CanvasPanDown,
-                reason: "canvas: j pan down",
+                command: if shift { Command::CanvasPanDown } else { Command::CanvasMoveDown },
+                reason: "canvas: j move card / ⇧ pan down",
             });
         }
-        // E expand callee, R expand caller, P pin.
-        if input.physical_key == Some(KeyE) {
+        // `g` starts a gd/gr sequence; consume it.
+        if input.physical_key == Some(KeyG) {
+            self.canvas_pending_g.set(true);
             return Some(KeybindingMatch {
-                command: Command::CanvasExpandCallee,
-                reason: "canvas: E expand callee",
+                command: Command::CanvasNoop,
+                reason: "canvas: g prefix",
             });
         }
-        if input.physical_key == Some(KeyR) {
+        // `space` starts a `space x` (close focused card) sequence; consume it.
+        if input.named_key == Some(NamedKey::Space) {
+            self.canvas_pending_space.set(true);
             return Some(KeybindingMatch {
-                command: Command::CanvasExpandCaller,
-                reason: "canvas: R expand caller",
+                command: Command::CanvasNoop,
+                reason: "canvas: space prefix",
             });
         }
         if input.physical_key == Some(KeyP) {
@@ -103,16 +149,26 @@ impl InputMap {
                 reason: "canvas: P toggle pin",
             });
         }
+        // `=`/`-` adjust the focused card's CONTEXT height; with Shift (`+`/`_`)
+        // they adjust its WIDTH instead.
         if input.physical_key == Some(Equal) {
             return Some(KeybindingMatch {
-                command: Command::CanvasZoomIn,
-                reason: "canvas: + zoom in",
+                command: if shift {
+                    Command::CanvasWidthExpand
+                } else {
+                    Command::CanvasContextExpand
+                },
+                reason: "canvas: = more context / ⇧ wider",
             });
         }
         if input.physical_key == Some(Minus) {
             return Some(KeybindingMatch {
-                command: Command::CanvasZoomOut,
-                reason: "canvas: - zoom out",
+                command: if shift {
+                    Command::CanvasWidthShrink
+                } else {
+                    Command::CanvasContextShrink
+                },
+                reason: "canvas: - less context / ⇧ narrower",
             });
         }
         None

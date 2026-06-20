@@ -203,6 +203,8 @@ impl Renderer {
             caret_pipeline,
             editor_cursor_overlay_pipeline,
             editor_scissor: None,
+            editor_caret_screen: None,
+            editor_focal_screen: None,
             editor_overlay_text_system,
             editor_overlay_text_pipeline,
             editor_overlay_glyph_instances: Vec::new(),
@@ -435,6 +437,10 @@ impl Renderer {
         // Sidebar text must use NerdFont to render PUA glyphs without mojibake.
         self.text_system.set_font_family(family);
         self.editor_overlay_text_system.set_font_family(family);
+        // NetherCanvas cards must track the configured editor font too — without
+        // this they keep the startup default font (the cards looked like a
+        // different font than the editor after the real theme config was applied).
+        self.canvas_text_system.set_font_family(family);
         self.sidebar_text_system.set_font_family(nerd_family);
         self.terminal_text_system.set_font_family(nerd_family);
         self.right_terminal_text_system.set_font_family(nerd_family);
@@ -556,6 +562,11 @@ impl Renderer {
             &mut self.topbar_text_pipeline,
             &mut self.statusbar_text_pipeline,
             &mut self.palette_text_pipeline,
+            // NetherCanvas overlay text — MUST be resized too, else its
+            // `screen_size` uniform goes stale and canvas glyphs project at a
+            // different scale than the canvas region backgrounds (cards/hint
+            // bar), so text drifts off its card and the hint text lands off-bar.
+            &mut self.canvas_text_pipeline,
             &mut self.lsp_guide_text_pipeline,
             &mut self.system_dep_text_pipeline,
             &mut self.diagnostic_hover_text_pipeline,

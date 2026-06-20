@@ -3292,5 +3292,411 @@
       "wrap",
       "rendering"
     ]
+  },
+  {
+    "id": 188,
+    "error_message": "NetherCanvas relation cards were a fixed 14-line height regardless of content, leaving a tall empty gap below short snippets (esp. symbols near a file's start/end).",
+    "root_cause": "canvas_block_size() hardcoded lines=14.0 and open_canvas stored one uniform block_h used for every card; canvas_add_relations placed cards at focal.y + idx*(block_h+GAP), so every card got the max height even when its snapshot had far fewer lines.",
+    "fix": "Added CanvasState.line_h + CanvasState::card_height(n) (clamp n to [CARD_MIN_LINES=3, CARD_MAX_LINES=14], height = line_h*(CARD_HEADER_LINES+n+CARD_BOTTOM_LINES)). canvas_add_relations now sizes each card from its snapshot's actual line count and stacks with a cumulative y-cursor (below the lowest existing card) instead of idx*fixed_step. Renderer title_h now uses crate::canvas::CARD_HEADER_LINES so sizing & drawing share one factor.",
+    "tags": [
+      "nethercanvas",
+      "spatial-canvas",
+      "card-height",
+      "layout",
+      "renderer",
+      "single-source-of-truth"
+    ]
+  },
+  {
+    "id": 189,
+    "error_message": "Definition card and the first Caller card showed the same source region (gopls returns the declaration as a reference), looking like a duplicate/overlap.",
+    "root_cause": "gopls textDocument/references includes the declaration, so a Caller location coincides with the Definition location. canvas_add_relations did no dedup, creating two cards for the same (path,line).",
+    "fix": "canvas_add_relations now dedups by (path, lsp_line) across existing non-focal blocks: a duplicate is dropped, and a Definition supersedes a previously-added Caller at the same site (handles either async arrival order of the def/refs results).",
+    "tags": [
+      "nethercanvas",
+      "spatial-canvas",
+      "gopls",
+      "references",
+      "dedup",
+      "declaration"
+    ]
+  },
+  {
+    "id": 190,
+    "error_message": "Connector lines were anchored to the invisible focal block's screen position, not the editor's real cursor line.",
+    "root_cause": "The focal card is not drawn (editor is the focal anchor), but the connector still used cam.world_to_screen(focal.world) as its origin, so it started from an empty area instead of the editor's cursor line.",
+    "fix": "Renderer captures the primary editor caret screen rect into Renderer.editor_caret_screen (set in update_editor_content/update_editor_caret, cleared in clear_editor_content). update_canvas_content starts each elbow connector at the CARET X (the focal symbol, left side), caret vertical center, running rightward into each card's left edge; falls back to the focal block when the caret is unknown. NOTE: first attempt anchored at the editor's right edge (ax+aw) which was wrong — the editor fills the full width and cards overlay its right half, so the elbows wrapped around the cards' right side (user screenshot). Corrected to caret_x.clamp(ax, ax+aw).",
+    "tags": [
+      "nethercanvas",
+      "spatial-canvas",
+      "connector",
+      "editor-geometry",
+      "caret",
+      "renderer"
+    ]
+  },
+  {
+    "id": 191,
+    "error_message": "NetherCanvas card TEXT (code, title, hint keycaps) drifted away from card BACKGROUNDS — misaligned at open, drifting more on each hjkl pan; the bottom hint text/title were effectively invisible (generated 57 glyphs but landed off the bar).",
+    "root_cause": "Renderer::resize() updates the screen_size uniform for ~20 text pipelines + region_pipeline + caret_pipeline, but the NetherCanvas overlay's `canvas_text_pipeline` was OMITTED from that list. Card/hint BACKGROUNDS draw via the shared region_pipeline (resized → correct screen_size), while card/hint TEXT draws via canvas_text_pipeline (stale screen_size after any window resize). The text shader maps physical-px glyph positions to NDC using screen_size; a stale screen_size scales canvas text differently than the regions, so text and its card background diverge — and the divergence grows with coordinate magnitude (i.e. with pan offset). Confirmed via a temporary eprintln: hint produced 57 glyphs (generation fine) yet was invisible → a projection/scale bug, not generation. Window had been resized (4044x2500 → 4080x2546), triggering the stale state.",
+    "fix": "Added `&mut self.canvas_text_pipeline` to the pipeline list in Renderer::resize() (src/render/renderer/lifecycle.rs) so its screen_size uniform tracks the surface like every other text pipeline. canvas_icon_pipeline is unaffected (it takes the viewport size per upload_instances call, not via a persistent uniform).",
+    "tags": [
+      "nethercanvas",
+      "spatial-canvas",
+      "resize",
+      "screen_size",
+      "uniform",
+      "text-pipeline",
+      "coordinate-scale",
+      "drift",
+      "gpu"
+    ]
+  },
+  {
+    "id": 192,
+    "error_message": "NetherCanvas card code rendered in a different font than the main editor — the app's configured editor font was not applied to the canvas.",
+    "root_cause": "Renderer::apply_theme() (lifecycle.rs) re-applies set_font_family to ~19 text systems when the theme/config loads, but OMITTED canvas_text_system. The app constructs the renderer with a default theme (canvas_text_system gets the default font at make_text_system time) then calls apply_theme(real_config); every other text system got the configured editor font, but canvas_text_system kept the startup default. Same omission class as the resize/screen_size bug (canvas pipeline/system added later, forgotten in an update loop). Font loading itself was fine (every TextSystem::new runs register_bundled_fonts).",
+    "fix": "Added `self.canvas_text_system.set_font_family(family);` in Renderer::apply_theme (next to the editor/editor_overlay set_font_family calls) so canvas cards track the configured editor font on every theme/config apply.",
+    "tags": [
+      "nethercanvas",
+      "spatial-canvas",
+      "font",
+      "apply_theme",
+      "set_font_family",
+      "config",
+      "omission",
+      "same-class-as-resize"
+    ]
+  },
+  {
+    "id": 193,
+    "error_message": "NetherCanvas card +/- resized the box but did not load more code (line count unchanged); cards bloated empty or clipped text vertically",
+    "root_cause": "+/- mapped to canvas_scale_cards which multiplied the card BOX by card_scale instead of re-reading the file. snapshot.text/line-count never changed, and CARD_MAX_LINES=18 capped growth.",
+    "fix": "Replaced CanvasState.card_scale with context_lines (default 8, clamp 3..24). +/- => CanvasContextExpand/Shrink => AppShell::canvas_change_context re-reads each relation card via build_canvas_relation_snapshot at the new context and AppState::canvas_apply_context re-stacks with fixed width. Raised CARD_MAX_LINES 18->30; clamped renderer body_bottom to the viewport so taller cards show \"+N more\" rather than clipping.",
+    "tags": [
+      "nethercanvas",
+      "canvas",
+      "context-lines",
+      "rendering",
+      "phase-a",
+      "issue-2"
+    ]
+  },
+  {
+    "id": 194,
+    "error_message": "Phase B Esc interceptor hijacked Esc from a focused sidebar/terminal/panel while the canvas was backgrounded (S3) or editing (S2)",
+    "root_cause": "The Esc interceptor in InputMap::resolve fired on canvas_interaction==Some(EditCard|Background)+Normal+Esc but had NO focus guard, and sat before the per-focus dispatch. canvas_interaction stays Some(Background) even after focusing the Explorer/Inspector/Terminal, so their Esc was swallowed (returned CanvasClose/CanvasExitEdit).",
+    "fix": "Added && context.focus == InputFocusContext::Editor to the interceptor guard so the canvas owns Esc only while the editor holds focus; other panels keep their own Esc. Added regression test canvas_does_not_hijack_esc_from_other_panels.",
+    "tags": [
+      "nethercanvas",
+      "phase-b",
+      "input-routing",
+      "focus",
+      "esc"
+    ]
+  },
+  {
+    "id": 195,
+    "error_message": "Editing a card permanently corrupted its source provenance (origin.lsp_line), breaking dedup and +/- re-source for that card",
+    "root_cause": "canvas_update_edit_card set b.origin.lsp_line = cursor_line every render frame to make the active-line band follow the caret. origin.lsp_line is the dedup key (canvas_add_relations) and the re-source anchor (canvas_change_context), so after an edit the card re-centered on the stale caret line and dedup mis-fired.",
+    "fix": "Stopped mutating origin.lsp_line; the renderer now derives the active-line band for the edit-target card from the transient EditCard cursor (interaction.cursor_line), leaving origin pinned to the real source site.",
+    "tags": [
+      "nethercanvas",
+      "phase-b",
+      "edit-in-card",
+      "dedup",
+      "rendering"
+    ]
+  },
+  {
+    "id": 196,
+    "error_message": "+/- context re-layout snapped pinned cards back into the column, violating the pin immovable contract",
+    "root_cause": "canvas_apply_context re-stacked ALL non-Focal cards (filter relation!=Focal only), overwriting world.x/y unconditionally — it never consulted b.pinned.",
+    "fix": "canvas_apply_context now skips pinned cards (keeps world.x/y, only refreshes height) and does not advance the stacking cursor past them. Added test apply_context_preserves_pinned_card_position.",
+    "tags": [
+      "nethercanvas",
+      "phase-b",
+      "context-lines",
+      "pin"
+    ]
+  },
+  {
+    "id": 197,
+    "error_message": "Edit-in-card opened the card's file as the active buffer and never restored it; after editing a card and closing the canvas the user was stranded in the card's file, so 'spatial canvas lost its meaning'.",
+    "root_cause": "canvas_begin_edit switched the active buffer via open_file (single-buffer editor reality) but canvas_end_edit/close_canvas only dropped the interaction state — no buffer restore. The switch was also visually exposed (light scrim, statusbar showed the card filename).",
+    "fix": "Added canvas_anchor_origin + canvas_restore_origin_buffer; canvas_end_edit and close_canvas (while editing) restore the focal file+cursor. Deepened the edit scrim to 0.66, lifted the edit-card halo to 5.0, and overrode the statusbar filename to the focal document during Navigate/EditCard. Tests: edit_card_round_trip_restores_origin_buffer.",
+    "tags": [
+      "nethercanvas",
+      "phase-b",
+      "edit-in-card",
+      "buffer-switch",
+      "ux"
+    ]
+  },
+  {
+    "id": 198,
+    "error_message": "If the focal file vanished from disk mid-edit, canvas_restore_origin_buffer's open_file failed (canonicalize errors first) and left the user stranded in the card's file on close.",
+    "root_cause": "Restore used open_file, which canonicalizes the path before consulting the in-memory buffer, so a deleted/renamed focal file made restore a no-op while end_edit had already flipped to Navigate. Found by adversarial review.",
+    "fix": "Added AppState::activate_open_text_buffer_for_path (in-memory activation, no disk read); restore prefers it and only falls back to open_file. The focal buffer is always still open, so restore always succeeds. Test: edit_card_restores_focal_even_if_focal_file_vanished.",
+    "tags": [
+      "nethercanvas",
+      "phase-b",
+      "edit-in-card",
+      "restore",
+      "review-finding"
+    ]
+  },
+  {
+    "id": 199,
+    "error_message": "Editing a card showed the card's file in the MAIN editor (and added a tab) — buffer-switch made the card file the active buffer; user: 'main editor must keep showing the gc-origin file, edit only in the card'.",
+    "root_cause": "Phase B §13 begin_edit called open_file(card) → self.text became the card file → the main editor (which renders the active buffer) showed it. Hiding it with a scrim was the wrong model.",
+    "fix": "Re-architected (v2): the card gets its own CanvasEditSession; the full editor engine edits it via a SCOPED SWAP during dispatch, so self.text always stays the gc-origin file. Reverted the open_file switch / restore / statusbar override / heavy scrim. Test: edit_card_round_trip_keeps_main_editor_on_origin + card_edit_swap_isolates_main_buffer_and_saves_card_file. Spec: 2026-06-20-spatial-canvas-incard-edit-v2-design.md.",
+    "tags": [
+      "nethercanvas",
+      "edit-in-card",
+      "v2",
+      "scoped-swap",
+      "ux"
+    ]
+  },
+  {
+    "id": 200,
+    "error_message": "The scoped swap leaked: card edits corrupted the main editor (cleared its folds, polluted jump list, overwrote search query) and fired LSP didChange/parse/highlight/AI side effects against the card file and main editor.",
+    "root_cause": "Routing card commands through the SHELL pipeline (handle_command_with_count_impl) pulled in shell-side reactions keyed off the active buffer; and several edit-mutated AppState fields (folds, jump stacks, last_search_query, highlight queues, bracket/yank flash) were not in the swap bundle. Found by two-agent adversarial review.",
+    "fix": "dispatch_card_editing_command now runs the CORE dispatch (dispatch_command_with_clipboard_count), not the shell pipeline — no LSP/parse/highlight/AI/completion shell side effects. Expanded the swap bundle with pending_highlight_edits, search_highlights, folded_ranges, foldable_ranges_cache, auto_folded_long_lines, matched_bracket_pos, bracket_ripple_*, yank_flash_*, jump_back_stack, jump_forward_stack, last_search_query. Test asserts main folds/jumplist/search/buffer survive a card edit.",
+    "tags": [
+      "nethercanvas",
+      "edit-in-card",
+      "v2",
+      "scoped-swap",
+      "review-finding",
+      "isolation"
+    ]
+  },
+  {
+    "id": 201,
+    "error_message": "The in-card edit caret rendered at the wrong X position on tab-indented lines (drifted left of the text).",
+    "root_cause": "The card body shaped tabs via cosmic-text (default width) but the caret X used the raw character column (cc * char_w), ignoring tab expansion. canvas_text_system never had set_tab_width called.",
+    "fix": "Set canvas_text_system tab width to CARD_TAB_WIDTH=4 and compute the caret's VISUAL column by expanding tabs with the same width before caret_x = code_x + vis_col*char_w.",
+    "tags": [
+      "nethercanvas",
+      "edit-in-card",
+      "v2",
+      "caret",
+      "rendering",
+      "review-finding"
+    ]
+  },
+  {
+    "id": 202,
+    "error_message": "Saving a card whose file is the SAME as the main editor's open file would write card text to disk + the buffer slot but leave self.text (the live main buffer) diverged, silently clobbering the main editor's unsaved edits.",
+    "root_cause": "canvas_save_edit_session only synced self.buffers slots, never self.text; and begin_edit read the card from disk (not the live buffer), so the card never had the main editor's unsaved edits.",
+    "fix": "begin_edit seeds the session from self.text when the card path == active_file; canvas_save_edit_session writes through self.text + clears dirty in that case. Uses overlays::path_matches for canonical comparison.",
+    "tags": [
+      "nethercanvas",
+      "edit-in-card",
+      "v2",
+      "save",
+      "data-loss",
+      "review-finding"
+    ]
+  },
+  {
+    "id": 203,
+    "error_message": "In-card edit caret rendered as a thin '|' at the wrong X position instead of a BLOCK cursor (like the main editor in Normal mode).",
+    "root_cause": "The card caret was always a thin beam and its X used an estimated char-grid (vis_col*char_w) that drifted from the cosmic-text-shaped body. No mode (block vs beam) was plumbed to the canvas renderer.",
+    "fix": "update_canvas_content takes caret_block (true in Normal/Visual, from the shared global mode); draws a full-cell block (alpha 0.5, behind the glyph so the char shows) vs a thin beam in Insert. Caret X is now measured by shaping the cursor PREFIX with the same canvas_text_system + CARD_TAB_WIDTH the body uses (buffer().layout_runs().line_w), with a tab-expansion fallback — exact glyph alignment incl. tabs.",
+    "tags": [
+      "nethercanvas",
+      "edit-in-card",
+      "v2",
+      "caret",
+      "rendering",
+      "review-finding"
+    ]
+  },
+  {
+    "id": 204,
+    "error_message": "gd/gr inside a card spawned a new card but the connector was drawn from the main editor (focal caret) and focus did not switch to the new card.",
+    "root_cause": "All connectors originated from the focal/editor caret; new cards had no notion of a parent card; canvas_add_relations only auto-focused from the focal block, so an in-card spawn (focus already on a relation) didn't move focus.",
+    "fix": "Added CanvasBlock.parent + AppShell canvas_def_parent/refs_parent threaded from canvas_card_spawn → attach_canvas_relations → canvas_add_relations_with_parent (sets parent, focuses the first new card when parent is Some). Renderer draws each card's connector from its parent card (fallback to focal caret via .or). Closed-parent falls back safely.",
+    "tags": [
+      "nethercanvas",
+      "edit-in-card",
+      "v2",
+      "gd-gr",
+      "connector",
+      "focus",
+      "review-finding"
+    ]
+  },
+  {
+    "id": 205,
+    "error_message": "gd/gr inside a card stopped spawning child cards: worker LspRequest failed (revision=0): definition/references rejected: LSP server not running (even though gopls was running).",
+    "root_cause": "canvas_card_spawn submits definition/references for the CARD file's URI, but canvas_begin_edit only reads the file into a CanvasEditSession and never sends didOpen. The worker resolves the server via lsp_sessions.get_handle_by_uri(uri), which ONLY matches a session where process.is_document_open(uri) is true. The card file (typically different from the active file) was never opened in the LSP, so the lookup returned None and the request was rejected. Focal gc works only because it queries the active-file URI, which IS didOpen'd at startup.",
+    "fix": "In-card LSP Phase 1: register the card file as a real LSP document for the life of an edit session. Added AppState::canvas_card_lsp_target() (pure: Some(path) iff session path != active_file and not an already-open text buffer) + canvas_edit_session_text(); AppShell fields canvas_card_lsp_open/canvas_card_lsp_version + helpers submit_canvas_card_did_open/did_change/did_close. Hooks: CanvasEnterEdit -> didOpen, dispatch_card_editing_command (state_changed) -> didChange, CanvasExitEdit/CanvasClose -> didClose. didOpen resolves the workspace server via the worker's sessions_for_document_uri (root contains URI), registering the doc so get_handle_by_uri finds it and gd/gr resolve.",
+    "tags": [
+      "nethercanvas",
+      "in-card-edit",
+      "lsp",
+      "gd",
+      "gr",
+      "didOpen",
+      "spatial-canvas",
+      "regression"
+    ]
+  },
+  {
+    "id": 206,
+    "error_message": "After gd/gr in a card spawned a child card and drew the connector correctly, the focus did not visibly jump to the new card — the user had to press Esc (back to CANVAS Navigate) before the focus moved to it.",
+    "root_cause": "canvas_add_relations_with_parent set state.focused = child, but the interaction stayed CanvasInteraction::EditCard{parent}. The canvas renderer's focus ring is gated on edit_block.is_none() (so the edit-target rings, not canvas.focused, while editing), so the focus visual only followed canvas.focused once EditCard ended (the Esc).",
+    "fix": "Added AppState::canvas_end_edit_for_spawn(parent) (pure, unit-tested): if still editing `parent`, leave EditCard (-> Navigate) and return true. Wired in attach_canvas_relations (async def/refs handler): after canvas_add_relations_with_parent succeeds with a parent, call it and, on true, submit_canvas_card_did_close() to release the parent card's LSP doc. Focus already points at the child (set by add_relations_with_parent); leaving EditCard makes the ring land on it without an Esc. Guarded so we only auto-exit when still editing the very card that spawned (don't yank focus if the user moved on). Same session keep/drop + no data loss vs the manual Esc path.",
+    "tags": [
+      "nethercanvas",
+      "in-card-edit",
+      "gd",
+      "gr",
+      "focus",
+      "editcard",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 207,
+    "error_message": "In-card overlay (hover/completion) text rendered at the wrong (too large) size.",
+    "root_cause": "draw_card_overlay runs AFTER the canvas bottom hint bar, which calls canvas_text_system.set_metrics(key_fs, key_lh). The overlay laid out text without resetting the text-system metrics, so glyphs shaped at the hint-bar font size while rows were spaced at the card line height.",
+    "fix": "Reset canvas_text_system metrics to (fs, line_height) + tab width at the start of draw_card_overlay before laying out popup text.",
+    "tags": [
+      "nethercanvas",
+      "in-card-lsp",
+      "render",
+      "hover",
+      "completion",
+      "text-metrics"
+    ]
+  },
+  {
+    "id": 208,
+    "error_message": "AI inline (ghost text) cut into the LSP completion flow: while the completion menu was open and the user typed to filter/pick a field/func, AI inline kept firing and even CLOSED the menu when its result arrived.",
+    "root_cause": "Two issues. (1) queue_ai_inline_completion (setup.rs) had no `has_completion()` gate, so every keystroke re-queued an AI inline request even while the LSP completion menu was open (LSP completion itself was already gated at commands_editor.rs). (2) The AI inline result handler (async_results/ai.rs) was 'ghost text wins': on showing a suggestion it called dismiss_completion_for_ghost_text(), actively closing the open completion menu.",
+    "fix": "LSP completion now wins over AI inline. Added `if has_completion() { cancel; return }` gates to (a) queue_ai_inline_completion and (b) flush_pending_ai_inline_completion (race: menu opened after queue), and (c) the AiInlineCompletionChunk/Result arms in async_results/ai.rs (drop the AI result while the menu is open instead of showing it + closing the menu). Net: AI inline only fires in Insert mode when no completion menu is showing. Ctrl-Space already cancels in-flight AI (submit_lsp_completion_manual resets anchor + bumps revision + cancels token) — verified by existing test; the new gates stop it re-appearing as the user keeps typing.",
+    "tags": [
+      "ai-inline",
+      "lsp-completion",
+      "ghost-text",
+      "editor",
+      "ux",
+      "completion-wins"
+    ]
+  },
+  {
+    "id": 209,
+    "error_message": "In-card hover/completion popups had no opaque background coverage — the card's code text showed THROUGH and overlapped the popup text (hard to read).",
+    "root_cause": "The canvas renders in 3 sub-passes (ALL chrome -> ALL icons -> ALL text). The card code glyphs AND the popup glyphs both live in one buffer (canvas_glyph_instances) drawn in the single text pass, while the popup background is a chrome quad drawn in the earlier chrome pass. So an opaque bg can't occlude code glyphs that render after it — the code text bled through the popup. (The main editor doesn't hit this because its completion popup renders in a separate later overlay pass.)",
+    "fix": "draw_completion_menu + draw_card_hover now return the popup rect and use an opaque bg (alpha=1). After drawing a popup, the canvas DROPS card-code glyphs whose rect overlaps the popup rect (split_off the popup's own glyphs, retain non-overlapping code glyphs, re-append the popup glyphs) so only the popup renders in that region.",
+    "tags": [
+      "nethercanvas",
+      "render",
+      "completion",
+      "hover",
+      "z-order",
+      "overlap",
+      "glyph-pass"
+    ]
+  },
+  {
+    "id": 210,
+    "error_message": "While editing in a card (focus in card), Ctrl-Space opened the LSP completion dropdown in the MAIN editor outside the card; other editor LSP/search/fold commands also acted on the main editor instead of the card.",
+    "root_cause": "The in-card command gate (handle_command_with_count_impl) only intercepted SaveFile/gd/gr/hover + is_card_editing_command. TriggerCompletion (Ctrl-Space), LspPreviewDefinition, LspRename, LspFormatDocument, CodeAction, and search/fold commands fell through to the main-editor handlers, acting on the active (gc-origin) buffer behind the card.",
+    "fix": "Card gate now: TriggerCompletion -> submit_canvas_card_completion (card menu); LspPreviewDefinition -> canvas_card_spawn(true) (like gd); and suppresses (no-op, consumed) LspRename/LspFormatDocument/CodeAction/OpenInFileSearch/SearchNext/SearchPrev/SearchWordUnderCursor/ToggleFold/ToggleFoldAll while editing a card (not card-scoped yet) so nothing leaks to the main editor. Principle: focus in the card => action stays in the card.",
+    "tags": [
+      "nethercanvas",
+      "in-card-edit",
+      "ctrl-space",
+      "completion",
+      "command-routing",
+      "focus",
+      "leak"
+    ]
+  },
+  {
+    "id": 211,
+    "error_message": "Canvas relation connectors followed the live editor caret — coding in the main editor dragged the connector lines around instead of staying at the func where `gc` was triggered.",
+    "root_cause": "The canvas renderer's `focal_source` used `editor_caret_screen` (the live caret rect) as the connector origin, so any cursor move re-anchored the connectors.",
+    "fix": "Added `Renderer.editor_focal_screen`: in the editor render (viewport.rs), when a canvas is active AND the editor shows the focal file, project the FOCAL block's origin line through the same fold/scroll geometry as the caret and store its rect (path-guarded via AppState::canvas_focal_position). The canvas renderer's focal_source now prefers editor_focal_screen, falling back to editor_caret_screen then the focal world rect. Connectors stay on the gc symbol while the caret moves.",
+    "tags": [
+      "nethercanvas",
+      "connector",
+      "render",
+      "focal",
+      "caret",
+      "scroll-projection"
+    ]
+  },
+  {
+    "id": 212,
+    "error_message": "Connector anchored at the gc-focal (buglog 211) was off by ~1 line — moving the caret with hjkl pushed the line up a row.",
+    "root_cause": "editor_focal_screen used an ABSOLUTE projection (viewport_text_top + focal_visual_y - visual_scroll_y), which didn't exactly match where the editor actually renders a line (the caret origin folds in an extra line_height), giving a constant ~1-line offset that became visible on caret movement.",
+    "fix": "Compute the focal line's top RELATIVE to the caret line, which renders at the known-correct caret_layout.top: focal_top = caret_layout.top + (visual_y(focal_line) - visual_y(cursor_line)). Invariant under cursor moves and free of any absolute-projection off-by-one.",
+    "tags": [
+      "nethercanvas",
+      "connector",
+      "off-by-one",
+      "projection",
+      "render"
+    ]
+  },
+  {
+    "id": 213,
+    "error_message": "Canvas relation connector line stays stuck to editor viewport top/bottom edge when scrolling the main editor so the gc focal line goes off-screen — looks like a stale artifact.",
+    "root_cause": "focal_source in canvas.rs projected editor_focal_screen with y clamped to [ay, ay+ah]; when the focal line scrolled out of the visible text region the center_y clamped to the edge, pinning the connector origin to the viewport edge instead of hiding it.",
+    "fix": "Added a visible_anchor() closure that returns None when the anchor center_y falls outside [ay, ay+ah] (visible text region == editor_scissor). editor_focal_screen Some+off-screen now yields no connector (no caret fallback); caret/focal-world fallback kept only for the None (non-focal-file) branch.",
+    "tags": [
+      "canvas",
+      "connector",
+      "render",
+      "scroll",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 214,
+    "error_message": "User wanted relation cards rendered closer to the right edge (5% margin instead of 10%).",
+    "root_cause": "canvas_anchor_cards_right used viewport_w * 0.90 to place the card column right edge at 90% of viewport width (10% margin).",
+    "fix": "Changed factor to viewport_w * 0.95 (5% right margin); updated doc comment ~10% -> ~5%.",
+    "tags": [
+      "canvas",
+      "layout",
+      "spatial-canvas",
+      "ux"
+    ]
+  },
+  {
+    "id": 215,
+    "error_message": "Canvas relation connector still shows / stays frozen when scrolling the main editor; previous off-screen-hide fix (bug 213) had no effect.",
+    "root_cause": "editor_focal_screen was only recomputed in update_editor_caret (fast caret-only path). The full re-render path update_editor_content — which runs on scroll — never set it, so after a scroll the focal anchor was stale and the off-screen visibility check in canvas.rs saw the old (still on-screen) value and kept drawing.",
+    "fix": "Extracted compute_focal_screen() helper in viewport.rs and call it from BOTH update_editor_content (after editor_caret_screen, using projection.caret_layout.top) and update_editor_caret. Focal anchor now re-pins on every viewport change; off-screen hide (bug 213) now actually triggers.",
+    "tags": [
+      "canvas",
+      "connector",
+      "render",
+      "scroll",
+      "stale",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 216,
+    "error_message": "Canvas overlay rendered regardless of which file is active; user wanted it bound to the gc-origin file and hidden when switching files (file picker, Ctrl-h/Ctrl-l).",
+    "root_cause": "Render gate only checked canvas.is_some() && !stashed; nothing tied visibility to the focal file.",
+    "fix": "Added AppState::canvas_should_render() (canvas present && !stashed && active_file == focal file; fall back to show when focal path unknown). Wired into application.rs render gate AND setup.rs build_context focus (replacing !canvas_is_stashed) so a hidden canvas yields input focus to the editor. TDD test canvas_should_render_tracks_active_file_and_stash.",
+    "tags": [
+      "canvas",
+      "render",
+      "focus",
+      "file-binding",
+      "spatial-canvas",
+      "ux"
+    ]
   }
 ]

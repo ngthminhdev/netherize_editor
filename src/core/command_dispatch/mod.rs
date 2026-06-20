@@ -451,12 +451,24 @@ fn dispatch_command_with_clipboard_once(
         | Command::CanvasExpandCallee
         | Command::CanvasExpandCaller
         | Command::CanvasTogglePin
-        | Command::CanvasZoomIn
-        | Command::CanvasZoomOut
+        | Command::CanvasNoop
+        | Command::CanvasContextExpand
+        | Command::CanvasContextShrink
+        | Command::CanvasWidthExpand
+        | Command::CanvasWidthShrink
         | Command::CanvasPanLeft
         | Command::CanvasPanRight
         | Command::CanvasPanUp
         | Command::CanvasPanDown
+        | Command::CanvasMoveLeft
+        | Command::CanvasMoveRight
+        | Command::CanvasMoveUp
+        | Command::CanvasMoveDown
+        | Command::CanvasCloseFocused
+        | Command::CanvasEnterEdit
+        | Command::CanvasOpenCardBuffer
+        | Command::CanvasExitEdit
+        | Command::CanvasEnterBackground
         | Command::LspFormatDocument
         | Command::TriggerCompletion
         | Command::CodeAction

@@ -292,6 +292,66 @@ impl AppShell {
             return self.spawn_new_instance();
         }
 
+        // NetherCanvas in-card editing (v2): when a card edit session is active,
+        // route editor text/cursor/mode commands to the card via a scoped swap so
+        // `self.text` (the main editor) never leaves the gc-origin file. `⌘S` is
+        // handled specially (the card is not a buffer slot). During the recursive
+        // dispatch the session is taken out, so this does not re-enter.
+        if self.app_state.canvas_edit_session_block().is_some() {
+            if matches!(command, Command::SaveFile) {
+                return self.canvas_save_edit_card();
+            }
+            // `gd`/`gr` from a card spawn NEW cards from the card cursor instead
+            // of jumping the main editor.
+            if matches!(command, Command::LspGoToDefinition) {
+                return self.canvas_card_spawn(true);
+            }
+            if matches!(command, Command::LspReferences) {
+                return self.canvas_card_spawn(false);
+            }
+            // `gD` peek behaves like `gd` in a card — spawn a child card.
+            if matches!(command, Command::LspPreviewDefinition) {
+                return self.canvas_card_spawn(true);
+            }
+            // `K` hover → a doc box at the card caret (Phase 2 in-card LSP), not
+            // the main editor's FloatingBox.
+            if matches!(command, Command::LspHover) {
+                return self.canvas_card_hover();
+            }
+            // Ctrl-Space → manual completion FOR THE CARD (was leaking to the main
+            // editor's dropdown). Focus is in the card, so the action stays here.
+            if matches!(command, Command::TriggerCompletion) {
+                return self.submit_canvas_card_completion();
+            }
+            // Autocomplete navigation/accept while the card menu is open (Phase 3).
+            if self.canvas_completion.is_some()
+                && let Some(changed) = self.handle_canvas_completion_command(&command)
+            {
+                return changed;
+            }
+            // Editor actions that target the ACTIVE buffer are not card-scoped yet
+            // — suppress them while editing a card so they don't act on the main
+            // editor behind it ("focus here ⇒ act here"). Consumed as a no-op:
+            // in-card rename/format/code-action/search/fold are future work.
+            if matches!(
+                command,
+                Command::LspRename
+                    | Command::LspFormatDocument
+                    | Command::CodeAction
+                    | Command::OpenInFileSearch
+                    | Command::SearchNext
+                    | Command::SearchPrev
+                    | Command::SearchWordUnderCursor
+                    | Command::ToggleFold
+                    | Command::ToggleFoldAll
+            ) {
+                return false;
+            }
+            if command.is_card_editing_command() {
+                return self.dispatch_card_editing_command(command, repeat_count);
+            }
+        }
+
         let command_for_post_hooks = command.clone();
         let should_persist_history_after =
             Self::should_persist_history_after(&command_for_post_hooks);

@@ -2338,3 +2338,128 @@ fn palette_focus_vim_normal_routes_letters_to_vim_not_text_append() {
         other => panic!("expected FilePickerAppendQuery for 'd' in Insert, got {other:?}"),
     }
 }
+
+// ── NetherCanvas Phase B: focus / two-stage Esc routing ──────────────────────
+
+#[test]
+fn canvas_navigate_enter_edits_and_esc_backgrounds() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S1: card-navigation owns the keys (focus == Canvas).
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Canvas);
+    context.canvas_interaction = Some(CanvasInteraction::Navigate);
+
+    // Enter promotes the focused card to a live mini-editor.
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Enter, None), context),
+        Some(Command::CanvasEnterEdit),
+    );
+    // First Esc pushes the canvas to the background (does NOT close it).
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        Some(Command::CanvasEnterBackground),
+    );
+}
+
+#[test]
+fn canvas_edit_card_normal_esc_exits_edit() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S2: the editor holds focus for full editing; only Esc is intercepted.
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
+    context.canvas_interaction = Some(CanvasInteraction::EditCard {
+        block: 1,
+        cursor_line: 3,
+        cursor_col: 0,
+    });
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        Some(Command::CanvasExitEdit),
+    );
+}
+
+#[test]
+fn canvas_edit_card_insert_esc_falls_through_to_editor() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // In Insert mode, Esc must drop to Normal first (vim), NOT exit the card.
+    let mut context = KeybindingContext::with_focus(EditorMode::Insert, InputFocusContext::Editor);
+    context.canvas_interaction = Some(CanvasInteraction::EditCard {
+        block: 1,
+        cursor_line: 3,
+        cursor_col: 0,
+    });
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context);
+    assert_ne!(cmd, Some(Command::CanvasExitEdit));
+    assert_ne!(cmd, Some(Command::CanvasClose));
+}
+
+#[test]
+fn canvas_background_normal_esc_closes_canvas() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S3: editor has focus, cards float in the background; Esc closes the canvas.
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
+    context.canvas_interaction = Some(CanvasInteraction::Background);
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        Some(Command::CanvasClose),
+    );
+}
+
+#[test]
+fn canvas_does_not_hijack_esc_from_other_panels() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S3 with the Explorer focused: the canvas owns Esc only while the EDITOR
+    // holds focus — a focused sidebar/panel must keep its own Esc.
+    let mut ctx = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+    ctx.canvas_interaction = Some(CanvasInteraction::Background);
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), ctx);
+    assert_ne!(cmd, Some(Command::CanvasClose), "Esc on a focused panel must not close the canvas");
+    assert_ne!(cmd, Some(Command::CanvasExitEdit));
+
+    // S2 with the Explorer focused: Esc must not exit the edit either.
+    ctx.canvas_interaction = Some(CanvasInteraction::EditCard {
+        block: 1,
+        cursor_line: 0,
+        cursor_col: 0,
+    });
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), ctx);
+    assert_ne!(cmd, Some(Command::CanvasExitEdit));
+    assert_ne!(cmd, Some(Command::CanvasClose));
+}
+
+#[test]
+fn canvas_navigate_keys_press_and_hold_repeat() {
+    use crate::canvas::CanvasInteraction;
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Canvas);
+    context.canvas_interaction = Some(CanvasInteraction::Navigate);
+
+    // Helper: a held key must keep dispatching its canvas command (not stall).
+    let mut held = |input: NormalizedInput, expected: Command| {
+        match handler.route_repeated_normalized_input(input, &map, context) {
+            Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, expected),
+            other => panic!("expected repeated {expected:?}, got {other:?}"),
+        }
+    };
+
+    // hjkl glide the focused card.
+    held(char_input('j', KeyCode::KeyJ), Command::CanvasMoveDown);
+    held(char_input('l', KeyCode::KeyL), Command::CanvasMoveRight);
+    // Shift+hjkl pan the plane.
+    let shift_h = NormalizedInput {
+        physical_key: Some(KeyCode::KeyH),
+        named_key: None,
+        text: Some("H".into()),
+        modifiers: ModifiersState::SHIFT,
+    };
+    held(shift_h, Command::CanvasPanLeft);
+    // Arrows sweep focus between cards.
+    held(named_input(NamedKey::ArrowDown, None), Command::CanvasFocusDown);
+    // `+`/`-` ramp the focused card's context.
+    held(char_input('+', KeyCode::Equal), Command::CanvasContextExpand);
+    held(char_input('-', KeyCode::Minus), Command::CanvasContextShrink);
+}

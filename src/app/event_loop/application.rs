@@ -2445,6 +2445,9 @@ impl AppShell {
                 let filetype = self.app_state.active_filetype_label();
                 let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
                 let is_dirty = self.app_state.is_dirty();
+                // The in-card edit session (v2) never switches the active buffer,
+                // so `active_file` already IS the gc-origin file the main editor
+                // shows — no statusbar override needed.
                 let active_file_name = statusbar_source_path_label(
                     self.app_state.active_file(),
                     self.app_state.workspace_root_path(),
@@ -2531,8 +2534,16 @@ impl AppShell {
                         }
                     })
                 };
+                // Phase B status pill: Navigate → CANVAS, EditCard → CANVAS·EDIT,
+                // Background/none → the normal editor-mode pill.
+                let canvas_label = match self.app_state.canvas_interaction() {
+                    Some(crate::canvas::CanvasInteraction::Navigate) => Some("CANVAS"),
+                    Some(crate::canvas::CanvasInteraction::EditCard { .. }) => Some("CANVAS·EDIT"),
+                    _ => None,
+                };
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
+                    canvas_label,
                     &pending_keys,
                     git_branch,
                     is_dirty,
@@ -2595,9 +2606,23 @@ impl AppShell {
         }
 
         // NetherCanvas full-screen layer: build it while active, clear otherwise.
+        // While editing a card (S2), first refresh that card from the live buffer
+        // so the in-card view + caret track edits (no-op unless editing).
+        self.canvas_sync_edit_card();
+        // The card borrows the shared global editor mode; the renderer derives the
+        // caret shape, the edit-target card's mode-colored ring, and its header
+        // mode badge from it.
+        let canvas_mode = self.app_state.current_mode();
+        let card_completion = self.canvas_completion.as_ref();
         if let Some(renderer) = self.renderer.as_mut() {
-            if let Some(canvas) = self.app_state.canvas() {
-                renderer.update_canvas_content(canvas);
+            // The canvas is bound to its focal (gc-origin) file: it renders only
+            // while that file is the active buffer. Switching away (file picker,
+            // Ctrl-h/Ctrl-l) or stashing it (a card opened as a tab via `o`) keeps
+            // the canvas in state but hides it — returning to the focal file (or
+            // `gc`) shows it again.
+            let render_canvas = self.app_state.canvas_should_render();
+            if let Some(canvas) = self.app_state.canvas().filter(|_| render_canvas) {
+                renderer.update_canvas_content(canvas, canvas_mode, card_completion);
             } else {
                 renderer.clear_canvas();
             }

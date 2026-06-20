@@ -1,7 +1,7 @@
 //! Editor viewport rendering modules.
 
 mod buffers;
-mod completion;
+pub(crate) mod completion;
 mod extensions;
 mod fuzzy;
 mod help;

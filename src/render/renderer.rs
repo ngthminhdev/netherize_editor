@@ -144,6 +144,9 @@ pub enum AiInlineStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct StatusbarLayoutKey {
     pub(super) mode: EditorMode,
+    /// NetherCanvas status pill label when the canvas owns/overlays focus
+    /// (`CANVAS` / `CANVAS·EDIT`); `None` shows the normal editor-mode pill.
+    pub(super) canvas_label: Option<String>,
     pub(super) pending_keys: String,
     pub(super) git_branch: String,
     pub(super) is_dirty: bool,
@@ -192,6 +195,15 @@ pub struct Renderer {
     /// Redraws the glyph under the block cursor with a contrast color.
     pub(super) editor_cursor_overlay_pipeline: TextPipeline,
     pub(super) editor_scissor: Option<[u32; 4]>,
+    /// Screen-space rect `[x, y, w, h]` of the primary editor caret, captured
+    /// each editor render. The NetherCanvas overlay uses it to anchor relation
+    /// connectors at the real cursor line (the editor is the focal anchor).
+    pub(super) editor_caret_screen: Option<[f32; 4]>,
+    /// Screen-space rect of the canvas FOCAL symbol's line (where `gc` was
+    /// triggered), captured each editor render while a canvas is active and the
+    /// editor shows the focal file. Connectors anchor here instead of the live
+    /// caret, so coding in the editor doesn't drag them around. `None` clears it.
+    pub(super) editor_focal_screen: Option<[f32; 4]>,
     pub(super) editor_overlay_text_system: TextSystem,
     pub(super) editor_overlay_text_pipeline: TextPipeline,
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
