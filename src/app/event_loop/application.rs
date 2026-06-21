@@ -300,6 +300,106 @@ impl AppShell {
         visible_region_bounds(&flat_regions, RegionId::BottomPanel)
     }
 
+    /// Physical-pixel window size, used to cap dock resize.
+    fn viewport_size(&self) -> (f32, f32) {
+        self.window
+            .as_ref()
+            .map(|w| {
+                let s = w.inner_size();
+                (s.width as f32, s.height as f32)
+            })
+            .unwrap_or((1920.0, 1080.0))
+    }
+
+    /// Hit-test the press point and, if it lands on a draggable zone, capture an
+    /// `ActiveDrag`. Returns whether a drag started. (Task 5 extends this with
+    /// canvas card targets; for now it covers panel splitters only.)
+    fn begin_pointer_drag(&mut self) -> bool {
+        use crate::workbench::pointer_drag::{
+            resolve_press_target, splitter_hit_test, ActiveDrag, DragAnchor, DragTarget,
+            PanelSide, SPLITTER_BAND_PX,
+        };
+        let Some(cursor) = self.last_cursor_position else {
+            return false;
+        };
+
+        let left = self
+            .panel_state
+            .left
+            .visible
+            .then(|| self.current_left_sidebar_bounds())
+            .flatten();
+        let right = self
+            .panel_state
+            .right
+            .visible
+            .then(|| self.current_right_sidebar_bounds())
+            .flatten();
+        let bottom = self
+            .panel_state
+            .bottom
+            .visible
+            .then(|| self.current_bottom_panel_bounds())
+            .flatten();
+        let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
+
+        // Task 5 fills in `card_hit`; panels-only for now.
+        let card_hit = None;
+        let Some(target) =
+            resolve_press_target(self.app_state.canvas_is_navigating(), card_hit, splitter_hit)
+        else {
+            return false;
+        };
+
+        let anchor = match target {
+            DragTarget::PanelEdge(side) => DragAnchor::Panel {
+                start_size: match side {
+                    PanelSide::Left => self.panel_state.left.size_px,
+                    PanelSide::Right => self.panel_state.right.size_px,
+                    PanelSide::Bottom => self.panel_state.bottom.size_px,
+                },
+            },
+            // Card anchors are added in Task 5.
+            _ => return false,
+        };
+        self.active_drag = Some(ActiveDrag {
+            target,
+            start_cursor: cursor,
+            anchor,
+        });
+        true
+    }
+
+    /// Apply an in-progress drag for the current cursor position. Returns whether
+    /// state changed (and thus a redraw is needed).
+    fn update_pointer_drag(&mut self, cursor: (f32, f32)) -> bool {
+        use crate::workbench::pointer_drag::{apply_panel_drag, DragAnchor, DragTarget, PanelSide};
+        let Some(drag) = self.active_drag else {
+            return false;
+        };
+        let dx = cursor.0 - drag.start_cursor.0;
+        let dy = cursor.1 - drag.start_cursor.1;
+        match (drag.target, drag.anchor) {
+            (DragTarget::PanelEdge(side), DragAnchor::Panel { start_size }) => {
+                let vp = self.viewport_size();
+                let new = apply_panel_drag(side, start_size, dx, dy, vp);
+                match side {
+                    PanelSide::Left => self.panel_state.left.size_px = new,
+                    PanelSide::Right => self.panel_state.right.size_px = new,
+                    PanelSide::Bottom => self.panel_state.bottom.size_px = new,
+                }
+                true
+            }
+            // Card cases are added in Task 5.
+            _ => false,
+        }
+    }
+
+    /// Finish any active drag.
+    fn end_pointer_drag(&mut self) -> bool {
+        self.active_drag.take().is_some()
+    }
+
     /// Bounds of the right-dock terminal *content* area — the region the agent
     /// PTY grid is actually rendered into, i.e. the sidebar minus the outline
     /// inset and the tab strip band on top. Mirrors the geometry used in the
@@ -977,7 +1077,13 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.last_cursor_position = Some((position.x as f32, position.y as f32));
+                let cursor = (position.x as f32, position.y as f32);
+                self.last_cursor_position = Some(cursor);
+                if self.active_drag.is_some() {
+                    if self.update_pointer_drag(cursor) {
+                        self.request_redraw();
+                    }
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 if self.handle_right_terminal_mouse_wheel(delta) {
@@ -989,7 +1095,24 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
+                if button == MouseButton::Left && state == ElementState::Released {
+                    // A Left release first ends any active drag. If a drag was
+                    // active, the press was captured by the drag (not the
+                    // terminal/tabs), so the release belongs to the drag too —
+                    // don't forward it to click/terminal handlers. If no drag
+                    // was active, fall through so e.g. the right-terminal SGR
+                    // release event still reaches the PTY.
+                    if self.end_pointer_drag() {
+                        self.request_redraw();
+                        return;
+                    }
+                }
                 if self.handle_right_terminal_mouse_input(button, state) {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.begin_pointer_drag()
+                {
                     self.request_redraw();
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed

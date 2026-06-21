@@ -154,6 +154,8 @@ impl AppShell {
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
             last_cursor_position: None,
+            active_drag: None,
+            hover_target: None,
             pending_right_pty_spawn: false,
             right_agent_label: None,
             ai_agent_picker_selected: 0,

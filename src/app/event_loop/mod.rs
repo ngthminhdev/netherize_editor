@@ -98,6 +98,11 @@ pub struct AppShell {
     right_terminal_needs_layout: bool,
     last_right_terminal_bounds: Option<[f32; 4]>,
     last_cursor_position: Option<(f32, f32)>,
+    /// Active pointer drag (panel resize / card move / card resize), if any.
+    active_drag: Option<crate::workbench::pointer_drag::ActiveDrag>,
+    /// What draggable zone the cursor is currently hovering (for cursor shape +
+    /// highlight). Recomputed on every `CursorMoved` while not dragging.
+    hover_target: Option<crate::workbench::pointer_drag::HoverTarget>,
     pending_right_pty_spawn: bool,
     /// Label of the AI agent currently launched in the right-dock terminal
     /// (e.g. "opencode"), for display. `None` when no agent is running.
