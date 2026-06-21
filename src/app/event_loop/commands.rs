@@ -292,12 +292,21 @@ impl AppShell {
             return self.spawn_new_instance();
         }
 
-        // NetherCanvas in-card editing (v2): when a card edit session is active,
-        // route editor text/cursor/mode commands to the card via a scoped swap so
-        // `self.text` (the main editor) never leaves the gc-origin file. `⌘S` is
-        // handled specially (the card is not a buffer slot). During the recursive
-        // dispatch the session is taken out, so this does not re-enter.
-        if self.app_state.canvas_edit_session_block().is_some() {
+        // NetherCanvas in-card editing (v2): ONLY while actively editing a card
+        // (interaction == EditCard) do we route editor text/cursor/mode commands
+        // to the card via a scoped swap so `self.text` (the main editor) never
+        // leaves the gc-origin file. The edit session is KEPT stashed after
+        // leaving edit mode (to resume unsaved edits when re-entering the same
+        // card), so gating on the session alone would hijack the main editor's
+        // hjkl/d/c/b/w after `o` (open card as a buffer) or when the canvas is in
+        // the Background — hence the explicit EditCard gate. `⌘S` is handled
+        // specially (the card is not a buffer slot). During the recursive dispatch
+        // the session is taken out, so this does not re-enter.
+        if matches!(
+            self.app_state.canvas_interaction(),
+            Some(crate::canvas::CanvasInteraction::EditCard { .. })
+        ) && self.app_state.canvas_edit_session_block().is_some()
+        {
             if matches!(command, Command::SaveFile) {
                 return self.canvas_save_edit_card();
             }
@@ -328,6 +337,27 @@ impl AppShell {
                 && let Some(changed) = self.handle_canvas_completion_command(&command)
             {
                 return changed;
+            }
+            // `Ctrl-d`/`Ctrl-u` half-page scroll: the editor's variants live in the
+            // SHELL layer (act on the main viewport), so the card's core dispatch
+            // never sees them — translate to N× MoveDown/MoveUp on the card cursor
+            // (N = half the card's visible rows). The A1 viewport-follow then scrolls
+            // the card to keep the cursor on screen.
+            if matches!(
+                command,
+                Command::ScrollHalfPageDown | Command::ScrollHalfPageUp
+            ) {
+                let half = self
+                    .app_state
+                    .canvas_edit_card_visible_lines()
+                    .map(|n| (n / 2).max(1))
+                    .unwrap_or(1);
+                let motion = if matches!(command, Command::ScrollHalfPageDown) {
+                    Command::MoveDown
+                } else {
+                    Command::MoveUp
+                };
+                return self.dispatch_card_editing_command(motion, half);
             }
             // Editor actions that target the ACTIVE buffer are not card-scoped yet
             // — suppress them while editing a card so they don't act on the main

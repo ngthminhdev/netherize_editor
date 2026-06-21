@@ -969,6 +969,11 @@ command = "canvas.open"
 
 [[bindings]]
 mode = "normal"
+key = "F10"
+command = "canvas.open"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>r n"
 command = "lsp.rename"
 

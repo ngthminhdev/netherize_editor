@@ -11,7 +11,7 @@ use cosmic_text::Metrics;
 use super::Renderer;
 use super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::helpers::{
-    estimate_monospace_width, layout_panel_rich_text, layout_panel_text, mode_display_label,
+    card_mode_label, estimate_monospace_width, layout_panel_rich_text, layout_panel_text,
     mode_pill_color,
 };
 use crate::canvas::{BlockRelation, CARD_HEADER_LINES, CanvasSpan, CanvasState};
@@ -47,6 +47,10 @@ impl Renderer {
         );
         // The edit-target card's accent follows the active mode (NORMAL/INSERT/…).
         let mode_color = mode_pill_color(mode, &self.theme);
+        // None for app-global modes (palette/terminal/multi-cursor/resize) — the
+        // card is not being edited in those, so the badge hides and the ring falls
+        // back to cyan focus instead of the mode pill color.
+        let card_mode = card_mode_label(mode);
         self.canvas_chrome_instances.clear();
         self.canvas_glyph_instances.clear();
         self.canvas_icon_instances.clear();
@@ -239,9 +243,10 @@ impl Renderer {
                 || (!background && edit_block.is_none() && canvas.focused == Some(block.id));
             // The card being edited rings in the ACTIVE MODE's color (NORMAL/
             // INSERT/VISUAL); a merely navigation-focused card rings cyan; the
-            // rest are dim.
+            // rest are dim. App-global modes (palette/terminal/…) fall back to
+            // cyan focus because the card isn't really being edited in those.
             let ring_color = if is_edit_target {
-                mode_color
+                if card_mode.is_some() { mode_color } else { border_focus }
             } else if focused {
                 border_focus
             } else {
@@ -341,22 +346,25 @@ impl Renderer {
             ));
             // Mode badge (edit-target card only): the active mode label (NORMAL/
             // INSERT/VISUAL) in the mode color, just left of the line-range — the
-            // card's own little status line. Skipped if the card is too narrow to
-            // fit it without colliding with the filename breadcrumb.
+            // card's own little status line. Hidden for app-global modes
+            // (palette/terminal/multi-cursor/resize) since the card isn't being
+            // edited in those. Skipped if the card is too narrow to fit it
+            // without colliding with the filename breadcrumb.
             if is_edit_target {
-                let label = mode_display_label(mode);
-                let label_w = label.chars().count() as f32 * char_w;
-                let label_x = range_x - char_w * 1.4 - label_w;
-                if label_x > sx + PAD + char_w {
-                    self.canvas_glyph_instances.extend(layout_panel_text(
-                        label,
-                        &mut self.canvas_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        label_x,
-                        header_y,
-                        mode_color,
-                    ));
+                if let Some(label) = card_mode {
+                    let label_w = label.chars().count() as f32 * char_w;
+                    let label_x = range_x - char_w * 1.4 - label_w;
+                    if label_x > sx + PAD + char_w {
+                        self.canvas_glyph_instances.extend(layout_panel_text(
+                            label,
+                            &mut self.canvas_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            label_x,
+                            header_y,
+                            mode_color,
+                        ));
+                    }
                 }
             }
             // Pin indicator: a small amber dot left of the range when pinned.
@@ -409,6 +417,19 @@ impl Renderer {
                 c[3] = (c[3] * 0.22).clamp(0.10, 0.30);
                 c
             };
+            // Visual-mode selection band (edit-target card only): the session's
+            // live selection mirrored onto the canvas, painted like the main
+            // editor's selection so in-card `v`/`V` highlights match.
+            let selection = if is_edit_target {
+                canvas.edit_selection
+            } else {
+                None
+            };
+            let sel_band = {
+                let mut c = self.theme.editor.selection.as_f32();
+                c[3] = c[3].clamp(0.32, 0.55);
+                c
+            };
             let mut byte = 0usize;
             for (i, raw_line) in block.snapshot.text.split('\n').enumerate() {
                 let line_byte_start = byte;
@@ -425,6 +446,56 @@ impl Renderer {
                     self.canvas_chrome_instances.push(RegionDrawInstance::new(
                         [sx + 2.0, line_y, sw - 4.0, line_height],
                         active_band,
+                    ));
+                }
+                // Selection band for this row (drawn as chrome, so code glyphs sit
+                // on top). Absolute 0-based file line = (start_line-1) + i.
+                let abs_line = (block.snapshot.start_line as usize).saturating_sub(1) + i;
+                if let Some(sel) = selection
+                    && !truncated
+                    && abs_line >= sel.start_line as usize
+                    && abs_line <= sel.end_line as usize
+                {
+                    let nchars = raw_line.chars().count();
+                    let (sc, ec) = if sel.line_mode {
+                        (0usize, nchars)
+                    } else {
+                        let sc = if abs_line == sel.start_line as usize {
+                            sel.start_col as usize
+                        } else {
+                            0
+                        };
+                        let ec = if abs_line == sel.end_line as usize {
+                            (sel.end_col as usize).min(nchars)
+                        } else {
+                            nchars
+                        };
+                        (sc, ec)
+                    };
+                    // Tab-aware visual column → x, matching the caret/gutter math.
+                    let visx = |upto: usize| -> f32 {
+                        let mut v = 0usize;
+                        for ch in raw_line.chars().take(upto) {
+                            v += if ch == '\t' {
+                                CARD_TAB_WIDTH - (v % CARD_TAB_WIDTH)
+                            } else {
+                                1
+                            };
+                        }
+                        v as f32 * char_w
+                    };
+                    let x0 = (code_x + visx(sc)).min(clip_right);
+                    let x1 = if sel.line_mode {
+                        clip_right
+                    } else {
+                        (code_x + visx(ec)).min(clip_right)
+                    };
+                    // Empty line / zero-width (e.g. selected newline) → a thin sliver
+                    // so the row still reads as selected.
+                    let w = (x1 - x0).max(char_w * 0.5);
+                    self.canvas_chrome_instances.push(RegionDrawInstance::new(
+                        [x0, line_y, w.min(clip_right - x0).max(0.0), line_height],
+                        sel_band,
                     ));
                 }
                 let ln = block.snapshot.start_line as usize + i;

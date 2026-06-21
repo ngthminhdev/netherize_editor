@@ -1,14 +1,14 @@
 use super::*;
 
-use crate::canvas::Dir;
+use crate::canvas::{CanvasInteraction, Dir};
 
 /// World-units the camera pans per keypress (Shift+hjkl).
 const CANVAS_PAN_STEP: f32 = 120.0;
 /// World-units the focused card moves per keypress (hjkl).
 const CANVAS_MOVE_STEP: f32 = 40.0;
-/// Context lines added/removed (each side of the focal line) per `+`/`-` press.
-/// `+` re-reads more code so every card grows to fit; `-` reads less.
-const CANVAS_CONTEXT_STEP: i32 = 2;
+/// Visible rows added/removed from the focused card's HEIGHT per `=`/`-` press
+/// (a pure in-place resize — the card already shows only its scope).
+const CANVAS_HEIGHT_STEP: i32 = 2;
 /// World-units the focused card's WIDTH changes per `Shift`+`+`/`-` press.
 const CANVAS_WIDTH_STEP: f32 = 80.0;
 
@@ -67,10 +67,15 @@ impl AppShell {
             Command::CanvasOpenCardBuffer => self.canvas_open_card_as_buffer(),
             Command::CanvasEnterBackground => self.app_state.canvas_enter_background(),
             Command::CanvasNoop => false,
-            // `+`/`-` change how much context each card reads (more/less code),
-            // re-sourcing the snapshots and re-growing the cards to fit.
-            Command::CanvasContextExpand => self.canvas_change_context(CANVAS_CONTEXT_STEP),
-            Command::CanvasContextShrink => self.canvas_change_context(-CANVAS_CONTEXT_STEP),
+            // `=`/`-`: resize the focused card's HEIGHT (visible rows) in place.
+            // Cards already show only their scope, so this is a pure visual resize
+            // — it no longer re-sources extra file context.
+            Command::CanvasContextExpand => {
+                self.app_state.canvas_change_focused_height(CANVAS_HEIGHT_STEP)
+            }
+            Command::CanvasContextShrink => {
+                self.app_state.canvas_change_focused_height(-CANVAS_HEIGHT_STEP)
+            }
             // Shift+`+`/`-`: widen / narrow the focused card (horizontal clip).
             Command::CanvasWidthExpand => self.app_state.canvas_change_focused_width(CANVAS_WIDTH_STEP),
             Command::CanvasWidthShrink => {
@@ -93,43 +98,28 @@ impl AppShell {
         Some(changed)
     }
 
-    /// `+`/`-`: re-read ONLY the focused relation card at a new context-line
-    /// count so it shows MORE / LESS code and grows/shrinks **in place** (top-left
-    /// fixed). The box width, the font, and every other card are left untouched —
-    /// the user's hand-arranged layout is preserved. No-op (false) at the
-    /// [MIN, MAX] bounds, on the focal anchor, or with no focused card.
-    fn canvas_change_context(&mut self, delta: i32) -> bool {
-        let Some((id, origin, new_ctx)) = self.app_state.canvas_change_focused_context(delta) else {
-            return false;
-        };
-        // Re-source just that card at the new size (file IO + highlight lives
-        // here, not in the pure app-state core).
-        let Some((_origin, snapshot)) = super::super::async_results::build_canvas_relation_snapshot(
-            &self.theme,
-            &origin.path,
-            origin.lsp_line,
-            origin.lsp_character,
-            &origin.symbol_name,
-            new_ctx,
-        ) else {
-            return false;
-        };
-        self.app_state.canvas_apply_focused_context(id, snapshot)
-    }
 
     /// While editing a card (S2), refresh that card's snapshot + caret from the
     /// **`CanvasEditSession`** (the card's own text/cursor — NOT the active
     /// buffer, which stays the gc-origin file). Windows `2·context+1` lines
     /// around the session cursor so the card scrolls with the caret. No-op unless
-    /// a session is active. Called after each card-editing command and on the
-    /// render path; cheap (re-highlights only the window).
+    /// we are actively editing a card (`EditCard`) — the session is kept stashed
+    /// across Navigate/Background/`o` for resume, so the bare session check is not
+    /// enough; syncing then would repaint a stale edit caret on a floating card.
+    /// Called after each card-editing command and on the render path; cheap
+    /// (re-highlights only the window).
     pub(crate) fn canvas_sync_edit_card(&mut self) {
+        if !matches!(
+            self.app_state.canvas_interaction(),
+            Some(CanvasInteraction::EditCard { .. })
+        ) {
+            return;
+        }
         let Some(block_id) = self.app_state.canvas_edit_session_block() else {
             return;
         };
-        let context = self.app_state.canvas_block_context_lines(block_id);
         let Some((lines, start0, cursor_line, cursor_col)) =
-            self.app_state.canvas_edit_session_window(context)
+            self.app_state.canvas_edit_session_snapshot_window(block_id)
         else {
             return;
         };
@@ -203,6 +193,11 @@ impl AppShell {
             _ => false,
         };
         let is_backspace = matches!(&command, Command::Backspace);
+        // A pure motion (h/j/k/l, w/b, gg/G, f/F, %, Ctrl-d/u→Move…) must pan the
+        // scope view without parking the caret OUTSIDE the function: clamp it back
+        // into the card's scope right after the command (while still swapped IN).
+        let is_motion = command.is_card_motion_command();
+        let block_id = session.block;
 
         self.app_state.swap_canvas_edit_session(&mut session); // swap IN
         let report = {
@@ -214,6 +209,9 @@ impl AppShell {
                 Some(clipboard),
             )
         };
+        if is_motion {
+            self.app_state.canvas_clamp_active_cursor_to_scope(block_id);
+        }
         self.app_state.swap_canvas_edit_session(&mut session); // swap OUT
         self.app_state.put_canvas_edit_session(session);
         if report.state_changed {
@@ -255,9 +253,15 @@ impl AppShell {
             self.request_redraw();
             return true;
         }
-        // Already open (typically pushed to the background) — re-grab navigation
+        // Already open: if it owns focus, toggle off; otherwise re-grab navigation
         // focus instead of re-sourcing a fresh canvas.
         if self.app_state.is_canvas_active() {
+            if self.app_state.canvas_interaction() == Some(CanvasInteraction::Navigate) {
+                self.dismiss_canvas_card_completion();
+                self.canvas_hover_request_id = None;
+                self.submit_canvas_card_did_close();
+                return self.app_state.close_canvas();
+            }
             return self.app_state.canvas_focus_navigate();
         }
         let (bw, bh, lh) = self.canvas_block_size();

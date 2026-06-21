@@ -3698,5 +3698,156 @@
       "spatial-canvas",
       "ux"
     ]
+  },
+  {
+    "id": 217,
+    "timestamp": "2026-06-20T00:00:00+00:00",
+    "error_message": "Canvas task 1: Esc from canvas/card focus should return to canvas/editor without closing cards; gc/F10 should toggle/focus like Cmd-R/F12; Tab should stay inside cards.",
+    "root_cause": "InputMap still routed Background+Esc to CanvasClose, carrying the older two-stage close model. F10 was not parsed/displayed or bound to canvas.open. CanvasOpen re-focused an already focused Navigate canvas instead of toggling it off.",
+    "fix": "Changed Background+Esc to FocusEditor, added F10 parsing/display/default binding to CanvasOpen, and made CanvasOpen close only when the active canvas is already in Navigate focus; otherwise it focuses/restores the canvas. Added regression tests for Background+Esc and gc/F10 routing.",
+    "tags": [
+      "canvas",
+      "input",
+      "focus",
+      "esc",
+      "f10",
+      "spatial-canvas",
+      "ux"
+    ]
+  },
+  {
+    "id": 218,
+    "timestamp": "2026-06-20T00:00:00+00:00",
+    "error_message": "After task 1, user reported canvas still could not be turned off.",
+    "root_cause": "When canvas had navigation focus, `g` was handled by the canvas-local pending-g resolver for `gd`/`gr`; `gc` did not explicitly map to `CanvasOpen` inside that resolver, so the normal keymap toggle path was not reliable while canvas owned focus.",
+    "fix": "Added explicit canvas-focus routes: pending `g` + `c` dispatches `CanvasOpen`, and `F10` dispatches `CanvasOpen` before other canvas navigation keys. Added focused-canvas `gc`/`F10` regression tests plus a command-level test that `CanvasOpen` closes a focused Navigate canvas.",
+    "tags": [
+      "canvas",
+      "input",
+      "focus",
+      "gc",
+      "f10",
+      "toggle",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 219,
+    "timestamp": "2026-06-20T00:00:00+00:00",
+    "error_message": "Task 2: after Esc from card edit back to canvas mode, Entering the same card again reset the cursor to the symbol origin instead of the last in-card cursor position.",
+    "root_cause": "`canvas_end_edit` discarded clean `CanvasEditSession`s, keeping only dirty sessions. Cursor-only movement leaves `dirty=false`, so re-entering the same card rebuilt a fresh session from `BlockOrigin.lsp_line/lsp_character` and lost the cursor position.",
+    "fix": "Keep the CanvasEditSession when leaving edit mode, regardless of dirty state, so the same card resumes cursor position and unsaved edits. Entering a different card still replaces the one-session stash. Added regression test `reentering_clean_card_edit_restores_last_cursor_position`.",
+    "tags": [
+      "canvas",
+      "card-edit",
+      "cursor",
+      "session",
+      "esc",
+      "enter",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 220,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Test `edit_card_round_trip_keeps_main_editor_on_origin` failed: `assert_eq!(app.canvas_edit_session_block(), None)` after `canvas_end_edit()` got `Some(1)`.",
+    "root_cause": "Stale test assertion: bug 219 changed `canvas_end_edit` to KEEP the clean `CanvasEditSession` (so re-entering the same card restores the cursor), but this test still asserted the old drop-on-exit behavior (`None`). The sibling test `reentering_clean_card_edit_restores_last_cursor_position` already relied on the new keep-behavior, confirming the assertion was the one out of sync.",
+    "fix": "Updated the assertion at `src/app/app_state/canvas.rs:1583` from `None` to `Some(card)` with a comment referencing the cursor-restore fix. No production code changed.",
+    "tags": [
+      "canvas",
+      "card-edit",
+      "session",
+      "test",
+      "stale-assertion",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 221,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "`cargo clippy --bin netherize_editor` failed with 5 `clippy::overly_complex_bool_expr` errors from expressions like `changed || true`, `jumped || true`, and `refresh_active_search_highlights() || true`.",
+    "root_cause": "Several handlers intentionally forced a handled/redraw return value to true by OR-ing a meaningful side-effect result with `true`. That preserves behavior but is a boolean expression that is always true, and this project denies `clippy::overly_complex_bool_expr`, so clippy treats it as a compile-blocking logic bug.",
+    "fix": "Preserved the side-effect calls/results with `let _ = ...;` where needed, then returned `true` directly in `overlays.rs`, `application.rs`, `commands_settings.rs`, and `commands_terminal.rs`.",
+    "tags": [
+      "clippy",
+      "overly-complex-bool-expr",
+      "build",
+      "event-loop",
+      "app-state"
+    ]
+  },
+  {
+    "id": 222,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Test `edit_card_round_trip_keeps_main_editor_on_origin` failed: after `canvas_end_edit()` expected `Some(Background)` but got `Some(Navigate)`.",
+    "root_cause": "A partial (token-exhausted) edit changed the test assertion to expect EditCard -> Esc -> Background (so the editor regains focus in one Esc), but never updated the production `CanvasState::end_edit` (model.rs), which still transitions EditCard -> Navigate. The 2-stage Esc design (EditCard -> Navigate -> Background) is the intended behavior; the assertion was the stale half.",
+    "fix": "Reverted the test assertion at src/app/app_state/canvas.rs to expect `CanvasInteraction::Navigate` (and its comment) so it matches the unchanged 2-stage state machine. No production code changed. Full suite green (984 passed).",
+    "tags": [
+      "canvas",
+      "card-edit",
+      "esc",
+      "state-machine",
+      "test",
+      "stale-assertion",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 223,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "In-card editing: (A1) hjkl past the visible rows did not scroll the card viewport; (A2) Ctrl-d/Ctrl-u did nothing in a card; (A3) Visual mode `v` showed no selection highlight like the main editor.",
+    "file": "src/app/app_state/canvas_edit.rs",
+    "root_cause": "A1: canvas_edit_session_snapshot_window pinned the window to block.snapshot.start_line and never scrolled, so the card stayed put while the session cursor moved off-screen. A2: the editor's ScrollHalfPageUp/Down are handled in the SHELL layer (commands_editor.rs, acting on the main viewport), not in core dispatch — so dispatch_card_editing_command (core-only) saw them as no-ops. A3: visual_selection_range reads self.* (the main editor buffer, which is the origin file at render time because the card session is swapped out), so the renderer had no selection info for the card's own text.",
+    "fix": "A1: extracted pure follow_window_start(prev_start,count,cursor_line,total) viewport-follow (vim-like: scroll only when the cursor would leave [start,start+count), clamp inside file) and used it in canvas_edit_session_snapshot_window (stable card height, pinned to scope on Enter). A2: intercept ScrollHalfPageDown/Up in the card-routing block (commands.rs) and translate to N x MoveDown/MoveUp (N = half the card's visible rows via canvas_edit_card_visible_lines); the A1 follow then scrolls the card. A3: added CardSelection (canvas/model.rs) + CanvasState.edit_selection + set_edit_selection (cleared in end_edit); compute_card_selection (pure, mirrors visual_selection_range charwise/linewise) + canvas_edit_session_selection computed from the session; canvas_update_edit_card mirrors it onto the canvas each sync; renderer (render/renderer/canvas.rs) paints tab-aware selection bands on the edit-target card. TDD: 5 follow_window + 4 card_selection unit tests. Full suite 993 passed.",
+    "tags": [
+      "canvas",
+      "card-edit",
+      "scroll",
+      "viewport",
+      "ctrl-d",
+      "visual-mode",
+      "selection",
+      "render",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 224,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Follow-up to bug 223: (1) in-card edit viewport scrolled into lines OUTSIDE the card's scope (the whole file) instead of staying within the enclosing function; user wants the card to render only its scope/func. (2) j/k past the viewport still didn't visibly scroll within the function. (3) card lacked full editor features — vim text objects (diw/ci(/ya\"/vi{).",
+    "file": "src/app/app_state/canvas_edit.rs",
+    "root_cause": "(1)+(2) bug-223's follow_window_start clamped to the whole file (total), and canvas_edit_session_snapshot_window had no scope bound, so the edit window could scroll anywhere in the file and the visible-row count came from the (clamped) snapshot, not the function size. The resolved enclosing-definition range was never stored on the block. (3) is_card_editing_command listed Operate{} (d/c/y+motion) but NOT TextObjectAction{} (standalone/visual text objects), so vi(/diw etc. fell through to the suppressed main-editor path.",
+    "fix": "Stored the resolved scope range on CanvasBlock.scope_lines (Option<(u32,u32)>), set by canvas_apply_card_scope (new 3rd arg) from the enclosing_definition range at both the sync and async resolve sites. Rewrote follow_window_start to take scope bounds (lo,hi) and clamp the window strictly inside [lo,hi] (never above lo, never past hi+1-count); canvas_edit_session_snapshot_window now derives (lo,hi,count=min(scope_size,CARD_MAX_LINES)) from scope_lines (whole-file fallback when unresolved) and reads only [start, min(start+count, hi+1, total)) — the card renders ONLY its function and scrolls within it. Added TextObjectAction{} to is_card_editing_command (core-dispatched at editing.rs:728). TDD: 4 new scope-bound follow_window tests + scope_lines assertion. Full suite 996 passed; clippy clean.",
+    "tags": [
+      "canvas",
+      "card-edit",
+      "scroll",
+      "scope",
+      "viewport",
+      "text-object",
+      "vim",
+      "spatial-canvas"
+    ]
+  },
+  {
+    "id": 225,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Four in-card follow-ups: (1) Shift-V (visual line) did nothing in a card and yank didn't behave like the main editor; (2) hjkl/w/b motions could park the caret OUTSIDE the card's scope (view only shows the scope, so the cursor should never leave it); (3) =/- (and Shift =/-) still re-sourced extra file context instead of just resizing the card now that it loads only its scope; (4) after backing the canvas to the editor (Background) or opening a card as a buffer with `o`, the MAIN editor stopped responding to hjkl/d/c/b/w.",
+    "file": "src/app/event_loop/commands.rs",
+    "root_cause": "(1) Command::EnterVisualLine was missing from is_card_editing_command, so `V` never routed into the card session (yank already worked once the selection existed). (2) The scope clamp only bounded the VIEW window (follow_window_start); the actual session cursor was never clamped, so a motion could move it past the scope. (3) =/- mapped to CanvasContextExpand/Shrink -> canvas_change_context which RE-SOURCED the file at a new context-line count — obsolete once cards render only their enclosing scope. (4) The card-routing guard in handle_command_with_count_impl fired on canvas_edit_session_block().is_some(); but the edit session is intentionally KEPT stashed after leaving edit mode (resume), so in Background/after `o` (interaction != EditCard) every editor command was hijacked into the hidden card.",
+    "fix": "(1) Added Command::EnterVisualLine to is_card_editing_command; V now enters Visual+visual_line_mode in the session and compute_card_selection renders the linewise band. (2) Added Command::is_card_motion_command + AppState::canvas_clamp_active_cursor_to_scope (pure helper clamp_char_to_line_range) called after every card MOTION while the card is swapped in — caret stays within [scope_lo, scope_hi]; edits (o/O/paste) excluded so new lines stay reachable. (3) Added CanvasBlock.height_rows: Option<usize>; repurposed =/- to canvas_change_focused_height (pure in-place resize, top-left pinned, clamped [CARD_MIN_LINES, CARD_MAX_LINES]), feeding the row count into card_height AND the edit-window count (scrolls within scope); removed canvas_change_focused_context/apply_focused_context + CANVAS_CONTEXT_MIN/MAX + the build_canvas_relation_snapshot re-export; Shift =/- still = width. (4) Gated the card-routing block AND canvas_sync_edit_card on interaction == EditCard, so a stashed session no longer steals the main editor's keys. TDD: 4 clamp_scope_tests + height tests rewritten + a shell-level regression (background_canvas_with_stashed_session_lets_main_editor_move). Full suite 1000 passed; clippy clean.",
+    "tags": [
+      "canvas",
+      "card-edit",
+      "visual-line",
+      "scope",
+      "cursor-clamp",
+      "resize",
+      "input-routing",
+      "focus",
+      "vim",
+      "spatial-canvas",
+      "user-reported"
+    ]
   }
 ]

@@ -4,8 +4,8 @@
 //! or the dirty flag — opening/closing the canvas leaves the editor untouched.
 
 use crate::canvas::{
-    BlockId, BlockOrigin, BlockRelation, BlockSnapshot, CanvasBlock, CanvasInteraction, CanvasSpan,
-    CanvasState, Dir, WorldRect,
+    BlockId, BlockOrigin, BlockRelation, BlockSnapshot, CARD_MAX_LINES, CARD_MIN_LINES, CanvasBlock,
+    CanvasInteraction, CanvasSpan, CanvasState, Dir, WorldRect,
 };
 
 use super::{AppState, CanvasEditSession};
@@ -15,11 +15,9 @@ use super::{AppState, CanvasEditSession};
 const CANVAS_GAP_X: f32 = 90.0;
 const CANVAS_GAP_Y: f32 = 48.0;
 /// Default lines of context shown above and below the focal line in a block
-/// snapshot. `+`/`-` adjust the live value within [MIN, MAX].
+/// snapshot — the instant ±N preview a card spawns with, before its enclosing
+/// scope resolves and replaces it.
 const CANVAS_CONTEXT_LINES: usize = 8;
-/// Clamp bounds for the `+`/`-` context-line adjustment (lines each side).
-const CANVAS_CONTEXT_MIN: usize = 3;
-const CANVAS_CONTEXT_MAX: usize = 24;
 
 impl AppState {
     pub fn is_canvas_active(&self) -> bool {
@@ -99,6 +97,8 @@ impl AppState {
             pinned: false,
             context_lines: CANVAS_CONTEXT_LINES,
             parent: None,
+            scope_lines: None,
+            height_rows: None,
             world: WorldRect::new(0.0, 0.0, block_w, block_h),
         });
         self.canvas = Some(state);
@@ -211,24 +211,16 @@ impl AppState {
     }
 
     /// S2→S1: leave edit mode back to card navigation. `self.text` (the main
-    /// editor) was never switched, so there is nothing to restore. A **dirty**
-    /// session is kept stashed so re-entering the SAME card resumes the unsaved
-    /// edits; a clean session is dropped. (Entering a *different* card while a
-    /// dirty session is stashed replaces it — one session at a time this
-    /// iteration; ⌘S before leaving to persist.)
+    /// editor) was never switched, so there is nothing to restore. The session is
+    /// kept stashed so re-entering the SAME card resumes both cursor position and
+    /// unsaved edits. Entering a *different* card replaces it — one session at a
+    /// time this iteration; ⌘S before leaving to persist.
     pub fn canvas_end_edit(&mut self) -> bool {
         let ended = self.canvas.as_mut().map(|c| c.end_edit()).unwrap_or(false);
         if ended {
             // Leaving the card dismisses any in-card hover popup.
             if let Some(c) = self.canvas.as_mut() {
                 c.card_hover = None;
-            }
-            let keep = self
-                .canvas_edit_session
-                .as_ref()
-                .is_some_and(|s| s.is_dirty());
-            if !keep {
-                self.discard_canvas_edit_session();
             }
         }
         ended
@@ -301,9 +293,14 @@ impl AppState {
         cursor_line: u32,
         cursor_col: u32,
     ) {
+        // Mirror the session's visual selection onto the canvas for the renderer
+        // (computed before the mutable borrow below). `None` clears it outside
+        // Visual mode so a stale band never lingers.
+        let selection = self.canvas_edit_session_selection();
         let Some(state) = self.canvas.as_mut() else {
             return;
         };
+        state.set_edit_selection(selection);
         let lines = text.split('\n').count();
         let new_h = (state.line_h > 0.0).then(|| state.card_height(lines));
         if let Some(b) = state.blocks.iter_mut().find(|b| b.id == block_id) {
@@ -354,38 +351,46 @@ impl AppState {
             .unwrap_or(CANVAS_CONTEXT_LINES)
     }
 
-    /// `+`/`-`: adjust ONLY the focused relation card's context-line count by
-    /// `delta`, clamped to [`CANVAS_CONTEXT_MIN`, `CANVAS_CONTEXT_MAX`]. Returns
-    /// `(block, origin, new_ctx)` so the caller re-reads THAT card's file at the
-    /// new size and feeds the snapshot to [`canvas_apply_focused_context`].
-    /// Returns `None` at the bounds, when the focal anchor is focused (it isn't
-    /// drawn), or with no canvas — so no redundant re-source runs.
-    pub fn canvas_change_focused_context(
-        &mut self,
-        delta: i32,
-    ) -> Option<(BlockId, BlockOrigin, usize)> {
-        let state = self.canvas.as_mut()?;
-        let id = state.focused?;
-        let block = state.blocks.iter_mut().find(|b| b.id == id)?;
-        if block.relation == BlockRelation::Focal {
-            return None;
-        }
-        let cur = if block.context_lines == 0 {
-            CANVAS_CONTEXT_LINES
-        } else {
-            block.context_lines
+    /// `=`/`-`: resize ONLY the focused relation card's HEIGHT by `delta` visible
+    /// rows, in place (top-left fixed, growing/shrinking downward). With
+    /// scope-loaded cards this is a PURE visual resize — it never re-sources extra
+    /// file context (the card already shows only its scope). The per-card row count
+    /// is stored in `height_rows` (clamped to `[CARD_MIN_LINES, CARD_MAX_LINES]`)
+    /// and also caps the in-card edit viewport so editing scrolls within those
+    /// rows. No-op (`false`) on the focal anchor, at the bounds, or with no focused
+    /// card. Marks the layout user-arranged so a later spawn won't reflow it.
+    pub fn canvas_change_focused_height(&mut self, delta: i32) -> bool {
+        let Some(state) = self.canvas.as_mut() else {
+            return false;
         };
-        let new = (cur as i32 + delta)
-            .clamp(CANVAS_CONTEXT_MIN as i32, CANVAS_CONTEXT_MAX as i32) as usize;
-        if new == block.context_lines {
-            return None;
+        let Some(id) = state.focused else {
+            return false;
+        };
+        let Some(block) = state.blocks.iter().find(|b| b.id == id) else {
+            return false;
+        };
+        if block.relation == BlockRelation::Focal {
+            return false;
         }
-        block.context_lines = new;
-        let origin = block.origin.clone();
-        // Adjusting a card's context is a manual layout choice (it grows/shrinks
-        // in place) — freeze auto-arrange so a later spawn doesn't reshuffle it.
+        // Effective current rows: explicit override, else the snapshot's own size.
+        let cur = block
+            .height_rows
+            .unwrap_or_else(|| block.snapshot.text.split('\n').count().max(1));
+        let new = (cur as i32 + delta)
+            .clamp(CARD_MIN_LINES as i32, CARD_MAX_LINES as i32) as usize;
+        if new == cur {
+            return false;
+        }
+        let new_h = (state.line_h > 0.0).then(|| state.card_height(new));
+        let Some(block) = state.blocks.iter_mut().find(|b| b.id == id) else {
+            return false;
+        };
+        block.height_rows = Some(new);
+        if let Some(h) = new_h {
+            block.world.h = h; // top-left fixed; grow/shrink downward only
+        }
         state.user_arranged = true;
-        Some((id, origin, new))
+        true
     }
 
     /// `Shift`+`+`/`-`: change ONLY the focused relation card's WIDTH by `delta`
@@ -419,29 +424,57 @@ impl AppState {
         true
     }
 
-    /// Replace the focused card's snapshot (re-sourced at its new context size)
-    /// and re-grow its height **in place** — top-left pinned, growing downward.
-    /// Width never changes (the box never scales) and **no other card moves**, so
-    /// a `+`/`-` respects the spatial layout the user arranged by hand. No-op
-    /// (false) unless `block` exists.
-    pub fn canvas_apply_focused_context(
+    /// Replace a card's snapshot with a scope-resolved one (progressive refine).
+    /// The card regrows to fit the new snapshot height (top-left fixed, mirroring
+    /// [`canvas_apply_focused_context`]); the focal anchor is never targeted
+    /// (it's the editor itself, not drawn as a card). Returns whether a relation
+    /// card matched `card_id` (false if it was closed/opened-as-tab before resolve
+    /// or if `card_id` points at the focal anchor).
+    pub fn canvas_apply_card_scope(
         &mut self,
-        block: BlockId,
+        card_id: BlockId,
         snapshot: BlockSnapshot,
+        scope_lines: Option<(u32, u32)>,
     ) -> bool {
         let Some(state) = self.canvas.as_mut() else {
             return false;
         };
         let lines = snapshot.text.split('\n').count();
-        let new_h = (state.line_h > 0.0).then(|| state.card_height(lines));
-        let Some(b) = state.blocks.iter_mut().find(|b| b.id == block) else {
+        // Respect a user HEIGHT override (`=`/`-`) if one is set; else auto-fit.
+        let rows = state
+            .block(card_id)
+            .and_then(|b| b.height_rows)
+            .unwrap_or(lines);
+        let new_h = (state.line_h > 0.0).then(|| state.card_height(rows));
+        let Some(b) = state.blocks.iter_mut().find(|b| b.id == card_id) else {
             return false;
         };
+        if b.relation == BlockRelation::Focal {
+            return false;
+        }
         b.snapshot = snapshot;
+        // The full enclosing-definition range (NOT the clamped snapshot) bounds the
+        // in-card edit viewport so editing scrolls within the whole function.
+        b.scope_lines = scope_lines;
         if let Some(h) = new_h {
             b.world.h = h; // top-left fixed; grow/shrink downward only
         }
         true
+    }
+
+    /// Everything `CanvasCardScopeResult` needs to re-source a card to its
+    /// enclosing-definition scope: `(lsp_line, lsp_character, symbol_name)`.
+    /// `None` when the card is gone / focal / canvas closed (stale result dropped).
+    pub fn canvas_card_scope_target(
+        &self,
+        card_id: BlockId,
+    ) -> Option<(u32, u32, String)> {
+        let state = self.canvas.as_ref()?;
+        let b = state.blocks.iter().find(|b| b.id == card_id)?;
+        if b.relation == BlockRelation::Focal {
+            return None;
+        }
+        Some((b.origin.lsp_line, b.origin.lsp_character, b.origin.symbol_name.clone()))
     }
 
     pub fn canvas_pan(&mut self, dx: f32, dy: f32) -> bool {
@@ -700,6 +733,8 @@ impl AppState {
                 pinned: false,
                 context_lines: default_ctx,
                 parent,
+                scope_lines: None,
+                height_rows: None,
             });
             if first_new_id.is_none() {
                 first_new_id = Some(id);
@@ -1110,7 +1145,7 @@ mod tests {
     }
 
     #[test]
-    fn change_focused_context_only_affects_focused_card() {
+    fn change_focused_height_only_affects_focused_card() {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
@@ -1132,17 +1167,13 @@ mod tests {
             let b = app.canvas().unwrap().block(focused).unwrap();
             (b.world.w, b.world.h)
         };
-        // `+` raises ONLY the focused card's context (8 → 10) and returns its id.
-        let (id, _origin, new_ctx) =
-            app.canvas_change_focused_context(2).expect("focused card adjusts");
-        assert_eq!(id, focused);
-        assert_eq!(new_ctx, 10);
-        // Re-source produces a taller snapshot; feed it back.
-        assert!(app.canvas_apply_focused_context(id, snap_lines(15)));
+        // `=` grows ONLY the focused card's HEIGHT in place — no re-source.
+        assert!(app.canvas_change_focused_height(4));
         let c = app.canvas().unwrap();
         let fb = c.block(focused).unwrap();
+        assert_eq!(fb.height_rows, Some(5 + 4), "rows = snapshot size + delta");
         // Focused card grew taller; WIDTH stays fixed (no box scaling).
-        assert!(fb.world.h > fh0, "focused card should grow taller with more context");
+        assert!(fb.world.h > fh0, "focused card should grow taller");
         assert!((fb.world.w - fw0).abs() < 1e-3, "width must stay fixed");
         // The OTHER card is untouched — position AND size (no re-stack).
         let other_after = c
@@ -1154,12 +1185,12 @@ mod tests {
         assert_eq!(
             (other_after.x, other_after.y, other_after.w, other_after.h),
             (other_before.x, other_before.y, other_before.w, other_before.h),
-            "a non-focused card must not move or resize on a +/-"
+            "a non-focused card must not move or resize on a =/-"
         );
     }
 
     #[test]
-    fn change_focused_context_resizes_in_place_keeping_top_left() {
+    fn change_focused_height_resizes_in_place_keeping_top_left() {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![(
@@ -1174,16 +1205,108 @@ mod tests {
             let b = app.canvas().unwrap().block(focused).unwrap();
             (b.world.x, b.world.y, b.world.h)
         };
-        let (id, _o, _n) = app.canvas_change_focused_context(2).unwrap();
-        assert!(app.canvas_apply_focused_context(id, snap_lines(16)));
+        assert!(app.canvas_change_focused_height(6));
         let b = app.canvas().unwrap().block(focused).unwrap();
         // Top-left pinned; only height changed (grew downward).
         assert_eq!((b.world.x, b.world.y), (x0, y0), "top-left must stay fixed");
-        assert!(b.world.h > h0, "card grows downward with more context");
+        assert!(b.world.h > h0, "card grows downward with more rows");
     }
 
     #[test]
-    fn change_focused_context_clamps_and_reports_none_at_bounds() {
+    fn canvas_apply_card_scope_replaces_snapshot() {
+        let mut app = app_with_text("fn focal() {\n    bar();\n}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Caller,
+            origin_at("/p/a.rs", 10),
+            snap("a"),
+        )]);
+        let id = app.canvas().unwrap().focused.unwrap();
+        let new_snap = BlockSnapshot {
+            title: "a.rs".into(),
+            symbol: "s".into(),
+            start_line: 8,
+            text: "fn s() {\n  x\n}".into(),
+            spans: Vec::new(),
+        };
+        assert!(app.canvas_apply_card_scope(id, new_snap.clone(), Some((7, 9))));
+        let b = app.canvas().unwrap().blocks.iter().find(|b| b.id == id).unwrap();
+        assert_eq!(b.snapshot.start_line, 8);
+        assert_eq!(b.snapshot.text, "fn s() {\n  x\n}");
+        assert_eq!(b.scope_lines, Some((7, 9)), "scope range bounds the edit viewport");
+    }
+
+    #[test]
+    fn canvas_apply_card_scope_refuses_focal_anchor() {
+        let mut app = app_with_text("fn focal() {\n    bar();\n}\n");
+        app.open_canvas(VW, VH, LH);
+        let focal_id = app.canvas().unwrap().focused.unwrap();
+        let new_snap = BlockSnapshot {
+            title: "f.rs".into(),
+            symbol: "s".into(),
+            start_line: 8,
+            text: "fn s() {\n  x\n}".into(),
+            spans: Vec::new(),
+        };
+        // The focal anchor is the editor itself (never drawn as a card); applying
+        // a scope snapshot to it must be refused.
+        assert!(!app.canvas_apply_card_scope(focal_id, new_snap, None));
+    }
+
+    #[test]
+    fn canvas_apply_card_scope_drops_stale_card_id() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        // No relation card exists with this id → false (card was closed/opened-as-tab).
+        let new_snap = BlockSnapshot {
+            title: "f.rs".into(),
+            symbol: "s".into(),
+            start_line: 8,
+            text: "fn s() {}".into(),
+            spans: Vec::new(),
+        };
+        assert!(!app.canvas_apply_card_scope(9999, new_snap, None));
+    }
+
+    #[test]
+    fn edit_session_window_preserves_scope_snapshot_range() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_canvas_scope_edit_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let foo = dir.join("foo.rs");
+        let bar = dir.join("bar.rs");
+        std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
+        let body = (0..20).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        std::fs::write(&bar, body).unwrap();
+
+        let mut app = AppState::new(foo.clone());
+        app.open_file(foo).expect("open foo");
+        assert!(app.open_canvas(VW, VH, LH));
+        let scope_snap = BlockSnapshot {
+            title: "bar.rs".into(),
+            symbol: "helper".into(),
+            start_line: 6,
+            text: "line 5\nline 6\nline 7".into(),
+            spans: Vec::new(),
+        };
+        app.canvas_add_relations(vec![
+            (BlockRelation::Definition, origin_at(bar.to_string_lossy().as_ref(), 5), scope_snap),
+        ]);
+
+        assert!(app.canvas_begin_edit());
+        let block = app.canvas_edit_session_block().unwrap();
+        let (lines, start0, _cursor_line, _cursor_col) = app
+            .canvas_edit_session_snapshot_window(block)
+            .expect("scope window");
+        assert_eq!(start0, 5);
+        assert_eq!(lines, vec!["line 5", "line 6", "line 7"]);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn change_focused_height_clamps_and_reports_false_at_bounds() {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![(
@@ -1192,17 +1315,20 @@ mod tests {
             snap_lines(5),
         )]);
         let focused = app.canvas().unwrap().focused.unwrap();
-        // Default per-card is 8; stepping down by 2 reaches the floor (3) then None.
-        assert_eq!(app.canvas_change_focused_context(-2).map(|t| t.2), Some(6));
-        assert_eq!(app.canvas_change_focused_context(-2).map(|t| t.2), Some(4));
-        assert_eq!(app.canvas_change_focused_context(-2).map(|t| t.2), Some(3)); // -> MIN
-        assert!(app.canvas_change_focused_context(-2).is_none()); // already at MIN
-        // Climbing hits the ceiling (24) and then reports None.
-        for _ in 0..20 {
-            app.canvas_change_focused_context(2);
+        // Effective rows start at the snapshot size (5). Shrinking floors at
+        // CARD_MIN_LINES (3), then no-ops (false).
+        assert!(app.canvas_change_focused_height(-2)); // 5 -> 3 (MIN)
+        assert_eq!(app.canvas().unwrap().block(focused).unwrap().height_rows, Some(3));
+        assert!(!app.canvas_change_focused_height(-2)); // already at MIN -> false
+        // Climbing hits the ceiling (CARD_MAX_LINES) and then reports false.
+        for _ in 0..40 {
+            app.canvas_change_focused_height(2);
         }
-        assert_eq!(app.canvas().unwrap().block(focused).unwrap().context_lines, 24);
-        assert!(app.canvas_change_focused_context(2).is_none());
+        assert_eq!(
+            app.canvas().unwrap().block(focused).unwrap().height_rows,
+            Some(CARD_MAX_LINES)
+        );
+        assert!(!app.canvas_change_focused_height(2)); // at MAX -> false
     }
 
     #[test]
@@ -1388,12 +1514,12 @@ mod tests {
     }
 
     #[test]
-    fn change_focused_context_is_none_for_focal_anchor() {
+    fn change_focused_height_is_false_for_focal_anchor() {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
-        // Only the focal anchor exists and is focused — it isn't drawn, so `+`/`-`
-        // must be a no-op rather than re-sourcing the invisible anchor.
-        assert!(app.canvas_change_focused_context(2).is_none());
+        // Only the focal anchor exists and is focused — it isn't drawn, so `=`/`-`
+        // must be a no-op rather than resizing the invisible anchor.
+        assert!(!app.canvas_change_focused_height(2));
     }
 
     #[test]
@@ -1488,12 +1614,66 @@ mod tests {
             Some(CanvasInteraction::EditCard { .. })
         ));
 
-        // Esc out → Navigate, clean session dropped, main editor still origin.
+        // Esc out → Navigate (card navigation; a 2nd Esc backgrounds to the
+        // editor). The clean session is KEPT (per the cursor-restore fix:
+        // re-entering the same card resumes the cursor rather than resetting to
+        // the origin lsp_line/lsp_character).
         assert!(app.canvas_end_edit());
         assert_eq!(app.active_file().unwrap(), foo_active.as_path());
         assert_eq!(app.text_string(), main_text_before);
         assert_eq!(app.canvas_interaction(), Some(CanvasInteraction::Navigate));
-        assert_eq!(app.canvas_edit_session_block(), None);
+        assert_eq!(app.canvas_edit_session_block(), Some(card));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reentering_clean_card_edit_restores_last_cursor_position() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_canvas_cursor_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let foo = dir.join("foo.rs");
+        let bar = dir.join("bar.rs");
+        std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
+        std::fs::write(&bar, "fn helper() {\n    let value = 1;\n}\n").unwrap();
+
+        let mut app = AppState::new(foo.clone());
+        app.open_file(foo.clone()).expect("open foo");
+        assert!(app.open_canvas(VW, VH, LH));
+        let bar_canon = bar.canonicalize().unwrap();
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            BlockOrigin {
+                path: bar_canon,
+                start_byte: 0,
+                end_byte: 1,
+                symbol_name: "helper".into(),
+                lsp_line: 0,
+                lsp_character: 0,
+            },
+            snap("helper"),
+        )]);
+
+        assert!(app.canvas_begin_edit());
+        let mut session = app.take_canvas_edit_session().expect("card session");
+        app.swap_canvas_edit_session(&mut session);
+        assert!(app.jump_to_line_and_column(1, 4));
+        app.swap_canvas_edit_session(&mut session);
+        app.put_canvas_edit_session(session);
+        app.canvas_update_edit_card(1, 1, String::new(), Vec::new(), 1, 4);
+
+        assert!(app.canvas_end_edit());
+        assert!(app.canvas_begin_edit());
+
+        assert_eq!(
+            app.canvas_interaction(),
+            Some(CanvasInteraction::EditCard {
+                block: 1,
+                cursor_line: 1,
+                cursor_col: 4,
+            })
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }

@@ -564,6 +564,40 @@ pub(super) fn handle_lsp_result(
             }
             app.request_redraw();
         }
+        WorkerResultPayload::CanvasCardScopeResult { card_id, uri, symbols } => {
+            // Progressive scope refine for a spawned def/caller card whose target
+            // file wasn't the active file (so symbols weren't cached at spawn).
+            // Stale results are harmlessly dropped: `canvas_card_scope_target`
+            // returns None when the card was closed / opened-as-tab / canvas gone.
+            let Some(path) = lsp_uri_to_path(&uri) else {
+                return;
+            };
+            let Some((line, character, symbol)) =
+                app.app_state.canvas_card_scope_target(card_id)
+            else {
+                return;
+            };
+            let Some(range) = super::canvas_scope::enclosing_definition(&symbols, line) else {
+                return; // no enclosing definition → keep the ±N window
+            };
+            let Some((_o, snap)) = build_canvas_relation_snapshot_range(
+                &app.theme,
+                &path,
+                range.start.line,
+                range.end.line,
+                character,
+                &symbol,
+            ) else {
+                return;
+            };
+            if app.app_state.canvas_apply_card_scope(
+                card_id,
+                snap,
+                Some((range.start.line, range.end.line)),
+            ) {
+                app.request_redraw();
+            }
+        }
         WorkerResultPayload::LspFormattingResult { uri, edits } => {
             let Some(path) = lsp_uri_to_path(&uri) else {
                 eprintln!("[AppShell] LSP formatting: cannot parse URI {uri}");
@@ -928,6 +962,57 @@ pub(crate) fn build_canvas_relation_snapshot(
     ))
 }
 
+/// Like `build_canvas_relation_snapshot` but for an explicit enclosing-symbol line
+/// range (scope-aware). Clamps to 60 lines + a "+N more" marker so a huge function
+/// never makes a giant card; the full body is available on Enter-to-edit.
+pub(crate) fn build_canvas_relation_snapshot_range(
+    theme: &crate::config::theme_config::ThemeConfig,
+    path: &Path,
+    start_line: u32,
+    end_line: u32,
+    character: u32,
+    symbol: &str,
+) -> Option<(crate::canvas::BlockOrigin, crate::canvas::BlockSnapshot)> {
+    use crate::canvas::{BlockOrigin, BlockSnapshot};
+    const MAX_LINES: usize = 60;
+    let (mut lines, start0, total) = super::preview::read_file_lines_range(
+        path,
+        start_line as usize,
+        end_line as usize,
+        MAX_LINES,
+    );
+    if lines.is_empty() {
+        return None;
+    }
+    if total > MAX_LINES {
+        lines.push(format!("    \u{2026} +{} more", total - MAX_LINES));
+    }
+    let text = lines.join("\n");
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let spans = canvas_snapshot_spans(theme, &text, extension);
+    let file = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Some((
+        BlockOrigin {
+            path: path.to_path_buf(),
+            start_byte: 0,
+            end_byte: 0,
+            symbol_name: symbol.to_string(),
+            lsp_line: start_line,
+            lsp_character: character,
+        },
+        BlockSnapshot {
+            title: file,
+            symbol: symbol.to_string(),
+            start_line: start0 as u32 + 1,
+            text,
+            spans,
+        },
+    ))
+}
+
 /// Convert LSP locations into NetherCanvas relation blocks and append them.
 /// `Definition` keeps the first location; `Caller` keeps several. Each block's
 /// snapshot is a read-only preview of the lines around the location, sized to
@@ -946,6 +1031,13 @@ fn attach_canvas_relations(
         .map(|o| o.symbol_name)
         .unwrap_or_default();
     let context = app.app_state.canvas_context_lines();
+    // Snapshot the ids present before the spawn so we can identify the newly-added
+    // cards (for progressive scope resolution) without poking the private next_id.
+    let pre_ids: Vec<crate::canvas::BlockId> = app
+        .app_state
+        .canvas()
+        .map(|c| c.blocks.iter().map(|b| b.id).collect())
+        .unwrap_or_default();
     let mut rels = Vec::new();
     for loc in locations.into_iter().take(cap) {
         let Some(path) = lsp_uri_to_path(&loc.uri) else {
@@ -977,6 +1069,68 @@ fn attach_canvas_relations(
             app.dismiss_canvas_card_completion();
             app.canvas_hover_request_id = None;
             app.submit_canvas_card_did_close();
+        }
+        // Progressive scope resolution (T4/T5): for each newly-spawned card, if its
+        // target file's documentSymbols are already cached (the active file),
+        // resolve the enclosing-definition scope synchronously right now (one
+        // reflow, no async request). Other cards get an async CanvasCardScopeRequest
+        // wired in Pass B.
+        let cached_path = app.cached_document_symbols_path.clone();
+        let cached_symbols = app.cached_document_symbols.clone();
+        let new_cards: Vec<(crate::canvas::BlockId, std::path::PathBuf, u32, u32, String)> = app
+            .app_state
+            .canvas()
+            .map(|c| {
+                c.blocks
+                    .iter()
+                    .filter(|b| !pre_ids.contains(&b.id) && b.relation != BlockRelation::Focal)
+                    .map(|b| {
+                        (
+                            b.id,
+                            b.origin.path.clone(),
+                            b.origin.lsp_line,
+                            b.origin.lsp_character,
+                            b.origin.symbol_name.clone(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        for (id, path, line, character, symbol) in new_cards {
+            let is_cached = cached_path.as_ref().is_some_and(|p| path == *p);
+            if is_cached {
+                // Sync resolve: symbols already in memory → one reflow, no request.
+                if let Some(range) = super::canvas_scope::enclosing_definition(&cached_symbols, line)
+                {
+                    if let Some((_o, snap)) = build_canvas_relation_snapshot_range(
+                        &app.theme,
+                        &path,
+                        range.start.line,
+                        range.end.line,
+                        character,
+                        &symbol,
+                    ) {
+                        app.app_state.canvas_apply_card_scope(
+                            id,
+                            snap,
+                            Some((range.start.line, range.end.line)),
+                        );
+                    }
+                }
+            } else {
+                // Async resolve: ask the worker for documentSymbol of the card's
+                // target file, correlated by `card_id`. Best-effort — an empty
+                // result keeps the ±N window (no regression).
+                let uri = crate::lsp::client::path_to_lsp_uri(&path);
+                app.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::LspRequest,
+                    payload: WorkerRequestPayload::CanvasCardScopeRequest {
+                        card_id: id,
+                        uri,
+                    },
+                });
+            }
         }
         let w = app.window_size.width as f32;
         let h = app.window_size.height as f32;
@@ -1101,7 +1255,7 @@ mod tests {
             "/Users/qc-bright/.fvm/versions/3.35.3/bin/cache/dart-sdk/lib/core/core.dart"
         )));
         assert!(is_dependency_diagnostic_path(Path::new(
-            "/workspace/.fvm/flutter_sdk/packages/flutter/lib/src/material/card.dart"
+            "/workspace/.fvm/flutter_sdk/packages/flutter/lib/src/material/button.dart"
         )));
         assert!(is_dependency_diagnostic_path(Path::new(
             "/workspace/.fvm/flutter_sdk/bin/cache/dart-sdk/lib/core/core.dart"
@@ -1112,5 +1266,27 @@ mod tests {
         assert!(!is_dependency_diagnostic_path(Path::new(
             "/workspace/lib/src/material/button.dart"
         )));
+    }
+
+    #[test]
+    fn snapshot_range_reads_exact_lines_and_clamps() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_scope_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.rs");
+        let body = (0..100).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        std::fs::write(&f, body).unwrap();
+
+        let theme = crate::config::theme_config::ThemeConfig::builtin_dark();
+        // Range lines 10..=80 (0-based) is 71 lines → clamp to 60 + "+N more".
+        let (_o, snap) =
+            super::build_canvas_relation_snapshot_range(&theme, &f, 10, 80, 0, "s").unwrap();
+        assert_eq!(snap.start_line, 11); // 1-based
+        let n = snap.text.split('\n').count();
+        assert!(n <= 61, "clamped to <=60 lines + marker, got {n}");
+        assert!(snap.text.contains("+") && snap.text.contains("more"), "has +N more marker");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

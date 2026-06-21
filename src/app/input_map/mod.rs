@@ -376,8 +376,8 @@ impl InputMap {
                 }
                 Some(crate::canvas::CanvasInteraction::Background) => {
                     return Some(KeybindingMatch {
-                        command: Command::CanvasClose,
-                        reason: "canvas background: Esc -> close canvas (S3->S0)",
+                        command: Command::FocusEditor,
+                        reason: "canvas background: Esc -> focus editor (keep canvas)",
                     });
                 }
                 _ => {}

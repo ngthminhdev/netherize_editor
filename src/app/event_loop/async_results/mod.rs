@@ -2,6 +2,7 @@ use super::*;
 use crate::async_runtime::message::{RequestTopic, WorkerEvent, WorkerResult, WorkerResultPayload};
 
 mod ai;
+pub(crate) mod canvas_scope;
 mod failure;
 mod filesystem;
 mod fzf;
@@ -16,7 +17,7 @@ mod system;
 mod terminal;
 
 pub(crate) use lsp::apply_lsp_text_edits;
-pub(crate) use lsp::{build_canvas_relation_snapshot, canvas_snapshot_spans};
+pub(crate) use lsp::canvas_snapshot_spans;
 
 use lsp::{friendly_references_status, stale_references_status};
 
@@ -83,6 +84,7 @@ impl AsyncResultRouter for AppShell {
             | WorkerResultPayload::LspReferencesResult { .. }
             | WorkerResultPayload::LspRenameResult { .. }
             | WorkerResultPayload::LspDocumentSymbolsResult { .. }
+            | WorkerResultPayload::CanvasCardScopeResult { .. }
             | WorkerResultPayload::LspFormattingResult { .. }
             | WorkerResultPayload::LspCodeActionResult { .. }
             | WorkerResultPayload::LspCompletionResult { .. }

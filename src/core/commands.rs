@@ -697,9 +697,40 @@ impl Command {
                 | Self::CenterCursorLine
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
-                // Operators (d/c/y + motion) and mode switches (i/a/v/Esc…)
+                // Operators (d/c/y + motion), text objects (diw/ci(/ya"/vi{…) and
+                // mode switches (i/a/v/Esc…) — full vim editing inside the card.
                 | Self::Operate { .. }
+                | Self::TextObjectAction { .. }
                 | Self::SwitchMode(_)
+                | Self::EnterVisualLine
+        )
+    }
+
+    /// Whether this command is a pure cursor MOTION inside a card (no text edit).
+    /// After such a command the in-card caret is clamped back into the card's
+    /// scope so motions pan the scope view but never park the caret outside the
+    /// enclosing function. Edits are excluded on purpose: `o`/`O`/paste may
+    /// legitimately land the caret on a freshly-created line.
+    pub fn is_card_motion_command(&self) -> bool {
+        matches!(
+            self,
+            Self::MoveLeft
+                | Self::MoveRight
+                | Self::MoveUp
+                | Self::MoveDown
+                | Self::MoveWordForward
+                | Self::MoveWordBackward
+                | Self::MoveWordEnd
+                | Self::MoveToLineStart
+                | Self::MoveToLineEnd
+                | Self::MoveToFirstNonWhitespace
+                | Self::MoveToFirstLine
+                | Self::MoveToLastLine
+                | Self::MoveParagraphUp
+                | Self::MoveParagraphDown
+                | Self::MatchBracket
+                | Self::MoveFindChar(..)
+                | Self::CenterCursorLine
         )
     }
 

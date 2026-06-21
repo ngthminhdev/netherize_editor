@@ -93,6 +93,32 @@ pub(super) fn read_file_lines(
     (lines, start)
 }
 
+/// Read an inclusive 0-based line range `[start_line, end_line]` from `path`,
+/// clamped to `max_lines` rows. Returns `(lines, start0, total_in_range)`; when
+/// `total_in_range > max_lines` the caller appends a "+N more" marker.
+pub(super) fn read_file_lines_range(
+    path: &std::path::Path,
+    start_line: usize,
+    end_line: usize,
+    max_lines: usize,
+) -> (Vec<String>, usize, usize) {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return (Vec::new(), start_line, 0);
+    };
+    let all: Vec<&str> = content.lines().collect();
+    if all.is_empty() || start_line >= all.len() {
+        return (Vec::new(), start_line, 0);
+    }
+    let end = end_line.min(all.len().saturating_sub(1));
+    let total = end.saturating_sub(start_line) + 1;
+    let take = total.min(max_lines);
+    let lines = all[start_line..start_line + take]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    (lines, start_line, total)
+}
+
 pub(super) fn read_file_preview(
     path: &std::path::Path,
     center_line: usize,

@@ -620,7 +620,8 @@ impl AppShell {
         self.outline_selected = None;
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;
-        jumped || true
+        let _ = jumped;
+        true
     }
 
     fn current_test_runner_content_bounds(&self) -> Option<[f32; 4]> {

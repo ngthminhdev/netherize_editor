@@ -17,6 +17,12 @@ impl InputMap {
         // the main editor). The pending flag is cleared on every keypress.
         let pending_g = self.canvas_pending_g.replace(false);
         if pending_g && !input.has_command_modifier() {
+            if input.physical_key == Some(KeyC) {
+                return Some(KeybindingMatch {
+                    command: Command::CanvasOpen,
+                    reason: "canvas: gc -> toggle canvas",
+                });
+            }
             if input.physical_key == Some(KeyD) {
                 return Some(KeybindingMatch {
                     command: Command::CanvasExpandCallee,
@@ -39,6 +45,13 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::CanvasCloseFocused,
                 reason: "canvas: space x -> close focused card",
+            });
+        }
+
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::F10) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasOpen,
+                reason: "canvas: F10 -> toggle canvas",
             });
         }
 
@@ -149,8 +162,9 @@ impl InputMap {
                 reason: "canvas: P toggle pin",
             });
         }
-        // `=`/`-` adjust the focused card's CONTEXT height; with Shift (`+`/`_`)
-        // they adjust its WIDTH instead.
+        // `=`/`-` resize the focused card's HEIGHT (visible rows, in place); with
+        // Shift (`+`/`_`) they resize its WIDTH instead. Neither re-sources file
+        // context — the card already shows only its scope.
         if input.physical_key == Some(Equal) {
             return Some(KeybindingMatch {
                 command: if shift {
@@ -158,7 +172,7 @@ impl InputMap {
                 } else {
                     Command::CanvasContextExpand
                 },
-                reason: "canvas: = more context / ⇧ wider",
+                reason: "canvas: = taller / ⇧ wider",
             });
         }
         if input.physical_key == Some(Minus) {
@@ -168,7 +182,7 @@ impl InputMap {
                 } else {
                     Command::CanvasContextShrink
                 },
-                reason: "canvas: - less context / ⇧ narrower",
+                reason: "canvas: - shorter / ⇧ narrower",
             });
         }
         None

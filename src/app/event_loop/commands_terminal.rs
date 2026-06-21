@@ -466,7 +466,8 @@ impl AppShell {
                     }
 
                     self.sidebar_needs_layout = true;
-                    changed || true
+                    let _ = changed;
+                    true
                 } else {
                     false
                 }

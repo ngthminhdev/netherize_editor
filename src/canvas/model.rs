@@ -79,6 +79,17 @@ pub struct CanvasBlock {
     /// when spawned from the focal symbol (the connector then starts at the
     /// editor caret); `Some` makes the connector run from the parent card.
     pub parent: Option<BlockId>,
+    /// The enclosing-definition line range (0-based, inclusive) this card is
+    /// scoped to, once resolved. The in-card edit viewport scrolls ONLY within
+    /// this range (it never pulls in lines outside the function/scope). `None`
+    /// before scope resolution → the edit window falls back to whole-file scroll.
+    pub scope_lines: Option<(u32, u32)>,
+    /// User-chosen visible-row count for this card (the `=`/`-` HEIGHT control).
+    /// `None` = auto-size to the snapshot/scope (capped at `CARD_MAX_LINES`);
+    /// `Some(n)` pins the box to `n` rows and caps the in-card edit viewport so
+    /// editing scrolls within those rows. Pure visual resize — never re-sources
+    /// extra file context (the card already shows only its scope).
+    pub height_rows: Option<usize>,
 }
 
 /// An axis-aligned rectangle in world space.
@@ -199,6 +210,19 @@ pub enum CanvasInteraction {
     Background,
 }
 
+/// The live visual selection inside the edit-target card (S2), mirrored from the
+/// `CanvasEditSession` so the renderer can paint selection bands like the main
+/// editor. Lines are 0-based **absolute** file lines; `end_col` is exclusive on
+/// `end_line`. `line_mode` paints the full width of every covered row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardSelection {
+    pub start_line: u32,
+    pub start_col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
+    pub line_mode: bool,
+}
+
 /// The full state of one canvas session.
 #[derive(Debug, Clone, Default)]
 pub struct CanvasState {
@@ -232,6 +256,9 @@ pub struct CanvasState {
     /// state is kept but NOT rendered; `gc` un-stashes it. Distinct from
     /// `Background` (which floats dimmed cards over the editor).
     pub stashed: bool,
+    /// Live visual selection in the edit-target card (S2), refreshed each frame
+    /// from the edit session; `None` outside Visual mode / edit. Renderer-only.
+    pub edit_selection: Option<CardSelection>,
     next_id: BlockId,
 }
 
@@ -302,21 +329,28 @@ impl CanvasState {
 
     /// Cycle focus through blocks in insertion order.
     pub fn focus_cycle(&mut self, forward: bool) -> bool {
-        if self.blocks.is_empty() {
+        // Relation cards only — the Focal block is the editor anchor, never drawn as
+        // a card, so Tab must not land on it (that reads as a "focus off" step).
+        let cards: Vec<BlockId> = self
+            .blocks
+            .iter()
+            .filter(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id)
+            .collect();
+        if cards.is_empty() {
             return false;
         }
         let cur = self
             .focused
-            .and_then(|id| self.blocks.iter().position(|b| b.id == id))
+            .and_then(|id| cards.iter().position(|&c| c == id))
             .unwrap_or(0);
-        let len = self.blocks.len();
+        let len = cards.len();
         let next = if forward {
             (cur + 1) % len
         } else {
             (cur + len - 1) % len
         };
-        let target = self.blocks[next].id;
-        self.focus(target)
+        self.focus(cards[next])
     }
 
     /// Toggle the focused block's pinned state. Returns whether a block toggled.
@@ -400,6 +434,7 @@ impl CanvasState {
     pub fn end_edit(&mut self) -> bool {
         if matches!(self.interaction, CanvasInteraction::EditCard { .. }) {
             self.interaction = CanvasInteraction::Navigate;
+            self.edit_selection = None;
             true
         } else {
             false
@@ -453,6 +488,11 @@ impl CanvasState {
             *cursor_col = col;
         }
     }
+
+    /// Set (or clear) the live visual selection painted on the edit card (S2).
+    pub fn set_edit_selection(&mut self, sel: Option<CardSelection>) {
+        self.edit_selection = sel;
+    }
 }
 
 #[cfg(test)]
@@ -476,6 +516,8 @@ mod tests {
             pinned: false,
             context_lines: 8,
             parent: None,
+            scope_lines: None,
+            height_rows: None,
             // (test helper)
         }
     }
@@ -651,13 +693,44 @@ mod tests {
     #[test]
     fn focus_cycle_wraps() {
         let mut st = CanvasState::new();
+        let focal = st.alloc_id();
+        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 10.0, 10.0)));
         let a = st.alloc_id();
-        st.push(block(a, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 10.0, 10.0)));
+        st.push(block(a, BlockRelation::Caller, WorldRect::new(40.0, 0.0, 10.0, 10.0)));
         let b = st.alloc_id();
-        st.push(block(b, BlockRelation::Caller, WorldRect::new(40.0, 0.0, 10.0, 10.0)));
+        st.push(block(b, BlockRelation::Callee, WorldRect::new(80.0, 0.0, 10.0, 10.0)));
+        st.focus(a);
         assert!(st.focus_cycle(true));
         assert_eq!(st.focused, Some(b));
-        assert!(st.focus_cycle(true)); // wraps back to a
+        assert!(st.focus_cycle(true)); // wraps back to a, NEVER focal
         assert_eq!(st.focused, Some(a));
+        assert_ne!(st.focused, Some(focal));
+    }
+
+    #[test]
+    fn focus_cycle_skips_focal_block() {
+        let mut st = CanvasState::default();
+        let focal = st.push(block(1, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 20.0, 20.0)));
+        let c1 = st.push(block(2, BlockRelation::Caller, WorldRect::new(100.0, 0.0, 20.0, 20.0)));
+        let c2 = st.push(block(3, BlockRelation::Callee, WorldRect::new(100.0, 40.0, 20.0, 20.0)));
+
+        st.focus(c1);
+        assert!(st.focus_cycle(true));
+        assert_eq!(st.focused, Some(c2));
+        // Forward again wraps straight to c1 — NEVER the focal anchor.
+        assert!(st.focus_cycle(true));
+        assert_eq!(st.focused, Some(c1));
+        assert_ne!(st.focused, Some(focal));
+
+        // Reverse is symmetric.
+        assert!(st.focus_cycle(false));
+        assert_eq!(st.focused, Some(c2));
+    }
+
+    #[test]
+    fn focus_cycle_focal_only_is_noop() {
+        let mut st = CanvasState::default();
+        st.push(block(1, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 20.0, 20.0)));
+        assert!(!st.focus_cycle(true));
     }
 }

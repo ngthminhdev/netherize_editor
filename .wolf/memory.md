@@ -2998,3 +2998,96 @@
 | 22:40 | Edited src/app/event_loop/application.rs | modified as_mut() | ~201 |
 | 22:41 | Edited src/app/event_loop/setup.rs | modified canvas_should_render() | ~157 |
 | 22:44 | Session end: 11 writes across 4 files (canvas.rs, viewport.rs, application.rs, setup.rs) | 5 reads | ~99857 tok |
+| 22:56 | Task 1 canvas input behavior fixed | input_map/mod.rs, resolved_keymap.rs, commands_canvas.rs, input/tests.rs, config/keymaps/default.toml, buglog.json | Esc keeps canvas, gc/F10 toggle/focus, targeted tests passed | ~52000 tok |
+| 23:07 | Fixed focused-canvas toggle gap | input_map/focus.rs, input/tests.rs, commands_tests.rs, buglog.json, cerebrum.md | gc/F10 now dispatch CanvasOpen while canvas owns focus; canvas tests passed | ~36000 tok |
+| 23:17 | Task 2 canvas cursor restore fixed | app_state/canvas.rs, app_state/canvas_edit.rs, buglog.json, cerebrum.md | Clean card sessions now persist cursor across Esc/Enter; cursor and canvas tests passed | ~42000 tok |
+| 23:48 | Session end: 11 writes across 4 files (canvas.rs, viewport.rs, application.rs, setup.rs) | 10 reads | ~139790 tok |
+| 23:51 | Created docs/superpowers/specs/2026-06-20-spatial-canvas-scope-and-focus-polish-design.md | — | ~3033 |
+| 23:53 | Created docs/superpowers/plans/2026-06-20-spatial-canvas-scope-and-focus-polish.md | — | ~8116 |
+| 23:54 | Session end: 13 writes across 6 files (canvas.rs, viewport.rs, application.rs, setup.rs, 2026-06-20-spatial-canvas-scope-and-focus-polish-design.md) | 11 reads | ~159626 tok |
+| 00:15 | T6: focus_cycle skips Focal | canvas/model.rs | Tab cycles relation cards only; 3 tests green | ~12000 tok |
+| 00:22 | T3: card_mode_label badge gate | render/renderer/helpers.rs, render/renderer/canvas.rs | Badge shows NORMAL/INSERT/VISUAL only; app-global modes hide badge + ring falls back cyan; 1 test green | ~18000 tok |
+| 00:30 | T4 core: enclosing_definition | async_results/canvas_scope.rs (new), async_results/mod.rs | Deepest enclosing Function/Method/Constant/Constructor selector; 4 tests green | ~14000 tok |
+| 00:38 | T4 range builder | async_results/preview.rs, async_results/lsp.rs | read_file_lines_range + build_canvas_relation_snapshot_range (clamp 60 + "+N more"); 1 test green | ~16000 tok |
+| 00:50 | T5 Pass A: focal sync scope | app_state/canvas.rs, async_results/lsp.rs | canvas_apply_card_scope + canvas_card_scope_target; cached-file cards scope-resolve at spawn; fixed stale test bug 220; 3 tests green | ~28000 tok |
+| 01:05 | T5 Pass B: async scope | message.rs, scheduler/{dispatch,lsp,syntax_jobs}.rs, async_results/{mod,lsp}.rs, app_state/canvas.rs | CanvasCardScopeRequest/Result; non-cached cards async refine; best-effort worker (empty symbols = no regression); 971 tests green | ~32000 tok |
+
+## Session: 2026-06-20 00:32
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:00 | Fixed clippy-denied always-true boolean expressions by preserving side effects and returning true directly | src/app/app_state/overlays.rs; src/app/event_loop/application.rs; src/app/event_loop/commands_settings.rs; src/app/event_loop/commands_terminal.rs | `cargo clippy --bin netherize_editor`, `cargo build`, full `cargo test` pass | ~4k |
+
+## Session: 2026-06-20 00:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 01:13 | Edited src/app/app_state/canvas.rs | 8→9 lines | ~158 |
+| 01:32 | Edited src/app/app_state/canvas_edit.rs | modified canvas_edit_session_snapshot_window() | ~1136 |
+| 01:32 | Edited src/app/app_state/canvas_edit.rs | modified canvas_edit_card_visible_lines() | ~157 |
+| 01:32 | Edited src/app/event_loop/commands.rs | modified handle_canvas_completion_command() | ~345 |
+| 01:34 | Edited src/canvas/model.rs | expanded (+13 lines) | ~141 |
+| 01:34 | Edited src/canvas/model.rs | modified tab() | ~127 |
+| 01:34 | Edited src/canvas/model.rs | modified set_edit_cursor() | ~151 |
+| 01:34 | Edited src/canvas/model.rs | modified end_edit() | ~76 |
+| 01:35 | Edited src/canvas/mod.rs | 4→4 lines | ~55 |
+| 01:35 | Edited src/app/app_state/canvas_edit.rs | modified canvas_edit_session_selection() | ~257 |
+| 01:36 | Edited src/app/app_state/canvas_edit.rs | modified compute_card_selection() | ~879 |
+| 01:36 | Edited src/app/app_state/canvas.rs | 7→12 lines | ~137 |
+| 01:37 | Edited src/render/renderer/canvas.rs | modified band() | ~206 |
+| 01:37 | Edited src/render/renderer/canvas.rs | modified take() | ~728 |
+| 01:42 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_spatial_canvas.md | 2→4 lines | ~540 |
+| 01:42 | Session end: 15 writes across 6 files (canvas.rs, canvas_edit.rs, commands.rs, model.rs, mod.rs) | 15 reads | ~164277 tok |
+| 01:49 | Edited src/canvas/model.rs | 5→10 lines | ~168 |
+| 01:50 | Edited src/app/app_state/canvas.rs | 5→6 lines | ~56 |
+| 01:50 | Edited src/app/app_state/canvas.rs | 4→5 lines | ~40 |
+| 01:50 | Edited src/canvas/model.rs | 4→5 lines | ~27 |
+| 01:50 | Edited src/app/app_state/canvas.rs | modified canvas_apply_card_scope() | ~256 |
+| 01:50 | Edited src/app/event_loop/async_results/lsp.rs | 3→7 lines | ~61 |
+| 01:50 | Edited src/app/event_loop/async_results/lsp.rs | 5→9 lines | ~83 |
+| 01:51 | Edited src/app/app_state/canvas.rs | modified s() | ~97 |
+| 01:51 | Edited src/app/app_state/canvas.rs | inline fix | ~20 |
+| 01:51 | Edited src/app/app_state/canvas.rs | inline fix | ~19 |
+| 01:52 | Edited src/app/app_state/canvas_edit.rs | modified follow_window_start() | ~332 |
+| 01:53 | Edited src/app/app_state/canvas_edit.rs | modified stays_put_when_cursor_already_visible() | ~465 |
+| 01:53 | Edited src/app/app_state/canvas_edit.rs | modified canvas_edit_session_snapshot_window() | ~689 |
+| 01:53 | Edited src/core/commands.rs | 10→12 lines | ~136 |
+| 01:57 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_spatial_canvas.md | modified and() | ~432 |
+| 01:58 | Session end: 30 writes across 7 files (canvas.rs, canvas_edit.rs, commands.rs, model.rs, mod.rs) | 15 reads | ~172701 tok |
+
+## Session: 2026-06-21 09:12
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:34 | Edited src/canvas/model.rs | expanded (+6 lines) | ~148 |
+| 09:34 | Edited src/canvas/model.rs | 3→4 lines | ~31 |
+| 09:34 | Edited src/app/app_state/canvas.rs | 6→7 lines | ~64 |
+| 09:34 | Edited src/app/app_state/canvas.rs | 5→6 lines | ~50 |
+| 09:34 | Edited src/core/commands.rs | modified is_card_motion_command() | ~351 |
+| 09:35 | Edited src/app/app_state/canvas_edit.rs | modified canvas_edit_session_block() | ~358 |
+| 09:35 | Edited src/app/app_state/canvas_edit.rs | modified clamp_char_to_line_range() | ~289 |
+| 09:35 | Edited src/app/app_state/canvas_edit.rs | modified empty_buffer_is_none() | ~442 |
+| 09:35 | Edited src/app/event_loop/commands_canvas.rs | expanded (+8 lines) | ~267 |
+| 09:35 | Edited src/app/app_state/canvas_edit.rs | modified HEIGHT() | ~264 |
+| 09:36 | Edited src/app/app_state/canvas.rs | 12→17 lines | ~205 |
+| 09:36 | Edited src/app/app_state/canvas.rs | modified canvas_change_focused_height() | ~503 |
+| 09:36 | Edited src/app/app_state/canvas.rs | 4→5 lines | ~65 |
+| 09:36 | Edited src/canvas/mod.rs | 2→3 lines | ~55 |
+| 09:37 | Edited src/app/app_state/canvas.rs | 5→4 lines | ~51 |
+| 09:37 | Edited src/app/app_state/canvas.rs | removed 26 lines | ~22 |
+| 09:37 | Edited src/app/event_loop/commands_canvas.rs | 4→9 lines | ~136 |
+| 09:37 | Edited src/app/event_loop/commands_canvas.rs | — | ~0 |
+| 09:37 | Edited src/app/event_loop/commands_canvas.rs | 3→3 lines | ~50 |
+| 09:37 | Edited src/app/event_loop/async_results/mod.rs | inline fix | ~12 |
+| 09:38 | Edited src/app/app_state/canvas.rs | 6→4 lines | ~62 |
+| 09:38 | Edited src/app/app_state/canvas.rs | modified change_focused_height_only_affects_focused_card() | ~803 |
+| 09:38 | Edited src/app/app_state/canvas.rs | modified change_focused_height_clamps_and_reports_false_at_bounds() | ~303 |
+| 09:39 | Edited src/app/app_state/canvas.rs | modified change_focused_height_is_false_for_focal_anchor() | ~101 |
+| 09:39 | Edited src/app/input_map/focus.rs | modified Some() | ~245 |
+| 09:42 | Edited src/app/app_state/canvas_edit.rs | modified final_line_stays_on_its_line() | ~131 |
+| 09:46 | Edited src/app/event_loop/commands.rs | modified editing() | ~264 |
+| 09:46 | Edited src/app/event_loop/commands.rs | modified is_some() | ~57 |
+| 09:47 | Edited src/app/event_loop/commands_canvas.rs | cheap() → canvas_interaction() | ~270 |
+| 09:48 | Edited src/app/event_loop/commands_tests.rs | modified background_canvas_with_stashed_session_lets_main_editor_move() | ~694 |
+| 09:51 | Session end: 30 writes across 8 files (model.rs, canvas.rs, commands.rs, canvas_edit.rs, commands_canvas.rs) | 15 reads | ~201120 tok |
+| 09:53 | Session end: 30 writes across 8 files (model.rs, canvas.rs, commands.rs, canvas_edit.rs, commands_canvas.rs) | 15 reads | ~201120 tok |

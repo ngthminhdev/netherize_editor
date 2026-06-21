@@ -241,7 +241,6 @@ impl AppShell {
                     },
                 });
 
-                let changed = true;
                 self.pending_lsp_server = None;
                 self.lsp_retry_at =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
@@ -251,7 +250,7 @@ impl AppShell {
                 );
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
-                Some(changed || true)
+                Some(true)
             }
             Command::ExtensionsUninstallSelected => {
                 if let Some(running) = self
@@ -353,7 +352,8 @@ impl AppShell {
                     if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::Escape) {
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
-                        return Some(result.changed || true);
+                        let _ = result.changed;
+                        return Some(true);
                     }
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
