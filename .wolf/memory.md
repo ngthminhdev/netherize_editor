@@ -3203,3 +3203,64 @@
 - Spawn animation: `CanvasBlock.spawned_at: Option<Instant>` (`CARD_SPAWN_MS=200`, EaseOutCubic); renderer scales drawn card height → body capacity reveals rows. `tick_canvas_spawn_animation`/`canvas_tick_spawn_anim` drive ~120Hz frames (wired beside palette_motion in about_to_wait).
 - 1006 tests green, clippy clean, uncommitted (human commits).
 | 12:47 | Session end: 25 writes across 6 files (model.rs, canvas.rs, mod.rs, commands_canvas.rs, lsp.rs) | 10 reads | ~124322 tok |
+
+## Session: 2026-06-21 15:46
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:51 | Edited src/render/renderer/canvas.rs | expanded (+9 lines) | ~193 |
+| 15:52 | Edited src/render/renderer/canvas.rs | 4→6 lines | ~100 |
+| 15:52 | Edited src/render/renderer/canvas.rs | 4→6 lines | ~86 |
+| 15:52 | Edited src/render/renderer/canvas.rs | 5→6 lines | ~124 |
+| 15:52 | Edited src/render/renderer/canvas.rs | 3→3 lines | ~55 |
+| 15:52 | Edited src/render/renderer/canvas.rs | 3→3 lines | ~38 |
+
+## 2026-06-21 — NetherCanvas top-most cards
+Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content` now bounds card cull, body_bottom, connector cull and in-card popups to a window rect (`wx/wy/ww/wh`), while scrim/hint-bar/empty-state/anchor stay on the editor-pane rect (`ax/ay/aw/ah`). Canvas already drew last (full-window scissor) so this was a geometry-clamp fix, not a z-order one. buglog #232.
+| 15:53 | Session end: 6 writes across 1 files (canvas.rs) | 3 reads | ~33373 tok |
+
+## Session: 2026-06-21 21:08
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-21 21:09
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:10 | Edited README.md | 1→5 lines | ~112 |
+| 21:11 | Edited README.md | expanded (+7 lines) | ~308 |
+| 21:11 | Edited README.md | 1→3 lines | ~140 |
+| 21:11 | Edited README.md | 1→5 lines | ~127 |
+| 21:12 | Edited README.md | expanded (+72 lines) | ~815 |
+| 21:13 | Edited README.md | 2→4 lines | ~108 |
+| 21:13 | Edited README.md | 1→2 lines | ~52 |
+| 21:14 | Edited README.md | 2→3 lines | ~53 |
+| 21:15 | Edited README.md | 2→3 lines | ~57 |
+| 21:15 | Edited README.md | 2→4 lines | ~71 |
+| 21:15 | Session end: 10 writes across 1 files (README.md) | 1 reads | ~13557 tok |
+
+## Session: 2026-06-21 21:20
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:37 | Created docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | — | ~2994 |
+| 21:37 | Edited docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | 4→2 lines | ~9 |
+| 21:37 | Session end: 2 writes across 1 files (2026-06-21-mouse-spatial-interactions-design.md) | 5 reads | ~65371 tok |
+| 21:39 | Edited docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | expanded (+12 lines) | ~381 |
+| 21:39 | Edited docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | 13→15 lines | ~273 |
+| 21:39 | Edited docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | move_block() → canvas_pointer_move_block() | ~89 |
+| 21:40 | Edited docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | 3→4 lines | ~77 |
+| 21:40 | Edited docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md | 2→2 lines | ~40 |
+
+## Session: 2026-06-21 21:40
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:47 | Created docs/superpowers/plans/2026-06-21-mouse-spatial-interactions.md | — | ~13865 |
+| 21:48 | Session end: 1 writes across 1 files (2026-06-21-mouse-spatial-interactions.md) | 0 reads | ~14855 tok |
+
+## Session: 2026-06-21 21:56
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

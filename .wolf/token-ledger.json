@@ -2,14 +2,14 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 38812348,
-    "total_reads": 3975,
-    "total_writes": 7035,
-    "total_sessions": 157,
-    "anatomy_hits": 3669,
+    "total_tokens_estimated": 38939504,
+    "total_reads": 3984,
+    "total_writes": 7054,
+    "total_sessions": 163,
+    "anatomy_hits": 3678,
     "anatomy_misses": 260,
-    "repeated_reads_blocked": 4860,
-    "estimated_savings_vs_bare_cli": 59322294
+    "repeated_reads_blocked": 4866,
+    "estimated_savings_vs_bare_cli": 59418941
   },
   "sessions": [
     {
@@ -64425,6 +64425,222 @@
         "writes_count": 25,
         "repeated_reads_blocked": 15,
         "anatomy_lookups": 10
+      }
+    },
+    {
+      "id": "session-2026-06-21-1546",
+      "started": "2026-06-21T08:46:31.190Z",
+      "ended": "2026-06-21T08:53:56.921Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/lifecycle/frame.rs",
+          "tokens_estimated": 10540,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 13951,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 8244,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 206,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 107,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 92,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 133,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 59,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/canvas.rs",
+          "tokens_estimated": 41,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 32735,
+        "output_tokens_estimated": 638,
+        "reads_count": 3,
+        "writes_count": 6,
+        "repeated_reads_blocked": 1,
+        "anatomy_lookups": 3
+      }
+    },
+    {
+      "id": "session-2026-06-21-2109",
+      "started": "2026-06-21T14:09:03.735Z",
+      "ended": "2026-06-21T14:15:58.532Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 11583,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 120,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 330,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 150,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 136,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 873,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 116,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 56,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 56,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 61,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 76,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 11583,
+        "output_tokens_estimated": 1974,
+        "reads_count": 1,
+        "writes_count": 10,
+        "repeated_reads_blocked": 4,
+        "anatomy_lookups": 1
+      }
+    },
+    {
+      "id": "session-2026-06-21-2120",
+      "started": "2026-06-21T14:20:16.977Z",
+      "ended": "2026-06-21T14:37:38.763Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/README.md",
+          "tokens_estimated": 11653,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+          "tokens_estimated": 37975,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/workbench/panel_state.rs",
+          "tokens_estimated": 1943,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/canvas/model.rs",
+          "tokens_estimated": 7775,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md",
+          "tokens_estimated": 2807,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md",
+          "tokens_estimated": 3208,
+          "action": "create"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/specs/2026-06-21-mouse-spatial-interactions-design.md",
+          "tokens_estimated": 10,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 62153,
+        "output_tokens_estimated": 3218,
+        "reads_count": 5,
+        "writes_count": 2,
+        "repeated_reads_blocked": 1,
+        "anatomy_lookups": 5
+      }
+    },
+    {
+      "id": "session-2026-06-21-2140",
+      "started": "2026-06-21T14:40:09.794Z",
+      "ended": "2026-06-21T14:48:10.992Z",
+      "reads": [],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/plans/2026-06-21-mouse-spatial-interactions.md",
+          "tokens_estimated": 14855,
+          "action": "create"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 0,
+        "output_tokens_estimated": 14855,
+        "reads_count": 0,
+        "writes_count": 1,
+        "repeated_reads_blocked": 0,
+        "anatomy_lookups": 0
       }
     }
   ],

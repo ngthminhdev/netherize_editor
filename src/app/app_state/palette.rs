@@ -1303,6 +1303,7 @@ impl AppState {
                 status_message: None,
                 pending_request_id: None,
                 path_counts,
+                collapsed_paths: std::collections::HashSet::new(),
             }),
         });
 
@@ -1339,6 +1340,7 @@ impl AppState {
                 status_message: Some("Loading references...".to_string()),
                 pending_request_id: Some(pending_request_id),
                 path_counts: std::collections::HashMap::new(),
+                collapsed_paths: std::collections::HashSet::new(),
             }),
         });
 

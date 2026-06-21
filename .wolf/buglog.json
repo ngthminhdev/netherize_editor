@@ -3982,5 +3982,26 @@
       "spawn-reveal",
       "wrap"
     ]
+  },
+  {
+    "id": 232,
+    "timestamp": "2026-06-21",
+    "error_message": "NetherCanvas cards (incl. the spawn cluster) were visually clipped by the top bar, the editor breadcrumb row and the bottom terminal — they looked covered instead of floating on top.",
+    "file": "src/render/renderer/canvas.rs",
+    "root_cause": "The canvas already draws LAST in frame.rs with a full-window scissor (top z-order), but update_canvas_content derived its working rect (ax/ay/aw/ah) from editor_full_scissor = the editor CENTER pane (above the terminal, below the topbar). That rect was used for card culling, the per-card body_bottom clamp, the connector cull and the in-card popup bounds — so card geometry was confined to the pane and any part over the topbar/terminal/pane-edge was culled or its rows cut to a +N more marker, reading as the bars covering the cards.",
+    "fix": "Added a window rect (wx/wy/ww/wh = 0,0,surface.width,surface.height) and switched the geometry-bounding uses to it: card cull, connector cull, body_bottom clamp, draw_card_hover bounds and the completion-menu bounds. Scrim, hint bar, empty-state panel and the connector ANCHOR stay on the editor-pane rect (ax/ay/aw/ah) so only the editor is dimmed, not the topbar/terminal. Cards now render edge-to-edge as the true top-most layer. cargo check clean; 88 canvas tests pass.",
+    "tags": [
+      "nethercanvas",
+      "spatial-canvas",
+      "canvas",
+      "render",
+      "z-index",
+      "scissor",
+      "breadcrumb",
+      "topbar",
+      "terminal",
+      "card-spawn",
+      "user-reported"
+    ]
   }
 ]

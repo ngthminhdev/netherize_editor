@@ -36,6 +36,10 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
 | Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
 | LeetCode test generation | ✅ Stratified case generation + AI verification |
+| Spatial Canvas (NetherCanvas) | ✅ Navigable 2D code canvas with LSP-driven cards, auto-arrange, scope-aware editing |
+| Workbench panel slide animation | ✅ Hyprland-style timeline-based slide for docks + zen mode |
+| Solid caret (no blink) | ✅ Caret stays visible always |
+| Palette vim key repeat | ✅ j/k repeat in palette Normal mode |
 
 ---
 
@@ -90,6 +94,8 @@ netherize_editor/
 │   │   │   ├── state.rs           # Derived/query helpers, completion/search/undo-redo state access
 │   │   │   ├── overlays.rs        # Overlay + shared internal helper logic
 │   │   │   ├── code_graph_hud.rs  # Code graph HUD overlay state
+│   │   │   ├── canvas.rs          # Spatial canvas state management
+│   │   │   ├── canvas_edit.rs     # Scope-aware card editing logic
 │   │   │   └── tests.rs           # AppState regression tests
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
@@ -97,6 +103,7 @@ netherize_editor/
 │   │   │   ├── async_results/     # Async result processing split by topic
 │   │   │   │   ├── mod.rs         # Drain bridge, reject stale results, delegate to handlers
 │   │   │   │   ├── ai.rs          # AI chat results
+│   │   │   │   ├── canvas_scope.rs # Canvas scope resolution results (LSP symbols)
 │   │   │   │   ├── failure.rs     # Error/failure handling
 │   │   │   │   ├── filesystem.rs  # File system operation results
 │   │   │   │   ├── fzf.rs         # Fuzzy finder results
@@ -117,6 +124,7 @@ netherize_editor/
 │   │   │   ├── commands_palette.rs # Palette/open-file/open-buffer commands
 │   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI commands
 │   │   │   ├── commands_ai_agent.rs # AI agent/chat panel commands
+│   │   │   ├── commands_canvas.rs # Spatial canvas commands
 │   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
 │   │   │   ├── commands_settings.rs # Settings panel commands
 │   │   │   ├── commands_settings_helpers.rs # Settings editing helpers
@@ -274,6 +282,12 @@ netherize_editor/
 │   │   │   └── yaml/
 │   │   └── mod.rs
 │   │
+│   ├── canvas/                    # Spatial canvas (NetherCanvas)
+│   │   ├── mod.rs
+│   │   ├── model.rs               # CanvasBlock, CanvasCamera, CanvasState — pure data model
+│   │   ├── layout.rs              # Auto-arrange algorithm (column wrap + inward fill)
+│   │   └── navigation.rs          # Spatial navigation helpers (nearest-block search)
+│   │
 │   ├── workbench/                 # UI layout + panel management
 │   │   ├── layout_engine.rs       # WorkbenchLayoutEngine — computes RegionModel from panel sizes
 │   │   ├── region_model.rs        # RegionId / RegionBounds / RegionModel tree
@@ -282,6 +296,7 @@ netherize_editor/
 │   │   ├── overlay_manager.rs     # Overlay stack (palette, picker, etc.)
 │   │   ├── inspector_panel.rs     # Inspector/Right sidebar panel
 │   │   ├── text_coordinate_map.rs # Text ↔ pixel coordinate mapping
+│   │   ├── motion.rs              # Timeline-based motion primitives (ease, spring, slide)
 │   │   ├── debug_state.rs         # Debug/development state tracking
 │   │   └── mod.rs
 │   │
@@ -535,6 +550,7 @@ window.request_redraw()
 | AI inference and service integration | `src/async_runtime/scheduler/ai_jobs.rs`, `ai.rs` |
 | LeetCode problem fetching | `src/async_runtime/scheduler/leetcode_fetch.rs` |
 | Code graph analysis | `src/async_runtime/scheduler/codegraph.rs` |
+| Canvas scope resolution (LSP) | `src/async_runtime/scheduler/lsp.rs`, `src/app/event_loop/async_results/canvas_scope.rs` |
 
 ### Keyboard / Vim Path In One Line
 
@@ -578,6 +594,8 @@ Use this table when you want to jump straight to the likely file instead of read
 | LeetCode problem fetch, code runner | `src/runner/`, `src/app/event_loop/async_results/runner.rs`, `src/async_runtime/scheduler/leetcode_fetch.rs` | Runner logic, async results, and scheduler tasks |
 | Test runner behavior | `src/app/event_loop/commands_tests.rs`, `src/render/renderer/ui/test_runner.rs` | Test runner commands and rendering |
 | Live grep / workspace search | `src/app/event_loop/commands_palette.rs`, `src/render/renderer/palette/live_grep.rs`, `src/workspace/fuzzy.rs` | Search initiation, rendering, and fuzzy matching |
+| Spatial Canvas (NetherCanvas) | `src/canvas/`, `src/app/app_state/canvas.rs`, `src/app/app_state/canvas_edit.rs`, `src/app/event_loop/commands_canvas.rs`, `src/render/renderer/canvas.rs` | Canvas model, state, editing, commands, and rendering |
+| Workbench panel slide / motion | `src/workbench/motion.rs`, `src/app/event_loop/application.rs`, `src/config/ui_config.rs` | Motion timeline primitives, animation tick, and easing config |
 | Which-key hints | `src/render/renderer/ui/whichkey.rs` | Which-key popup rendering |
 | Clipboard behavior | `src/app/clipboard.rs` | Clipboard read/write via arboard |
 | LSP capabilities or symbol caching | `src/lsp/capabilities.rs`, `src/lsp/symbol_cache.rs` | LSP negotiation and symbol cache |
@@ -613,6 +631,10 @@ Use this table when you want to jump straight to the likely file instead of read
 | `ThemeConfig` | `config/theme_config/` | Theme data model loaded from TOML |
 | `CodeGraphModel` | `codegraph/model.rs` | Symbol dependency graph data model |
 | `CodeGraphHudState` | `app/app_state/code_graph_hud.rs` | Code graph HUD overlay state |
+| `CanvasState` | `canvas/model.rs` | Spatial canvas state — blocks, camera, zoom, relations |
+| `CanvasBlock` | `canvas/model.rs` | A single code card on the infinite canvas plane |
+| `CanvasCamera` | `canvas/model.rs` | World↔screen mapping + zoom level for canvas viewport |
+| `MotionTimeline` | `workbench/motion.rs` | Timeline-based animation state for panel slide transitions |
 
 ---
 
@@ -655,6 +677,78 @@ Mode transitions are validated by `ModeState::apply(event)` — invalid transiti
 ```
 
 Layout is computed by `WorkbenchLayoutEngine::compute(viewport, panel_state)` and stored as `RegionModel`. The renderer reads `RegionModel` to determine scissor rects and text origins for each panel.
+
+---
+
+## Spatial Canvas (NetherCanvas)
+
+An infinite 2D canvas for exploring code spatially. Open it with `F8` from any buffer — it spawns cards from LSP symbol data (definitions, callers, callees) and lets you navigate code relationships visually.
+
+```
+┌─ Canvas ──────────────────────────────────────┐
+│                                               │
+│   ┌──────────┐         ┌──────────┐           │
+│   │ Focal    │────────►│ Def      │           │
+│   │ symbol   │         │ site     │           │
+│   └──────────┘         └──────────┘           │
+│        │                                      │
+│        ▼                                      │
+│   ┌──────────┐         ┌──────────┐           │
+│   │ Caller   │         │ Callee   │           │
+│   │ sites    │         │ sites    │           │
+│   └──────────┘         └──────────┘           │
+│                                               │
+└───────────────────────────────────────────────┘
+```
+
+### Key features
+
+| Feature | Description |
+|---------|-------------|
+| LSP-driven cards | Each card shows a code snapshot sourced from LSP (definition, callers, callees) |
+| Spatial navigation | hjkl-style movement between cards on the infinite plane |
+| Auto-arrange (`gca`) | Re-flow cards into neat columns wrapping inward |
+| Scope-aware editing | Cards support 4-state focus: navigate → select → edit → live buffer |
+| Zoom | Scroll-wheel zoom in/out on the canvas |
+| Spawn reveal animation | New cards animate in with a fade/scale effect |
+| Block relations | Cards are tagged as Focal / Definition / Caller / Callee |
+| Keybindings | `F8` open, `gca` auto-arrange, `Enter` drill deeper, `hjkl` navigate |
+
+### Canvas focus modes
+
+```
+Navigate  ──(Enter on card)──►  Select   (card highlighted, ready to act)
+Select    ──(Enter)───────────►  Edit     (live buffer in card, cursor active)
+Select    ──(Escape)──────────►  Navigate
+Edit      ──(Escape)──────────►  Select
+```
+
+### Module map
+
+| File | Role |
+|------|------|
+| `src/canvas/model.rs` | Pure data model — `CanvasBlock`, `CanvasCamera`, `CanvasState` |
+| `src/canvas/layout.rs` | Auto-arrange algorithm |
+| `src/canvas/navigation.rs` | Nearest-block spatial search |
+| `src/app/app_state/canvas.rs` | Canvas state management + mutation |
+| `src/app/app_state/canvas_edit.rs` | Scope-aware card editing logic |
+| `src/app/event_loop/commands_canvas.rs` | Canvas command handlers |
+| `src/render/renderer/canvas.rs` | GPU rendering for canvas + cards |
+
+---
+
+## Workbench Panel Slide Animation
+
+Dock panels (sidebar, terminal) now animate open/close with Hyprland-style slide transitions powered by timeline-based motion primitives in `src/workbench/motion.rs`.
+
+Config in `config/ui/default.toml`:
+
+```toml
+[motion]
+enabled = true
+duration_ms = 250
+ease = "ease_out_cubic"     # ease_in_out, ease_out_back, spring, etc.
+```
 
 ---
 
@@ -881,3 +975,5 @@ Read in this order to build a mental model quickly:
 11. **`src/workbench/layout_engine.rs`** — UI region geometry when a bug is visual/layout-related
 12. **`src/render/renderer.rs`** + **`src/render/renderer/ui/`** — frame assembly and UI rendering
 13. **`src/text/text_system.rs`** + **`src/text/atlas.rs`** — text shaping/raster path when glyph/render bugs appear
+14. **`src/canvas/`** — spatial canvas data model, layout, and navigation (NetherCanvas)
+15. **`src/workbench/motion.rs`** — timeline-based animation primitives for panel slide transitions

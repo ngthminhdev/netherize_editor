@@ -269,6 +269,7 @@ pub struct ReferencesBufferState {
     pub status_message: Option<String>,
     pub pending_request_id: Option<u64>,
     pub path_counts: std::collections::HashMap<String, usize>,
+    pub collapsed_paths: std::collections::HashSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1954,6 +1955,7 @@ pub struct FuzzyState {
     pub preview_spans: Vec<StyledTextSpan>,
     pub results: Vec<CommandPaletteItem>,
     pub live_grep_case_sensitive: bool,
+    pub collapsed_paths: std::collections::HashSet<String>,
     // ── Shared single-line Vim state (see command_palette::VimLineView) ──────
     pub vim_mode: crate::app::command_palette::PaletteVimMode,
     pub vim_cursor_byte: usize,
@@ -2007,6 +2009,7 @@ impl FuzzyState {
             preview_spans: Vec::new(),
             results: Vec::new(),
             live_grep_case_sensitive: false,
+            collapsed_paths: std::collections::HashSet::new(),
             vim_mode: crate::app::command_palette::PaletteVimMode::Insert,
             vim_cursor_byte: 0,
             vim_selection_range: None,

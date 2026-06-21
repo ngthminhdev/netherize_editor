@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T05:43:42.128Z
-> Files: 461 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T14:47:28.566Z
+> Files: 463 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -45,7 +45,7 @@
 - `CLAUDE.md` — OpenWolf (~1543 tok)
 - `Cross.toml` (~73 tok)
 - `DEPENDENCIES.md` — Netherize Editor - Runtime Dependencies (~1867 tok)
-- `README.md` — Project documentation (~6759 tok)
+- `README.md` — Project documentation (~11653 tok)
 - `twoSum.go` — Two Sum — reads from stdin, prints to stdout (for the Test Runner panel). (~263 tok)
 - `twoSum.js` — Two Sum — reads from stdin, prints to stdout (for the Test Runner panel). (~235 tok)
 - `update_themes.sh` — Script to update all theme files with vibrant syntax colors (~410 tok)
@@ -359,6 +359,7 @@
 - `2026-06-19-spatial-canvas-phaseA.md` — Spatial Canvas — Phase A Implementation Plan (~1976 tok)
 - `2026-06-19-workbench-motion-panel-slide.md` — Workbench Motion — Panel Slide Animation — Implementation Plan (~7161 tok)
 - `2026-06-20-spatial-canvas-scope-and-focus-polish.md` — NetherCanvas Scope-aware Cards & Focus Polish (T3–T6) — Implementation Plan (~7608 tok)
+- `2026-06-21-mouse-spatial-interactions.md` — Mouse Spatial Interactions Implementation Plan (~12998 tok)
 
 ## docs/superpowers/specs/
 
@@ -375,6 +376,7 @@
 - `2026-06-20-spatial-canvas-incard-edit-v2-design.md` — NetherCanvas — In-Card Editing v2 (no buffer switch) (~7324 tok)
 - `2026-06-20-spatial-canvas-phaseB-design.md` — NetherCanvas — Spatial Canvas Phase B: Edit-in-Card (~3421 tok)
 - `2026-06-20-spatial-canvas-scope-and-focus-polish-design.md` — NetherCanvas — Scope-aware Cards & Focus Polish (T3–T6) (~2844 tok)
+- `2026-06-21-mouse-spatial-interactions-design.md` — Mouse Spatial Interactions — Design (~3130 tok)
 
 ## scripts/
 
@@ -579,7 +581,7 @@
 
 ## src/render/renderer/
 
-- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~13951 tok)
+- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~14216 tok)
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2139 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)

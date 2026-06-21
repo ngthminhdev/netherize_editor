@@ -94,6 +94,15 @@ impl Renderer {
         let ay = scissor[1] as f32;
         let aw = scissor[2] as f32;
         let ah = scissor[3] as f32;
+        // Cards, connectors and in-card popups are the TOP-MOST layer (the canvas
+        // draws last in frame.rs with a full-window scissor), so their geometry may
+        // extend across the ENTIRE surface — never clipped by the top bar, the
+        // breadcrumb row, or the bottom terminal. Only the scrim, hint bar, empty
+        // state and connector anchor stay tied to the editor pane (ax/ay/aw/ah).
+        let wx = 0.0f32;
+        let wy = 0.0f32;
+        let ww = self.surface_state.config.width as f32;
+        let wh = self.surface_state.config.height as f32;
 
         let cam = canvas.camera;
         // Match the main editor EXACTLY (font size + line height) so a card reads
@@ -207,7 +216,9 @@ impl Renderer {
                     continue;
                 }
                 let [bx, by, bw, bh] = cam.world_to_screen(block.world);
-                if bx > ax + aw || bx + bw < ax || by > ay + ah || by + bh < ay {
+                // Cull against the whole window — a card (and its connector) may
+                // float over the top bar / terminal, so don't drop it at the pane edge.
+                if bx > wx + ww || bx + bw < wx || by > wy + wh || by + bh < wy {
                     continue;
                 }
                 let pill = PillRect {
@@ -270,7 +281,9 @@ impl Renderer {
                 }
                 None => sh,
             };
-            if sx + sw < ax || sy + sh < ay || sx > ax + aw || sy > ay + ah || sw < 8.0 || sh < 8.0
+            // Cull against the whole window so a card floats over the top bar,
+            // breadcrumb and bottom terminal instead of being clipped at the pane edge.
+            if sx + sw < wx || sy + sh < wy || sx > wx + ww || sy > wy + wh || sw < 8.0 || sh < 8.0
             {
                 continue;
             }
@@ -457,11 +470,12 @@ impl Renderer {
             // capacity bound is the only guarantee).
             let code_x = sx + PAD + gutter_w;
             let body_top = sy + title_h + 4.0;
-            // Clamp the body's bottom to the visible region so a card taller than
-            // the viewport shows a "+N more" marker instead of letting rows fall
-            // silently off-screen (the canvas shares one scissor — there's no
-            // per-card vertical clip, so capacity must respect the viewport).
-            let body_bottom = (sy + sh - 4.0).min(ay + ah - 4.0);
+            // Clamp the body's bottom to the WINDOW (not the editor pane) so a card
+            // renders its rows down over the bottom terminal instead of being cut at
+            // the pane edge; a card taller than the window still shows a "+N more"
+            // marker (the canvas shares one scissor — there's no per-card vertical
+            // clip, so capacity must respect the surface).
+            let body_bottom = (sy + sh - 4.0).min(wy + wh - 4.0);
             // Hard horizontal clip: the char-count truncation uses an *estimated*
             // advance (`fs*0.6`) which under-counts the real font, so long lines
             // can still spill past the right border. Drop any glyph crossing this
@@ -903,7 +917,7 @@ impl Renderer {
         let popup_glyph_start = self.canvas_glyph_instances.len();
         let mut popup_rect: Option<[f32; 4]> = None;
         if let (Some(anchor), Some(lines)) = (overlay_anchor, canvas.card_hover.as_ref()) {
-            popup_rect = self.draw_card_hover(lines, anchor, fs, line_height, char_w, [ax, ay, aw, ah]);
+            popup_rect = self.draw_card_hover(lines, anchor, fs, line_height, char_w, [wx, wy, ww, wh]);
         }
         if let (Some([caret_x, below_y, _, _]), Some(completion)) = (overlay_anchor, card_completion)
         {
@@ -916,7 +930,7 @@ impl Renderer {
                     anchor_x: caret_x,
                     caret_top: below_y - line_height,
                     caret_bottom: below_y,
-                    bounds: [ax, ay, aw, ah],
+                    bounds: [wx, wy, ww, wh],
                     font_size: fs,
                     line_height,
                     ui_scale: cam.zoom.max(0.5),
