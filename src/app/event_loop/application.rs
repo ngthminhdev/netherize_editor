@@ -300,6 +300,38 @@ impl AppShell {
         visible_region_bounds(&flat_regions, RegionId::BottomPanel)
     }
 
+    /// All three dock inner-edge bounds in ONE layout pass (visible docks only).
+    /// Cheaper than calling `current_{left,right,bottom}_*_bounds()` separately —
+    /// those each recompute the whole layout, so the pointer hover/press paths use
+    /// this to avoid three layout computes per `CursorMoved`.
+    fn current_dock_bounds(
+        &self,
+    ) -> (Option<[f32; 4]>, Option<[f32; 4]>, Option<[f32; 4]>) {
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let flat: Vec<_> = layout.model.flatten();
+        let left = self
+            .panel_state
+            .left
+            .visible
+            .then(|| visible_region_bounds(&flat, RegionId::LeftSidebar))
+            .flatten();
+        let right = self
+            .panel_state
+            .right
+            .visible
+            .then(|| visible_region_bounds(&flat, RegionId::RightSidebar))
+            .flatten();
+        let bottom = self
+            .panel_state
+            .bottom
+            .visible
+            .then(|| visible_region_bounds(&flat, RegionId::BottomPanel))
+            .flatten();
+        (left, right, bottom)
+    }
+
     /// Physical-pixel window size, used to cap dock resize.
     fn viewport_size(&self) -> (f32, f32) {
         self.window
@@ -323,36 +355,18 @@ impl AppShell {
             return false;
         };
 
-        let left = self
-            .panel_state
-            .left
-            .visible
-            .then(|| self.current_left_sidebar_bounds())
-            .flatten();
-        let right = self
-            .panel_state
-            .right
-            .visible
-            .then(|| self.current_right_sidebar_bounds())
-            .flatten();
-        let bottom = self
-            .panel_state
-            .bottom
-            .visible
-            .then(|| self.current_bottom_panel_bounds())
-            .flatten();
+        let navigating = self.app_state.canvas_is_navigating();
+        let (left, right, bottom) = self.current_dock_bounds();
         let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
 
-        let card_hit = if self.app_state.canvas_is_navigating() {
+        let card_hit = if navigating {
             self.app_state.canvas().and_then(|c| {
                 crate::canvas::interaction::card_pointer_hit_test(&c.blocks, &c.camera, cursor)
             })
         } else {
             None
         };
-        let Some(target) =
-            resolve_press_target(self.app_state.canvas_is_navigating(), card_hit, splitter_hit)
-        else {
+        let Some(target) = resolve_press_target(navigating, card_hit, splitter_hit) else {
             return false;
         };
 
@@ -365,6 +379,9 @@ impl AppShell {
                 },
             },
             DragTarget::CardMove(id) => {
+                // Grabbing a card also gives it keyboard focus, so a click selects
+                // it and `hjkl` keeps controlling the same card after the drag.
+                self.app_state.canvas_focus_block(id);
                 let start_world = self
                     .app_state
                     .canvas()
@@ -373,12 +390,18 @@ impl AppShell {
                     .unwrap_or((0.0, 0.0));
                 DragAnchor::CardMove { start_world }
             }
-            DragTarget::CardResize(_, _) => DragAnchor::CardResize,
+            DragTarget::CardResize(id, _) => {
+                self.app_state.canvas_focus_block(id);
+                DragAnchor::CardResize
+            }
         };
         self.active_drag = Some(ActiveDrag {
             target,
             start_cursor: cursor,
             anchor,
+            // Panel/resize drags act immediately; card-move waits for the
+            // dead-zone (gated in `update_pointer_drag`).
+            armed: !matches!(target, DragTarget::CardMove(_)),
         });
         true
     }
@@ -386,10 +409,23 @@ impl AppShell {
     /// Apply an in-progress drag for the current cursor position. Returns whether
     /// state changed (and thus a redraw is needed).
     fn update_pointer_drag(&mut self, cursor: (f32, f32)) -> bool {
-        use crate::workbench::pointer_drag::{apply_panel_drag, DragAnchor, DragTarget, PanelSide};
+        use crate::workbench::pointer_drag::{
+            apply_panel_drag, past_deadzone, DragAnchor, DragTarget, PanelSide, DRAG_DEADZONE_PX,
+        };
         let Some(drag) = self.active_drag else {
             return false;
         };
+        // Card-move stays inert until the cursor escapes the dead-zone, so a
+        // click-to-focus never nudges the card. Once armed, it stays armed.
+        if matches!(drag.target, DragTarget::CardMove(_)) && !drag.armed {
+            if past_deadzone(drag.start_cursor, cursor, DRAG_DEADZONE_PX) {
+                if let Some(d) = self.active_drag.as_mut() {
+                    d.armed = true;
+                }
+            } else {
+                return false;
+            }
+        }
         let dx = cursor.0 - drag.start_cursor.0;
         let dy = cursor.1 - drag.start_cursor.1;
         match (drag.target, drag.anchor) {
@@ -455,44 +491,26 @@ impl AppShell {
     /// the stored hover target (used for the highlight in the renderer). Returns
     /// whether the hover target changed (so the caller can redraw the highlight).
     fn update_hover_affordance(&mut self, cursor: (f32, f32)) -> bool {
+        use crate::canvas::interaction::{CardZone, CARD_RESIZE_BAND_PX, CARD_RESIZE_CORNER_PX};
         use crate::workbench::pointer_drag::{
             resolve_press_target, splitter_hit_test, DragTarget, HoverTarget, PanelSide,
             SPLITTER_BAND_PX,
         };
         use winit::window::CursorIcon;
 
-        let card_hit = if self.app_state.canvas_is_navigating() {
+        let navigating = self.app_state.canvas_is_navigating();
+        let card_hit = if navigating {
             self.app_state.canvas().and_then(|c| {
                 crate::canvas::interaction::card_pointer_hit_test(&c.blocks, &c.camera, cursor)
             })
         } else {
             None
         };
-        let left = self
-            .panel_state
-            .left
-            .visible
-            .then(|| self.current_left_sidebar_bounds())
-            .flatten();
-        let right = self
-            .panel_state
-            .right
-            .visible
-            .then(|| self.current_right_sidebar_bounds())
-            .flatten();
-        let bottom = self
-            .panel_state
-            .bottom
-            .visible
-            .then(|| self.current_bottom_panel_bounds())
-            .flatten();
+        // One layout pass for all three dock edges (cheaper than three).
+        let (left, right, bottom) = self.current_dock_bounds();
         let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
 
-        let target = resolve_press_target(
-            self.app_state.canvas_is_navigating(),
-            card_hit,
-            splitter_hit,
-        );
+        let target = resolve_press_target(navigating, card_hit, splitter_hit);
         let hover = target.map(|t| match t {
             DragTarget::PanelEdge(side) => HoverTarget::PanelEdge(side),
             DragTarget::CardMove(_) => HoverTarget::CardBody,
@@ -506,38 +524,57 @@ impl AppShell {
             Some(HoverTarget::PanelEdge(PanelSide::Bottom)) => CursorIcon::NsResize,
             Some(HoverTarget::CardBody) => CursorIcon::Move,
             Some(HoverTarget::CardResize(zone)) => match zone {
-                crate::canvas::interaction::CardZone::ResizeRight => CursorIcon::EwResize,
-                crate::canvas::interaction::CardZone::ResizeBottom => CursorIcon::NsResize,
-                crate::canvas::interaction::CardZone::ResizeCorner => CursorIcon::NwseResize,
-                crate::canvas::interaction::CardZone::Body => CursorIcon::Default,
+                CardZone::ResizeRight => CursorIcon::EwResize,
+                CardZone::ResizeBottom => CursorIcon::NsResize,
+                CardZone::ResizeCorner => CursorIcon::NwseResize,
+                CardZone::Body => CursorIcon::Default,
             },
             None => CursorIcon::Default,
         };
-        if let Some(w) = self.window.as_ref() {
-            w.set_cursor(icon);
+        // Only call the OS when the cursor shape actually changes (CursorMoved
+        // fires very frequently).
+        if self.last_cursor_icon != Some(icon) {
+            if let Some(w) = self.window.as_ref() {
+                w.set_cursor(icon);
+            }
+            self.last_cursor_icon = Some(icon);
         }
 
         // A thin accent rect over the hovered handle/edge, for the renderer.
+        let mut color = self.theme.ui.cyan.as_f32();
+        color[3] = 0.45; // low-alpha accent
         let band = SPLITTER_BAND_PX;
         let highlight: Option<RegionDrawInstance> = match hover {
-            Some(HoverTarget::PanelEdge(side)) => {
-                let mut color = self.theme.ui.cyan.as_f32();
-                color[3] = 0.45; // low-alpha accent
-                match side {
-                    PanelSide::Left => left.map(|[x, y, w, h]| {
-                        RegionDrawInstance::new([x + w - band, y, band * 2.0, h], color)
-                    }),
-                    PanelSide::Right => right.map(|[x, y, _w, h]| {
-                        RegionDrawInstance::new([x - band, y, band * 2.0, h], color)
-                    }),
-                    PanelSide::Bottom => bottom.map(|[x, y, w, _h]| {
-                        RegionDrawInstance::new([x, y - band, w, band * 2.0], color)
-                    }),
-                }
+            Some(HoverTarget::PanelEdge(side)) => match side {
+                PanelSide::Left => left.map(|[x, y, w, h]| {
+                    RegionDrawInstance::new([x + w - band, y, band * 2.0, h], color)
+                }),
+                PanelSide::Right => right.map(|[x, y, _w, h]| {
+                    RegionDrawInstance::new([x - band, y, band * 2.0, h], color)
+                }),
+                PanelSide::Bottom => bottom.map(|[x, y, w, _h]| {
+                    RegionDrawInstance::new([x, y - band, w, band * 2.0], color)
+                }),
+            },
+            // Highlight the hovered card's resize handle so it's discoverable.
+            Some(HoverTarget::CardResize(zone)) => {
+                let card_rect = card_hit.and_then(|(id, _)| {
+                    self.app_state
+                        .canvas()
+                        .and_then(|c| c.block(id).map(|b| c.camera.world_to_screen(b.world)))
+                });
+                card_rect.map(|[sx, sy, sw, sh]| {
+                    let bb = CARD_RESIZE_BAND_PX;
+                    let cc = CARD_RESIZE_CORNER_PX;
+                    let r = match zone {
+                        CardZone::ResizeRight => [sx + sw - bb, sy, bb, sh],
+                        CardZone::ResizeBottom => [sx, sy + sh - bb, sw, bb],
+                        CardZone::ResizeCorner => [sx + sw - cc, sy + sh - cc, cc, cc],
+                        CardZone::Body => [sx + sw - bb, sy, bb, sh],
+                    };
+                    RegionDrawInstance::new(r, color)
+                })
             }
-            // Card resize handle highlights are drawn by the canvas renderer from
-            // `hover_target` + the focused card rect; keep panel-only here for
-            // simplicity.
             _ => None,
         };
         if let Some(r) = self.renderer.as_mut() {
@@ -1254,6 +1291,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     // was active, fall through so e.g. the right-terminal SGR
                     // release event still reaches the PTY.
                     if self.end_pointer_drag() {
+                        // Refresh the cursor shape + handle highlight for wherever
+                        // the pointer ended up (it may have left the drag zone).
+                        if let Some(cursor) = self.last_cursor_position {
+                            self.update_hover_affordance(cursor);
+                        }
                         self.request_redraw();
                         return;
                     }

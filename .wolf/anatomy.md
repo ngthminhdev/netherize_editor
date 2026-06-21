@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T17:04:25.527Z
-> Files: 463 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T18:05:58.652Z
+> Files: 464 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -410,7 +410,7 @@
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
-- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~23852 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~25886 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
@@ -424,7 +424,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37975 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~41743 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~8485 tok)
 - `commands_completion.rs` (~15455 tok)
@@ -439,8 +439,8 @@
 - `commands_tests.rs` — [derive(Default)] (~39218 tok)
 - `commands.rs` — [path = "commands_ai_agent.rs"] (~12436 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
-- `mod.rs` — Struct: AppShell (~7686 tok)
-- `setup.rs` — new, new_for_tests (~23861 tok)
+- `mod.rs` — Struct: AppShell (~7840 tok)
+- `setup.rs` — new, new_for_tests (~23887 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -772,6 +772,7 @@
 - `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~3008 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
 - `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1943 tok)
+- `pointer_drag.rs` — Pure pointer-drag types and panel/splitter geometry. No GPU/winit. (~2129 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)
 - `text_coordinate_map.rs` — [derive(Debug, Clone, PartialEq)] (~1674 tok)
 

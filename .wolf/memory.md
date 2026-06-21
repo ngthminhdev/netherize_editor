@@ -3294,3 +3294,16 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 - Callers: fuzzy.rs (live-grep collapse via `group_key_for_item`), buffers.rs references (collapsed_paths by relative_path), diagnostics.rs passes `|_| false` (no collapse).
 - Collapsing the selected group anchors `selected_index` to the group's first item; both renderers draw the selection highlight on the group HEADER when the selected item is in that collapsed group.
 | 00:09 | Session end: 13 writes across 6 files (buffers.rs, fuzzy.rs, diagnostics.rs, tests.rs, state.rs) | 8 reads | ~114466 tok |
+| 00:56 | Session end: 13 writes across 6 files (buffers.rs, fuzzy.rs, diagnostics.rs, tests.rs, state.rs) | 11 reads | ~152441 tok |
+| 01:01 | Edited src/workbench/pointer_drag.rs | modified past_deadzone() | ~215 |
+| 01:02 | Edited src/workbench/pointer_drag.rs | modified deadzone_gate() | ~147 |
+| 01:02 | Edited src/app/app_state/canvas.rs | modified canvas_focus_block() | ~182 |
+| 01:02 | Edited src/app/event_loop/mod.rs | 2→5 lines | ~83 |
+| 01:02 | Edited src/app/event_loop/setup.rs | 3→4 lines | ~38 |
+| 01:03 | Edited src/app/event_loop/application.rs | modified current_dock_bounds() | ~344 |
+| 01:03 | Edited src/app/event_loop/application.rs | reduced (-9 lines) | ~553 |
+| 01:03 | Edited src/app/event_loop/application.rs | modified update_pointer_drag() | ~274 |
+| 01:04 | Edited src/app/event_loop/application.rs | added 1 import(s) | ~1125 |
+| 01:05 | Edited src/app/event_loop/application.rs | modified end_pointer_drag() | ~129 |
+| 01:05 | Edited src/app/app_state/canvas.rs | modified pointer_focus_block_sets_focus() | ~253 |
+| 01:08 | Session end: 24 writes across 11 files (buffers.rs, fuzzy.rs, diagnostics.rs, tests.rs, state.rs) | 14 reads | ~215128 tok |

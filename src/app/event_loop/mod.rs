@@ -103,6 +103,9 @@ pub struct AppShell {
     /// What draggable zone the cursor is currently hovering (for cursor shape +
     /// highlight). Recomputed on every `CursorMoved` while not dragging.
     hover_target: Option<crate::workbench::pointer_drag::HoverTarget>,
+    /// Last OS cursor icon pushed to the window, so we only call `set_cursor`
+    /// when the shape actually changes (not on every `CursorMoved`).
+    last_cursor_icon: Option<winit::window::CursorIcon>,
     pending_right_pty_spawn: bool,
     /// Label of the AI agent currently launched in the right-dock terminal
     /// (e.g. "opencode"), for display. `None` when no agent is running.

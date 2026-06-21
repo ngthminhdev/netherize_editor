@@ -41,6 +41,36 @@
       "count": 1,
       "tokens": 12339,
       "first_read": "2026-06-21T17:02:54.678Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/canvas/interaction.rs": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-06-21T17:50:59.661Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/workbench/pointer_drag.rs": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-06-21T17:51:06.229Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs": {
+      "count": 5,
+      "tokens": 41655,
+      "first_read": "2026-06-21T17:53:13.461Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/canvas.rs": {
+      "count": 1,
+      "tokens": 23852,
+      "first_read": "2026-06-21T18:02:13.921Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/mod.rs": {
+      "count": 1,
+      "tokens": 7686,
+      "first_read": "2026-06-21T18:02:31.496Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs": {
+      "count": 2,
+      "tokens": 23887,
+      "first_read": "2026-06-21T18:02:42.253Z"
     }
   },
   "files_written": [
@@ -121,6 +151,72 @@
       "action": "edit",
       "tokens": 49,
       "at": "2026-06-21T17:04:25.534Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/workbench/pointer_drag.rs",
+      "action": "edit",
+      "tokens": 230,
+      "at": "2026-06-21T18:01:57.672Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/workbench/pointer_drag.rs",
+      "action": "edit",
+      "tokens": 158,
+      "at": "2026-06-21T18:02:03.424Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/canvas.rs",
+      "action": "edit",
+      "tokens": 195,
+      "at": "2026-06-21T18:02:20.663Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/mod.rs",
+      "action": "edit",
+      "tokens": 89,
+      "at": "2026-06-21T18:02:35.957Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs",
+      "action": "edit",
+      "tokens": 41,
+      "at": "2026-06-21T18:02:46.731Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 369,
+      "at": "2026-06-21T18:03:29.761Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 592,
+      "at": "2026-06-21T18:03:45.317Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 294,
+      "at": "2026-06-21T18:03:55.685Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 1205,
+      "at": "2026-06-21T18:04:58.323Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 138,
+      "at": "2026-06-21T18:05:15.436Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/canvas.rs",
+      "action": "edit",
+      "tokens": 271,
+      "at": "2026-06-21T18:05:58.660Z"
     }
   ],
   "edit_counts": {
@@ -129,11 +225,16 @@
     "src/render/renderer/editor/buffers/diagnostics.rs": 1,
     "src/app/app_state/tests.rs": 1,
     "src/app/app_state/state.rs": 1,
-    "src/app/app_state/palette.rs": 2
+    "src/app/app_state/palette.rs": 2,
+    "src/workbench/pointer_drag.rs": 2,
+    "src/app/app_state/canvas.rs": 2,
+    "src/app/event_loop/mod.rs": 1,
+    "src/app/event_loop/setup.rs": 1,
+    "src/app/event_loop/application.rs": 5
   },
-  "anatomy_hits": 8,
-  "anatomy_misses": 0,
-  "repeated_reads_warned": 3,
+  "anatomy_hits": 12,
+  "anatomy_misses": 2,
+  "repeated_reads_warned": 8,
   "cerebrum_warnings": 0,
-  "stop_count": 1
+  "stop_count": 3
 }

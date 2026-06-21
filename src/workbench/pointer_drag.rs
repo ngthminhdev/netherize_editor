@@ -52,6 +52,19 @@ pub struct ActiveDrag {
     pub target: DragTarget,
     pub start_cursor: (f32, f32),
     pub anchor: DragAnchor,
+    /// Card-move drags stay inert until the cursor leaves a small dead-zone
+    /// around the press point, so a click-to-focus never nudges the card.
+    /// `true` once the threshold is crossed (latched for the rest of the drag).
+    /// Always treated as armed for panel/resize drags.
+    pub armed: bool,
+}
+
+/// True once the cursor has travelled more than `threshold` pixels (Euclidean)
+/// from the press point — the dead-zone gate for card-move drags.
+pub fn past_deadzone(start: (f32, f32), cur: (f32, f32), threshold: f32) -> bool {
+    let dx = cur.0 - start.0;
+    let dy = cur.1 - start.1;
+    dx * dx + dy * dy > threshold * threshold
 }
 
 /// Which dock's inner edge (if any) the cursor is within `band` pixels of.
@@ -185,6 +198,18 @@ mod tests {
         assert_eq!(apply_panel_drag(PanelSide::Right, 240.0, 30.0, 0.0, vp), 210.0);
         // Bottom grows with -dy.
         assert_eq!(apply_panel_drag(PanelSide::Bottom, 300.0, 0.0, -50.0, vp), 350.0);
+    }
+
+    #[test]
+    fn deadzone_gate() {
+        // Within the radius → not past.
+        assert!(!past_deadzone((100.0, 100.0), (102.0, 101.0), 3.0));
+        // Just outside on one axis → past.
+        assert!(past_deadzone((100.0, 100.0), (104.0, 100.0), 3.0));
+        // Diagonal crossing the radius → past.
+        assert!(past_deadzone((0.0, 0.0), (3.0, 3.0), 3.0));
+        // Exactly on the radius → not past (strict).
+        assert!(!past_deadzone((0.0, 0.0), (3.0, 0.0), 3.0));
     }
 
     #[test]

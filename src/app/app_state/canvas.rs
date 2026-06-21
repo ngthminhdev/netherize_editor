@@ -452,6 +452,15 @@ impl AppState {
         )
     }
 
+    /// Set keyboard focus to a canvas card by id (used when the pointer grabs a
+    /// card so mouse and `hjkl` stay in sync). Returns whether focus changed.
+    pub fn canvas_focus_block(&mut self, id: BlockId) -> bool {
+        match self.canvas.as_mut() {
+            Some(state) => state.focus(id),
+            None => false,
+        }
+    }
+
     /// Move a card to an absolute world position (mouse drag). Overrides `pinned`
     /// (direct manipulation is explicit intent); never moves the Focal anchor.
     /// Marks the layout user-arranged. Returns whether a card moved.
@@ -2286,6 +2295,29 @@ mod tests {
         if let Some(f) = focal {
             assert!(!app.canvas_pointer_move_block(f, 10.0, 20.0));
         }
+    }
+
+    #[test]
+    fn pointer_focus_block_sets_focus() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![
+            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(4)),
+            (BlockRelation::Callee, origin_at("/p/b.rs", 20), snap_lines(4)),
+        ]);
+        let ids: Vec<_> = app
+            .canvas()
+            .unwrap()
+            .blocks
+            .iter()
+            .filter(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id)
+            .collect();
+        // Focus the second relation card via the pointer-grab wrapper.
+        assert!(app.canvas_focus_block(ids[1]));
+        assert_eq!(app.canvas().unwrap().focused, Some(ids[1]));
+        // Re-focusing the same card is a no-op (returns false).
+        assert!(!app.canvas_focus_block(ids[1]));
     }
 
     #[test]

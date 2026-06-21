@@ -156,6 +156,7 @@ impl AppShell {
             last_cursor_position: None,
             active_drag: None,
             hover_target: None,
+            last_cursor_icon: None,
             pending_right_pty_spawn: false,
             right_agent_label: None,
             ai_agent_picker_selected: 0,
