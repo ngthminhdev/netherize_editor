@@ -1134,9 +1134,11 @@ fn attach_canvas_relations(
         }
         let w = app.window_size.width as f32;
         let h = app.window_size.height as f32;
-        // Tidy the freshly-spawned cards into viewport-fitting columns (no-op once
-        // the user has hand-arranged), then anchor the camera to show them.
-        app.app_state.canvas_auto_arrange(h);
+        // Tidy the freshly-spawned cards into columns that fit the VISIBLE canvas
+        // pane (in world units, so they wrap instead of overflowing downward), no-op
+        // once the user has hand-arranged; then anchor the camera to show them.
+        let arrange_h = app.canvas_arrange_viewport_height();
+        app.app_state.canvas_auto_arrange(arrange_h);
         app.app_state.canvas_anchor_cards_right(w, h);
         app.request_redraw();
     }

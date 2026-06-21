@@ -394,7 +394,10 @@ impl AppState {
                 (a, b, rows)
             }
             None => {
-                let cnt = block.snapshot.text.split('\n').count().max(1);
+                // Unscoped (±N window): the count follows `height_rows` too so a
+                // grown card shows more rows; default to the whole snapshot.
+                let snap = block.snapshot.text.split('\n').count().max(1);
+                let cnt = block.height_rows.map(|r| r.clamp(1, snap)).unwrap_or(snap);
                 (0usize, last, cnt)
             }
         };

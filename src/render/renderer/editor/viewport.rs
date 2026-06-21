@@ -239,6 +239,7 @@ impl Renderer {
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.editor_scissor = None;
+        self.editor_full_scissor = None;
         self.editor_caret_screen = None;
         self.image_pipeline.clear();
         self.image_scissor = None;
@@ -333,6 +334,10 @@ impl Renderer {
             center_bounds[2],
             geometry.viewport_text_height,
         ]);
+        // The NetherCanvas layer floats over the WHOLE pane (incl. the breadcrumb
+        // row above the text area), so it gets the full center bounds — otherwise a
+        // card panned upward is clipped under the breadcrumb.
+        self.editor_full_scissor = rect_to_scissor(center_bounds);
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
         let tab_width = u16::from(app_state.indent_config().tab_width.max(1));

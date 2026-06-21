@@ -2395,54 +2395,80 @@ fn canvas_edit_card_insert_esc_falls_through_to_editor() {
 }
 
 #[test]
-fn canvas_background_normal_esc_focuses_editor_without_closing_canvas() {
+fn canvas_background_normal_esc_keeps_normal_editor_meaning() {
     use crate::canvas::CanvasInteraction;
     let map = make_map();
-    // S3: editor has focus, cards float in the background; Esc keeps the canvas
-    // alive and returns control to the editor.
+    // S3: the editor already HAS focus and the canvas is just a floating
+    // reference, so Esc must keep its normal editor meaning (here: clear search
+    // highlights) — it must NOT be hijacked into a no-op FocusEditor, which used
+    // to swallow Esc and stop `*`-search highlights from clearing. The canvas is
+    // closed with F8/F10, not Esc.
     let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
     context.canvas_interaction = Some(CanvasInteraction::Background);
-    assert_eq!(
-        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
-        Some(Command::FocusEditor),
-    );
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context);
+    assert_eq!(cmd, Some(Command::ClearSearchHighlights));
+    assert_ne!(cmd, Some(Command::CanvasClose), "Esc must not close the floating canvas");
 }
 
 #[test]
-fn canvas_toggle_shortcuts_route_to_canvas_open() {
+fn canvas_open_is_f8_and_gc_is_free_for_comment() {
+    // `gc` was remapped OFF the canvas (it shadowed `gcc` line-comment); F8 opens
+    // the canvas now, and `g c a` re-arranges the cards.
     let map = make_default_profile_map();
     let context = KeybindingContext::for_mode(EditorMode::Normal);
-
-    assert_eq!(
-        map.translate(&char_input('c', KeyCode::KeyC), context),
-        None,
-        "first g c key alone must not dispatch"
-    );
-
     let mut handler = InputHandler::new();
     let now = Instant::now();
-    assert!(matches!(
-        handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now),
-        Some(InputRouteOutcome::NoDispatch { .. })
-    ));
-    match handler.route_normalized_input(
+
+    // F8 → CanvasOpen.
+    match handler.route_normalized_input(named_input(NamedKey::F8, None), &map, context, now) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
+        other => panic!("expected F8 -> CanvasOpen, got {other:?}"),
+    }
+
+    // `g c c` is line-comment again (gc no longer steals it).
+    let mut h = InputHandler::new();
+    let t0 = Instant::now();
+    let _ = h.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    let _ = h.route_normalized_input(
         char_input('c', KeyCode::KeyC),
         &map,
         context,
-        now + Duration::from_millis(1),
+        t0 + Duration::from_millis(1),
+    );
+    match h.route_normalized_input(
+        char_input('c', KeyCode::KeyC),
+        &map,
+        context,
+        t0 + Duration::from_millis(2),
     ) {
-        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
-        other => panic!("expected gc -> CanvasOpen, got {other:?}"),
+        Some(InputRouteOutcome::Dispatch(t)) => {
+            assert_eq!(t.command, Command::ToggleLineComment, "gcc must comment again")
+        }
+        other => panic!("expected gcc -> ToggleLineComment, got {other:?}"),
     }
 
-    match handler.route_normalized_input(named_input(NamedKey::F10, None), &map, context, now) {
-        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
-        other => panic!("expected F10 -> CanvasOpen, got {other:?}"),
+    // `g c a` → CanvasAutoArrange (editor-focus / Background path).
+    let mut h2 = InputHandler::new();
+    let _ = h2.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    let _ = h2.route_normalized_input(
+        char_input('c', KeyCode::KeyC),
+        &map,
+        context,
+        t0 + Duration::from_millis(1),
+    );
+    match h2.route_normalized_input(
+        char_input('a', KeyCode::KeyA),
+        &map,
+        context,
+        t0 + Duration::from_millis(2),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasAutoArrange),
+        other => panic!("expected gca -> CanvasAutoArrange, got {other:?}"),
     }
 }
 
 #[test]
-fn canvas_focused_toggle_shortcuts_route_to_canvas_open() {
+fn canvas_focused_gca_arranges_and_f10_toggles() {
     use crate::canvas::CanvasInteraction;
 
     let map = make_default_profile_map();
@@ -2451,6 +2477,8 @@ fn canvas_focused_toggle_shortcuts_route_to_canvas_open() {
     let mut handler = InputHandler::new();
     let now = Instant::now();
 
+    // In the canvas, `g` then `c` stage the `gca` prefix (no longer toggles the
+    // canvas), and `a` completes it → CanvasAutoArrange.
     match handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now) {
         Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasNoop),
         other => panic!("expected focused canvas g prefix -> CanvasNoop, got {other:?}"),
@@ -2461,10 +2489,20 @@ fn canvas_focused_toggle_shortcuts_route_to_canvas_open() {
         context,
         now + Duration::from_millis(1),
     ) {
-        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
-        other => panic!("expected focused canvas gc -> CanvasOpen, got {other:?}"),
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasNoop),
+        other => panic!("expected focused canvas gc prefix -> CanvasNoop, got {other:?}"),
+    }
+    match handler.route_normalized_input(
+        char_input('a', KeyCode::KeyA),
+        &map,
+        context,
+        now + Duration::from_millis(2),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasAutoArrange),
+        other => panic!("expected focused canvas gca -> CanvasAutoArrange, got {other:?}"),
     }
 
+    // F10 still toggles the canvas closed.
     match handler.route_normalized_input(named_input(NamedKey::F10, None), &map, context, now) {
         Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
         other => panic!("expected focused canvas F10 -> CanvasOpen, got {other:?}"),

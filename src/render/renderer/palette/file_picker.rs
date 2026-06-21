@@ -218,15 +218,17 @@ impl Renderer {
                         .file_name()
                         .and_then(|name| name.to_str())
                         .unwrap_or(file_path);
-                    let file_icon = self.theme.icon_theme_for_filename(filename, false);
                     let badge = self.theme.get_icon_for_file(filename, false);
-                    let badge_color = file_icon.color.as_f32();
+                    // Bearded-icons are full-color SVGs — use white tint so the
+                    // icon shader multiplies by 1.0 and preserves the original
+                    // colors (same as the sidebar does).
+                    let icon_tint = [1.0_f32; 4];
                     let badge_size = file_badge_size;
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
                     push_palette_icon_or_badge(
                         badge,
-                        badge_color,
+                        icon_tint,
                         model.panel_bg,
                         [badge_x, badge_y, badge_size, badge_size],
                         0.82,

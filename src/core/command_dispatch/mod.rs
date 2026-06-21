@@ -451,6 +451,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::CanvasExpandCallee
         | Command::CanvasExpandCaller
         | Command::CanvasTogglePin
+        | Command::CanvasAutoArrange
         | Command::CanvasNoop
         | Command::CanvasContextExpand
         | Command::CanvasContextShrink

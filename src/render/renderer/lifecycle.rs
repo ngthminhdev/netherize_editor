@@ -203,6 +203,7 @@ impl Renderer {
             caret_pipeline,
             editor_cursor_overlay_pipeline,
             editor_scissor: None,
+            editor_full_scissor: None,
             editor_caret_screen: None,
             editor_focal_screen: None,
             editor_overlay_text_system,

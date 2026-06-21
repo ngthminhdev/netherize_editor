@@ -3849,5 +3849,120 @@
       "spatial-canvas",
       "user-reported"
     ]
+  },
+  {
+    "id": 226,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Three NetherCanvas UI issues: (1) no loading UI and no empty state — when a `gc` has nothing to show (or results are still in flight) the plane is blank except a bare hint bar, which looks broken; (2) growing a card's height with `=` could exceed the function's line count, so on Enter the in-card edit viewport (clamped to the scope) snapped the card back to a smaller size; (3) a card panned upward was clipped/covered by the editor breadcrumb instead of floating above it.",
+    "file": "src/render/renderer/canvas.rs",
+    "root_cause": "(1) update_canvas_content never rendered an empty/loading affordance — with zero relation cards it only drew the bottom hint bar. (2) canvas_change_focused_height clamped height_rows to [CARD_MIN_LINES, CARD_MAX_LINES] (30), but canvas_edit_session_snapshot_window clamps the edit count to the scope size — so a navigate box taller than the scope had no matching edit height → jump on Enter. (3) The canvas reused editor_scissor, which clips to viewport_text_top (BELOW the breadcrumb); a card whose screen rect rose above the text area was scissored out, exposing the breadcrumb (which is drawn earlier in the frame).",
+    "fix": "(1) Plumbed a `pending` flag (canvas_def_request_id || canvas_refs_request_id in flight) into update_canvas_content; when relation_count == 0 && !background it draws a centered panel — accent-dot + 'Đang tìm definition & callers…' while pending, else 'Không có gì để hiển thị' + 'Đặt con trỏ lên một symbol rồi gc'. (2) canvas_change_focused_height now clamps the ceiling to min(scope_size, CARD_MAX_LINES) (scope_size from block.scope_lines) so the navigate box can never be taller than what the edit viewport shows → Enter never reshrinks. (3) Added Renderer.editor_full_scissor = rect_to_scissor(center_bounds) (the WHOLE editor pane incl. the breadcrumb row), set in update_editor_content and cleared in clear_editor_content; the canvas layer (drawn last) now uses editor_full_scissor.or(editor_scissor) so cards + scrim float over the breadcrumb. TDD: change_focused_height_caps_at_scope_size_so_enter_never_jumps. Suite green; clippy clean.",
+    "tags": [
+      "canvas",
+      "renderer",
+      "loading-state",
+      "empty-state",
+      "z-index",
+      "scissor",
+      "breadcrumb",
+      "card-resize",
+      "spatial-canvas",
+      "user-reported"
+    ]
+  },
+  {
+    "id": 227,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Canvas shortcut requests: (1) `g c` opened the canvas, shadowing `g c c` line-comment (user forgot gc=comment) — move the open shortcut to F8; (2) F8 should show ONLY the source function, not auto-spawn reference/caller cards; (3) add `gca` to re-arrange the cards. Also discovered F8 in the keymap was silently ignored.",
+    "file": "src/app/resolved_keymap.rs",
+    "root_cause": "(1) default.toml bound normal `g c` -> canvas.open, which resolves immediately and pre-empts the `g c c` trie. (2) open_canvas_mode always called canvas_submit_definition() AND canvas_submit_references(). (3) no CanvasAutoArrange command existed, and canvas_auto_arrange no-ops once user_arranged is set (so it couldn't re-flow after manual moves). (BUG) parse_non_leader_key only recognized f1/f5/f10/f12, so the existing `key = \"F8\"` binding parsed to None and was dropped — F8 never worked.",
+    "fix": "(1) Removed the normal `g c -> canvas.open` binding (F8 stays); added `g c a -> canvas.auto_arrange`. In the canvas focus map (focus.rs) `gc` no longer toggles — it stages a `canvas_pending_gc` flag and `a` completes it (`gca`); F8 added alongside F10 as the in-canvas toggle. (2) open_canvas_mode now calls ONLY canvas_submit_definition() — references are spawned on demand via `gr`. (3) Added Command::CanvasAutoArrange (id canvas.auto_arrange) + AppState::canvas_force_auto_arrange (clears the user_arranged lock then re-flows; canvas_auto_arrange now also respects per-card height_rows so a grown card stays grown). (BUG) Extended parse_non_leader_key to f2..f11 so `F8` (and any function key) parses. TDD: canvas_open_is_f8_and_gc_is_free_for_comment (F8->open, gcc->comment, gca->arrange), canvas_focused_gca_arranges_and_f10_toggles, force_auto_arrange_reflows_even_after_manual_layout. Suite green; clippy clean.",
+    "tags": [
+      "canvas",
+      "keymap",
+      "keybinding",
+      "function-keys",
+      "f8",
+      "gca",
+      "auto-arrange",
+      "comment",
+      "spatial-canvas",
+      "user-reported"
+    ]
+  },
+  {
+    "id": 228,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Growing a card's height with `=` raised the box but NOT the number of rendered lines: a 50-line function still showed ~10/30 rows, and entering edit snapped the height back to the old (smaller) size. The user wants `+` to grow the rendered line count up to the whole function.",
+    "file": "src/app/app_state/canvas.rs",
+    "root_cause": "card_height() clamps the row count to CARD_MAX_LINES (30), and every height path went through it — so world.h (and thus the renderer's capacity = world.h/line_height) could never exceed ~30 rows no matter how big the scope was, and the last round even clamped height_rows itself to min(scope_size, CARD_MAX_LINES). The edit window separately clamped to the scope, so navigate (capped at 30) and edit (capped at scope) disagreed → Enter resized.",
+    "fix": "Added CanvasState::card_height_exact(rows) (floors at CARD_MIN_LINES, NO CARD_MAX_LINES cap); card_height() now = card_height_exact(min(rows, CARD_MAX_LINES)) (the auto/plateau size). canvas_change_focused_height now lets height_rows grow up to the SNAPSHOT's own line count (CANVAS_CARD_HARD_MAX=60 ceiling), with the auto/default at min(snapshot, CARD_MAX_LINES); it sizes world.h via card_height_exact so a 50-line function can be grown to show all 50 rows. canvas_apply_card_scope (navigate) and canvas_update_edit_card (edit) both use card_height_exact with the SAME effective rows, and canvas_edit_session_snapshot_window's count follows height_rows (scoped: clamp to scope_size; unscoped: clamp to snapshot) — so the navigate box and the edit viewport are always equal height (Enter never snaps back). canvas_auto_arrange likewise uses card_height_exact so a grown card stays grown after `gca`. TDD: rewrote 3 height tests to grow PAST the 30 plateau to the full 40-line snapshot. Suite green (1003); clippy clean.",
+    "tags": [
+      "canvas",
+      "card-resize",
+      "height",
+      "render",
+      "card-max-lines",
+      "scope",
+      "no-jump",
+      "spatial-canvas",
+      "user-reported"
+    ]
+  },
+  {
+    "id": 229,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "(1) Long lines in a card had no horizontal scroll — moving the caret right with `l` past the card width made the text vanish off the right edge (caret stuck at the border). (2) Auto-arrange kept pushing cards straight DOWN, overflowing the visible area instead of wrapping into left/right columns.",
+    "file": "src/render/renderer/canvas.rs",
+    "root_cause": "(1) The card body always drew each line from column 0 (`code_x`), truncated to the card width and right-clipped — there was no caret-following horizontal offset like the main editor. (2) canvas_auto_arrange's column budget was `viewport_h * 0.92`, and the callers passed `window_size.height` — the WHOLE window (physical px). The canvas only floats over the editor pane (smaller: minus tab bar, status bar, breadcrumb, and any bottom panel), and zoom wasn't factored in, so a column filled the entire window height before wrapping → cards overflowed the visible pane downward.",
+    "fix": "(1) Added a stateless per-frame horizontal scroll in update_canvas_content for the edit-target card: from the caret column compute `h_scroll_px` (tab-aware, ~6 cols look-ahead), draw every code line from a shifted origin `code_x0 = code_x - h_scroll_px`, take `h_scroll_cols + visible + 2` chars, and clip glyphs to BOTH edges ([code_x, clip_right]); the caret, selection bands all use code_x0 too. `h`/`l` now scroll the card horizontally and the caret stays visible. (2) Added Renderer::canvas_pane_height() (from editor_full_scissor[3]) + AppShell::canvas_arrange_viewport_height() = pane_physical / camera.zoom (WORLD units of the VISIBLE pane); the gca handler and the async spawn handler now pass that to canvas_force_auto_arrange / canvas_auto_arrange instead of the full window height, so columns wrap to fit the visible canvas and spread right instead of overflowing down. Suite green (1003); clippy clean.",
+    "tags": [
+      "canvas",
+      "renderer",
+      "horizontal-scroll",
+      "caret",
+      "auto-arrange",
+      "column-wrap",
+      "viewport",
+      "zoom",
+      "spatial-canvas",
+      "user-reported"
+    ]
+  },
+  {
+    "id": 230,
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "Esc stopped clearing `*`/search highlights. Triggered after using the canvas: once the canvas is left in the Background (S3), pressing Esc in the editor no longer cleared search highlights.",
+    "file": "src/app/input_map/mod.rs",
+    "root_cause": "The default keymap maps normal-mode Esc → ClearSearchHighlights, but the NetherCanvas Phase-B Esc interceptor ran BEFORE the keymap lookup and, for canvas_interaction == Background (with editor focus), returned Command::FocusEditor. In Background the editor ALREADY holds focus, so FocusEditor is a redundant no-op that simply swallowed Esc — so ClearSearchHighlights never ran. Now hit more often because gc no longer closes the canvas (buglog 227), so it's commonly left floating in the Background.",
+    "fix": "Narrowed the interceptor to ONLY the EditCard state (Esc → CanvasExitEdit, the real staged exit). The Background case now falls through to the keymap so Esc keeps its normal editor meaning (ClearSearchHighlights, drop Visual, …); the floating canvas is closed with F8/F10, not Esc. Updated the test canvas_background_normal_esc_keeps_normal_editor_meaning (was ..._focuses_editor_without_closing_canvas) to expect ClearSearchHighlights. Suite green (1003); clippy clean.",
+    "tags": [
+      "canvas",
+      "input-routing",
+      "escape",
+      "search-highlight",
+      "focus",
+      "background-state",
+      "regression",
+      "spatial-canvas",
+      "user-reported"
+    ]
+  },
+  {
+    "id": "bug-183",
+    "timestamp": "2026-06-21T00:00:00+00:00",
+    "error_message": "File picker (leader ff) icons render with wrong colors — e.g. Rust icon shows tinted orange instead of original bearded-icon colors.",
+    "file": "src/render/renderer/palette/file_picker.rs",
+    "root_cause": "The icon shader uses multiplicative blending: `px.rgb * in.color.rgb`. The sidebar correctly passes white tint [1,1,1,1] to preserve original SVG colors, but the file picker passed `file_icon.color.as_f32()` (theme color) as tint. This multiplied the theme color into the full-color bearded-icons, corrupting their original colors. The bug was only in the FilePicker branch — live_grep and recent_projects use nerd font glyphs via the text pipeline (not affected).",
+    "fix": "Changed file_picker.rs to use `[1.0_f32; 4]` (white) as icon tint instead of `file_icon.color.as_f32()`. Removed unused `file_icon` variable. This matches sidebar behavior. 1003 tests green.",
+    "tags": [
+      "file-picker",
+      "icon-rendering",
+      "color-tint",
+      "bearded-icons",
+      "shader",
+      "palette",
+      "leader-ff"
+    ]
   }
 ]

@@ -66,6 +66,11 @@ impl AppShell {
             // `o`: open the focused card's file as a real buffer tab + stash canvas.
             Command::CanvasOpenCardBuffer => self.canvas_open_card_as_buffer(),
             Command::CanvasEnterBackground => self.app_state.canvas_enter_background(),
+            // `gca`: re-flow the cards into tidy columns (unfreezes user-arranged).
+            Command::CanvasAutoArrange => {
+                let h = self.canvas_arrange_viewport_height();
+                self.app_state.canvas_force_auto_arrange(h)
+            }
             Command::CanvasNoop => false,
             // `=`/`-`: resize the focused card's HEIGHT (visible rows) in place.
             // Cards already show only their scope, so this is a pure visual resize
@@ -271,11 +276,11 @@ impl AppShell {
         let w = self.window_size.width as f32;
         let h = self.window_size.height as f32;
         self.app_state.canvas_center_on_focus(w, h);
-        // Single `gc` brings the relations immediately ("stand on a symbol →
-        // one key → definition + callers appear"); results arrive async and are
-        // routed into the canvas via the request-id redirect.
+        // F8 shows ONLY the source function (the definition of the symbol under the
+        // cursor) — no auto-spawned reference/caller cards. The user spawns those
+        // on demand with `gr` (refs) / `gd` (def) once inside the canvas. Results
+        // arrive async and are routed in via the request-id redirect.
         self.canvas_submit_definition();
-        self.canvas_submit_references();
         true
     }
 
@@ -314,6 +319,26 @@ impl AppShell {
     /// `(width, max_height, line_height)`: `width` is uniform; `max_height` is a
     /// full `CARD_MAX_LINES` card (the focal anchor's size) — relation cards size
     /// to their own content via [`CanvasState::card_height`] using `line_height`.
+    /// Visible canvas height in WORLD units for auto-arrange column wrapping: the
+    /// editor pane's physical height (NOT the whole window — that includes the
+    /// tab/status bars and any bottom panel, which would let a column overflow the
+    /// visible area before wrapping) divided by the camera zoom. Falls back to the
+    /// window height before the first editor render.
+    pub(crate) fn canvas_arrange_viewport_height(&self) -> f32 {
+        let pane = self
+            .renderer
+            .as_ref()
+            .and_then(|r| r.canvas_pane_height())
+            .unwrap_or(self.window_size.height as f32);
+        let zoom = self
+            .app_state
+            .canvas()
+            .map(|c| c.camera.zoom)
+            .unwrap_or(1.0)
+            .max(0.01);
+        pane / zoom
+    }
+
     fn canvas_block_size(&self) -> (f32, f32, f32) {
         let efs = self.theme.editor.font_size.max(8.0);
         let char_w = efs * 0.6;

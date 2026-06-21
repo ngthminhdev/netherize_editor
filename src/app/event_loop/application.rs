@@ -2615,6 +2615,11 @@ impl AppShell {
         // mode badge from it.
         let canvas_mode = self.app_state.current_mode();
         let card_completion = self.canvas_completion.as_ref();
+        // Loading state: a `gc` (definition/references) request is still in flight,
+        // so the canvas may have no relation cards YET — the renderer shows a
+        // spinner/“searching” line instead of a bare hint bar.
+        let canvas_pending =
+            self.canvas_def_request_id.is_some() || self.canvas_refs_request_id.is_some();
         if let Some(renderer) = self.renderer.as_mut() {
             // The canvas is bound to its focal (gc-origin) file: it renders only
             // while that file is the active buffer. Switching away (file picker,
@@ -2623,7 +2628,7 @@ impl AppShell {
             // `gc`) shows it again.
             let render_canvas = self.app_state.canvas_should_render();
             if let Some(canvas) = self.app_state.canvas().filter(|_| render_canvas) {
-                renderer.update_canvas_content(canvas, canvas_mode, card_completion);
+                renderer.update_canvas_content(canvas, canvas_mode, card_completion, canvas_pending);
             } else {
                 renderer.clear_canvas();
             }

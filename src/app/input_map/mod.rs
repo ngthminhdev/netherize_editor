@@ -236,6 +236,8 @@ pub struct InputMap {
     canvas_pending_g: std::cell::Cell<bool>,
     /// Pending `space` prefix while in Canvas focus (for `space x` = close card).
     canvas_pending_space: std::cell::Cell<bool>,
+    /// Pending `gc` prefix while in Canvas focus (for `gca` = auto-arrange).
+    canvas_pending_gc: std::cell::Cell<bool>,
 }
 
 impl InputMap {
@@ -247,6 +249,7 @@ impl InputMap {
             keymap,
             canvas_pending_g: std::cell::Cell::new(false),
             canvas_pending_space: std::cell::Cell::new(false),
+            canvas_pending_gc: std::cell::Cell::new(false),
         }
     }
 
@@ -256,6 +259,7 @@ impl InputMap {
             keymap,
             canvas_pending_g: std::cell::Cell::new(false),
             canvas_pending_space: std::cell::Cell::new(false),
+            canvas_pending_gc: std::cell::Cell::new(false),
         }
     }
 
@@ -356,32 +360,27 @@ impl InputMap {
             }
         }
 
-        // NetherCanvas Phase B: while a card is being edited (S2) or the canvas
-        // sits in the background (S3), the editor holds focus for full editing,
-        // but the canvas state machine owns Esc (the staged exit). Guarded to the
-        // EDITOR focus only — if the user focuses a sidebar/terminal/panel while
-        // the canvas is backgrounded, that panel keeps its own Esc. Normal mode
-        // only, so Esc still drops Insert → Normal first (vim).
+        // NetherCanvas Phase B: while a card is being EDITED (S2) the editor holds
+        // focus for full editing but Esc must exit the card edit (the staged exit),
+        // so it's intercepted here. In the BACKGROUND (S3) the editor is already
+        // the focus and the canvas is just a floating reference — Esc must keep its
+        // normal editor meaning (clear search highlights, drop Visual, …); the
+        // canvas is closed with F8/F10, NOT Esc. So we ONLY intercept EditCard and
+        // let Background fall through to the keymap. Guarded to EDITOR focus + Normal
+        // mode (Esc still drops Insert → Normal first).
         if input.named_key == Some(NamedKey::Escape)
             && !input.has_command_modifier()
             && context.mode == EditorMode::Normal
             && context.focus == InputFocusContext::Editor
+            && matches!(
+                context.canvas_interaction,
+                Some(crate::canvas::CanvasInteraction::EditCard { .. })
+            )
         {
-            match context.canvas_interaction {
-                Some(crate::canvas::CanvasInteraction::EditCard { .. }) => {
-                    return Some(KeybindingMatch {
-                        command: Command::CanvasExitEdit,
-                        reason: "canvas edit: Esc -> exit edit (S2->S1)",
-                    });
-                }
-                Some(crate::canvas::CanvasInteraction::Background) => {
-                    return Some(KeybindingMatch {
-                        command: Command::FocusEditor,
-                        reason: "canvas background: Esc -> focus editor (keep canvas)",
-                    });
-                }
-                _ => {}
-            }
+            return Some(KeybindingMatch {
+                command: Command::CanvasExitEdit,
+                reason: "canvas edit: Esc -> exit edit (S2->S1)",
+            });
         }
 
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,

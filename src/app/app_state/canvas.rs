@@ -18,6 +18,10 @@ const CANVAS_GAP_Y: f32 = 48.0;
 /// snapshot — the instant ±N preview a card spawns with, before its enclosing
 /// scope resolves and replaces it.
 const CANVAS_CONTEXT_LINES: usize = 8;
+/// Absolute ceiling for a user-grown card's visible rows (`=`/`-`). Matches the
+/// scope snapshot's own read cap (`build_canvas_relation_snapshot_range`'s
+/// `MAX_LINES`) so a card can be grown to show its whole sourced scope.
+const CANVAS_CARD_HARD_MAX: usize = 60;
 
 impl AppState {
     pub fn is_canvas_active(&self) -> bool {
@@ -301,8 +305,11 @@ impl AppState {
             return;
         };
         state.set_edit_selection(selection);
+        // `text` is the windowed view (already `height_rows`/auto rows), so size the
+        // card to it EXACTLY — no CARD_MAX_LINES cap — to match the navigate box a
+        // grown card had (Enter must not snap the height back).
         let lines = text.split('\n').count();
-        let new_h = (state.line_h > 0.0).then(|| state.card_height(lines));
+        let new_h = (state.line_h > 0.0).then(|| state.card_height_exact(lines));
         if let Some(b) = state.blocks.iter_mut().find(|b| b.id == block_id) {
             b.snapshot.text = text;
             b.snapshot.spans = spans;
@@ -352,13 +359,15 @@ impl AppState {
     }
 
     /// `=`/`-`: resize ONLY the focused relation card's HEIGHT by `delta` visible
-    /// rows, in place (top-left fixed, growing/shrinking downward). With
-    /// scope-loaded cards this is a PURE visual resize — it never re-sources extra
-    /// file context (the card already shows only its scope). The per-card row count
-    /// is stored in `height_rows` (clamped to `[CARD_MIN_LINES, CARD_MAX_LINES]`)
-    /// and also caps the in-card edit viewport so editing scrolls within those
-    /// rows. No-op (`false`) on the focal anchor, at the bounds, or with no focused
-    /// card. Marks the layout user-arranged so a later spawn won't reflow it.
+    /// rows, in place (top-left fixed, growing/shrinking downward). A PURE visual
+    /// resize — it never re-sources extra file context. Crucially, growing here
+    /// raises the number of RENDERED rows too: the per-card `height_rows` can grow
+    /// past the auto `CARD_MAX_LINES` plateau all the way to the snapshot's own
+    /// line count (so a 50-line function can be fully shown), and the same
+    /// `height_rows` drives the in-card edit viewport, so pressing Enter keeps the
+    /// exact same height (no snap-back). No-op (`false`) on the focal anchor, at
+    /// the bounds, or with no focused card. Marks the layout user-arranged so a
+    /// later spawn won't reflow it.
     pub fn canvas_change_focused_height(&mut self, delta: i32) -> bool {
         let Some(state) = self.canvas.as_mut() else {
             return false;
@@ -372,16 +381,18 @@ impl AppState {
         if block.relation == BlockRelation::Focal {
             return false;
         }
-        // Effective current rows: explicit override, else the snapshot's own size.
-        let cur = block
-            .height_rows
-            .unwrap_or_else(|| block.snapshot.text.split('\n').count().max(1));
-        let new = (cur as i32 + delta)
-            .clamp(CARD_MIN_LINES as i32, CARD_MAX_LINES as i32) as usize;
+        // The card can grow until its WHOLE snapshot is visible (you can't render
+        // more rows than the snapshot holds); the auto/default shown rows plateau
+        // at CARD_MAX_LINES. A 50-line function → grow up to 50 rows.
+        let snapshot_lines = block.snapshot.text.split('\n').count().max(1);
+        let max_rows = snapshot_lines.clamp(CARD_MIN_LINES, CANVAS_CARD_HARD_MAX);
+        let auto = snapshot_lines.min(CARD_MAX_LINES);
+        let cur = block.height_rows.unwrap_or(auto);
+        let new = (cur as i32 + delta).clamp(CARD_MIN_LINES as i32, max_rows as i32) as usize;
         if new == cur {
             return false;
         }
-        let new_h = (state.line_h > 0.0).then(|| state.card_height(new));
+        let new_h = (state.line_h > 0.0).then(|| state.card_height_exact(new));
         let Some(block) = state.blocks.iter_mut().find(|b| b.id == id) else {
             return false;
         };
@@ -440,12 +451,13 @@ impl AppState {
             return false;
         };
         let lines = snapshot.text.split('\n').count();
-        // Respect a user HEIGHT override (`=`/`-`) if one is set; else auto-fit.
+        // Respect a user HEIGHT override (`=`/`-`) if one is set; else auto-fit
+        // (capped at the CARD_MAX_LINES plateau for a freshly-sourced card).
         let rows = state
             .block(card_id)
             .and_then(|b| b.height_rows)
-            .unwrap_or(lines);
-        let new_h = (state.line_h > 0.0).then(|| state.card_height(rows));
+            .unwrap_or(lines.min(CARD_MAX_LINES));
+        let new_h = (state.line_h > 0.0).then(|| state.card_height_exact(rows));
         let Some(b) = state.blocks.iter_mut().find(|b| b.id == card_id) else {
             return false;
         };
@@ -804,6 +816,18 @@ impl AppState {
     /// are tidy and visible on open instead of piling into one tall column.
     /// **Skipped once the user hand-arranges** (moves/pins a card). Returns
     /// whether it ran.
+    /// `gca`: FORCE a re-arrange even after the user hand-placed cards — clears the
+    /// `user_arranged` lock first, then re-flows into columns. (Plain
+    /// [`Self::canvas_auto_arrange`] is the auto-on-spawn path and deliberately
+    /// no-ops once the layout is user-arranged.) Returns whether it re-flowed.
+    pub fn canvas_force_auto_arrange(&mut self, viewport_h: f32) -> bool {
+        match self.canvas.as_mut() {
+            Some(state) => state.user_arranged = false,
+            None => return false,
+        }
+        self.canvas_auto_arrange(viewport_h)
+    }
+
     pub fn canvas_auto_arrange(&mut self, viewport_h: f32) -> bool {
         let Some(state) = self.canvas.as_mut() else {
             return false;
@@ -827,9 +851,13 @@ impl AppState {
             .iter()
             .filter(|b| b.relation != BlockRelation::Focal)
             .map(|b| {
-                let lines = b.snapshot.text.split('\n').count();
+                // Respect a user HEIGHT override (`=`/`-`) so a grown card stays
+                // grown after the re-flow (uncapped); else auto-size the snapshot
+                // to the CARD_MAX_LINES plateau.
+                let snapshot_lines = b.snapshot.text.split('\n').count();
+                let rows = b.height_rows.unwrap_or(snapshot_lines.min(CARD_MAX_LINES));
                 let h = if state.line_h > 0.0 {
-                    state.card_height(lines)
+                    state.card_height_exact(rows)
                 } else {
                     b.world.h
                 };
@@ -1149,7 +1177,8 @@ mod tests {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(5)),
+            // A 40-line snapshot: auto-shows the 30-row plateau, can grow beyond it.
+            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(40)),
             (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(5)),
         ]);
         // The first relation card is auto-focused.
@@ -1167,11 +1196,12 @@ mod tests {
             let b = app.canvas().unwrap().block(focused).unwrap();
             (b.world.w, b.world.h)
         };
-        // `=` grows ONLY the focused card's HEIGHT in place — no re-source.
+        // `=` grows ONLY the focused card's HEIGHT in place — PAST the 30-row auto
+        // plateau (30 → 34), revealing more of the 40-line snapshot.
         assert!(app.canvas_change_focused_height(4));
         let c = app.canvas().unwrap();
         let fb = c.block(focused).unwrap();
-        assert_eq!(fb.height_rows, Some(5 + 4), "rows = snapshot size + delta");
+        assert_eq!(fb.height_rows, Some(CARD_MAX_LINES + 4), "grows past the auto plateau");
         // Focused card grew taller; WIDTH stays fixed (no box scaling).
         assert!(fb.world.h > fh0, "focused card should grow taller");
         assert!((fb.world.w - fw0).abs() < 1e-3, "width must stay fixed");
@@ -1196,7 +1226,7 @@ mod tests {
         app.canvas_add_relations(vec![(
             BlockRelation::Caller,
             origin_at("/p/a.rs", 10),
-            snap_lines(5),
+            snap_lines(40),
         )]);
         let focused = app.canvas().unwrap().focused.unwrap();
         // Move the focused card somewhere arbitrary first (hand-arrangement).
@@ -1234,6 +1264,42 @@ mod tests {
         assert_eq!(b.snapshot.start_line, 8);
         assert_eq!(b.snapshot.text, "fn s() {\n  x\n}");
         assert_eq!(b.scope_lines, Some((7, 9)), "scope range bounds the edit viewport");
+    }
+
+    #[test]
+    fn change_focused_height_caps_at_scope_size_so_enter_never_jumps() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Caller,
+            origin_at("/p/a.rs", 10),
+            snap("a"),
+        )]);
+        let id = app.canvas().unwrap().focused.unwrap();
+        // Resolve a small 6-line scope (lines 7..=12 inclusive).
+        let snap = BlockSnapshot {
+            title: "a.rs".into(),
+            symbol: "s".into(),
+            start_line: 8,
+            text: "0\n1\n2\n3\n4\n5".into(),
+            spans: Vec::new(),
+        };
+        assert!(app.canvas_apply_card_scope(id, snap, Some((7, 12))));
+        // The 6-line scope is already fully shown → growing is a no-op (nothing
+        // more to reveal), which is exactly what keeps Enter from reshrinking.
+        assert!(!app.canvas_change_focused_height(2), "cannot grow past the scope");
+        // Shrink works (6 → 4), then growing back is capped at the 6-line scope —
+        // never beyond, so the navigate box and edit viewport stay equal.
+        assert!(app.canvas_change_focused_height(-2));
+        assert_eq!(app.canvas().unwrap().block(id).unwrap().height_rows, Some(4));
+        for _ in 0..20 {
+            app.canvas_change_focused_height(2);
+        }
+        assert_eq!(
+            app.canvas().unwrap().block(id).unwrap().height_rows,
+            Some(6),
+            "height caps at the 6-line scope, not CARD_MAX_LINES"
+        );
     }
 
     #[test]
@@ -1309,26 +1375,31 @@ mod tests {
     fn change_focused_height_clamps_and_reports_false_at_bounds() {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
+        // A 40-line snapshot: auto-shown rows plateau at 30, but the user can grow
+        // all the way to 40 (the whole snapshot) — past CARD_MAX_LINES.
         app.canvas_add_relations(vec![(
             BlockRelation::Caller,
             origin_at("/p/a.rs", 10),
-            snap_lines(5),
+            snap_lines(40),
         )]);
         let focused = app.canvas().unwrap().focused.unwrap();
-        // Effective rows start at the snapshot size (5). Shrinking floors at
+        // Effective rows start at the auto plateau (30). Shrinking floors at
         // CARD_MIN_LINES (3), then no-ops (false).
-        assert!(app.canvas_change_focused_height(-2)); // 5 -> 3 (MIN)
-        assert_eq!(app.canvas().unwrap().block(focused).unwrap().height_rows, Some(3));
+        for _ in 0..40 {
+            app.canvas_change_focused_height(-2);
+        }
+        assert_eq!(app.canvas().unwrap().block(focused).unwrap().height_rows, Some(CARD_MIN_LINES));
         assert!(!app.canvas_change_focused_height(-2)); // already at MIN -> false
-        // Climbing hits the ceiling (CARD_MAX_LINES) and then reports false.
+        // Climbing can reveal the WHOLE 40-line snapshot (past the 30 plateau).
         for _ in 0..40 {
             app.canvas_change_focused_height(2);
         }
         assert_eq!(
             app.canvas().unwrap().block(focused).unwrap().height_rows,
-            Some(CARD_MAX_LINES)
+            Some(40),
+            "grows to the full snapshot, beyond CARD_MAX_LINES"
         );
-        assert!(!app.canvas_change_focused_height(2)); // at MAX -> false
+        assert!(!app.canvas_change_focused_height(2)); // at the snapshot ceiling -> false
     }
 
     #[test]
@@ -1359,6 +1430,32 @@ mod tests {
             app.canvas_change_focused_width(-80.0);
         }
         assert!(!app.canvas_change_focused_width(-80.0), "no-op at min width");
+    }
+
+    #[test]
+    fn force_auto_arrange_reflows_even_after_manual_layout() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![
+            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(5)),
+            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(5)),
+        ]);
+        let focused = app.canvas().unwrap().focused.unwrap();
+        // Hand-place a card → freezes auto-arrange (a plain auto-arrange no-ops).
+        assert!(app.canvas_move_focused(333.0, 222.0));
+        assert!(app.canvas().unwrap().user_arranged);
+        assert!(!app.canvas_auto_arrange(VH), "plain auto-arrange respects the lock");
+        let moved = {
+            let b = app.canvas().unwrap().block(focused).unwrap();
+            (b.world.x, b.world.y)
+        };
+        // `gca` FORCES a re-flow: the hand-moved card snaps back into the column.
+        assert!(app.canvas_force_auto_arrange(VH));
+        let after = {
+            let b = app.canvas().unwrap().block(focused).unwrap();
+            (b.world.x, b.world.y)
+        };
+        assert_ne!(after, moved, "force arrange must re-position the moved card");
     }
 
     #[test]

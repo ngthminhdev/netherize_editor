@@ -269,9 +269,19 @@ impl CanvasState {
 
     /// World height of a card showing `line_count` lines of code, clamped to
     /// `[CARD_MIN_LINES, CARD_MAX_LINES]`. Derived from `line_h` so the card
-    /// hugs its content at zoom 1 (no tall empty gap below short snippets).
+    /// hugs its content at zoom 1 (no tall empty gap below short snippets). This
+    /// is the AUTO size (spawn / scope-resolve); the `CARD_MAX_LINES` plateau
+    /// stops a freshly-sourced card from being enormous.
     pub fn card_height(&self, line_count: usize) -> f32 {
-        let n = line_count.clamp(CARD_MIN_LINES, CARD_MAX_LINES) as f32;
+        self.card_height_exact(line_count.min(CARD_MAX_LINES))
+    }
+
+    /// World height for an EXACT visible-row count, floored at `CARD_MIN_LINES`
+    /// but NOT capped at `CARD_MAX_LINES`. Used when the user grows a card with
+    /// `=`/`-` (height_rows) to reveal its WHOLE scope (e.g. a 50-line function),
+    /// past the auto plateau. The caller bounds `rows` to the available content.
+    pub fn card_height_exact(&self, rows: usize) -> f32 {
+        let n = rows.max(CARD_MIN_LINES) as f32;
         self.line_h * (CARD_HEADER_LINES + n + CARD_BOTTOM_LINES)
     }
 

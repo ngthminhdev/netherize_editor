@@ -377,6 +377,9 @@ pub enum Command {
     CanvasExpandCaller,
     /// Pin/unpin the focused block.
     CanvasTogglePin,
+    /// `gca`: auto-arrange the cards back into tidy columns (re-flows the layout
+    /// and unfreezes the user-arranged lock).
+    CanvasAutoArrange,
     /// Consume a key with no effect (e.g. the `g` prefix of `gd`/`gr`).
     CanvasNoop,
     /// `+`: read more context lines into each card (cards grow to fit).

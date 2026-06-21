@@ -1,9 +1,9 @@
 use cosmic_text::Metrics;
 
 use crate::render::{
-    icon_pipeline::IconDrawInstance,
+    icon_pipeline::{IconDrawInstance, canonical_icon_id},
     region_pipeline::RegionDrawInstance,
-    renderer::{Renderer, TextScissorBatch, TopbarLayoutKey, TopbarTab},
+    renderer::{Renderer, TextScissorBatch, TopbarLayoutKey, TopbarTab, TopbarTabKind},
     text_pipeline::InstanceDrawRange,
 };
 
@@ -54,6 +54,28 @@ const TOPBAR_TAB_PADDING_X: f32 = 12.0;
 const TOPBAR_TAB_SEPARATOR_WIDTH: f32 = 1.0;
 const TOPBAR_ACTIVE_BORDER_HEIGHT: f32 = 2.0;
 const TOPBAR_DIRTY_DOT: &str = "●";
+const TOPBAR_TAB_ICON_GAP: f32 = 6.0;
+
+fn topbar_tab_asset_icon(
+    kind: &TopbarTabKind,
+    theme: &crate::config::theme_config::ThemeConfig,
+) -> Option<&'static str> {
+    let raw: &str = match kind {
+        TopbarTabKind::Text { path } | TopbarTabKind::Image { path } => {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            theme.get_icon_for_file(name, false)
+        }
+        TopbarTabKind::Terminal => "built_in:terminal",
+        TopbarTabKind::References => "built_in:symbol-reference",
+        TopbarTabKind::Diagnostics => "built_in:error",
+        TopbarTabKind::MarkdownPreview => "built_in:markdown",
+        TopbarTabKind::FuzzyPicker => "built_in:identifier",
+        TopbarTabKind::Settings => "built_in:conf",
+        TopbarTabKind::Help => "built_in:info",
+        TopbarTabKind::ExtensionsManager => "built_in:file",
+    };
+    canonical_icon_id(raw)
+}
 
 struct BundledLogo {
     width: u32,
@@ -284,8 +306,21 @@ impl Renderer {
                 }
             }
         } else {
+            // ── Pass 1: measure every tab so we can keep the active tab visible and
+            //    show a "+N" overflow indicator when tabs don't fit.
+            struct TabGeom {
+                width: f32,
+                separator: f32,
+                icon_size: f32,
+                icon_id: Option<&'static str>,
+                icon_gap_eff: f32,
+                label_width: f32,
+                dirty_extra_width: f32,
+            }
+            let mut geoms: Vec<TabGeom> = Vec::with_capacity(tabs.len());
+            let mut positions: Vec<f32> = Vec::with_capacity(tabs.len());
+            let mut pos = tab_x;
             for (idx, tab) in tabs.iter().enumerate() {
-                let is_active = active_buffer_index == Some(idx);
                 let label_width = estimate_monospace_width(&tab.label, font_size);
                 let dirty_marker_width = if tab.is_dirty {
                     estimate_monospace_width(TOPBAR_DIRTY_DOT, font_size)
@@ -297,7 +332,11 @@ impl Renderer {
                 } else {
                     0.0
                 };
-                let content_width = label_width + dirty_extra_width;
+                let icon_size = (content_h * 0.72).min(font_size * 1.15);
+                let icon_id = topbar_tab_asset_icon(&tab.kind, &self.theme);
+                let icon_w = icon_id.map(|_| icon_size).unwrap_or(0.0);
+                let icon_gap_eff = if icon_id.is_some() { TOPBAR_TAB_ICON_GAP } else { 0.0 };
+                let content_width = icon_w + icon_gap_eff + label_width + dirty_extra_width;
                 let tab_min_w = bounds[2] * 0.10;
                 let tab_max_w = bounds[2] * 0.15;
                 let tab_width = (TOPBAR_TAB_PADDING_X * 2.0 + content_width)
@@ -308,9 +347,94 @@ impl Renderer {
                 } else {
                     0.0
                 };
-                if tab_x + tab_width + separator_width > available_right {
+                positions.push(pos);
+                geoms.push(TabGeom {
+                    width: tab_width,
+                    separator: separator_width,
+                    icon_size,
+                    icon_id,
+                    icon_gap_eff,
+                    label_width,
+                    dirty_extra_width,
+                });
+                pos += tab_width + separator_width;
+            }
+
+            let visible_width = (available_right - tab_x).max(0.0);
+            let active_idx = active_buffer_index.unwrap_or(0).min(tabs.len().saturating_sub(1));
+            let total_tabs_width = positions
+                .last()
+                .zip(geoms.last())
+                .map(|(&p, g)| p + g.width - tab_x)
+                .unwrap_or(0.0);
+
+            // Decide the first visible tab. When everything fits, start at 0.
+            // Otherwise scroll so the active tab is visible while keeping as many
+            // preceding tabs on screen as possible.
+            let first_visible = if total_tabs_width <= visible_width {
+                0
+            } else {
+                let active_right = positions[active_idx] + geoms[active_idx].width;
+                let mut first = active_idx;
+                for i in (0..active_idx).rev() {
+                    if active_right - positions[i] <= visible_width {
+                        first = i;
+                    } else {
+                        break;
+                    }
+                }
+                first
+            };
+
+            // Decide the last visible tab, reserving space for a "+N" indicator
+            // whenever tabs remain hidden on the right. The active tab is never
+            // clipped out.
+            let mut last_visible = tabs.len().saturating_sub(1);
+            loop {
+                let used_width = positions[last_visible] + geoms[last_visible].width
+                    - positions[first_visible];
+                let overflow_count = tabs.len().saturating_sub(last_visible + 1);
+                let indicator_w = if overflow_count > 0 {
+                    estimate_monospace_width(&format!("+{overflow_count}"), font_size)
+                        + TOPBAR_TAB_PADDING_X * 2.0
+                } else {
+                    0.0
+                };
+                if used_width + indicator_w <= visible_width || last_visible <= first_visible {
                     break;
                 }
+                if last_visible == active_idx {
+                    // Can't shrink past the active tab; accept that the indicator
+                    // may be partially clipped by the topbar scissor.
+                    break;
+                }
+                last_visible -= 1;
+            }
+            let overflow_count = tabs.len().saturating_sub(last_visible + 1);
+            let overflow_label = if overflow_count > 0 {
+                format!("+{overflow_count}")
+            } else {
+                String::new()
+            };
+            let overflow_width = if overflow_count > 0 {
+                estimate_monospace_width(&overflow_label, font_size) + TOPBAR_TAB_PADDING_X * 2.0
+            } else {
+                0.0
+            };
+
+            // ── Pass 2: draw the visible slice.
+            for idx in first_visible..=last_visible {
+                let tab = &tabs[idx];
+                let is_active = active_buffer_index == Some(idx);
+                let tab_width = geoms[idx].width;
+                let tab_x = positions[idx];
+                let icon_size = geoms[idx].icon_size;
+                let icon_id = geoms[idx].icon_id;
+                let icon_w = icon_id.map(|_| icon_size).unwrap_or(0.0);
+                let icon_gap_eff = geoms[idx].icon_gap_eff;
+                let label_width = geoms[idx].label_width;
+                let dirty_extra_width = geoms[idx].dirty_extra_width;
+                let content_width = icon_w + icon_gap_eff + label_width + dirty_extra_width;
 
                 if is_active {
                     chrome.push(RegionDrawInstance::new(
@@ -328,7 +452,8 @@ impl Renderer {
                     ));
                 }
 
-                if idx < tabs.len() - 1 {
+                let is_last_visible = idx == last_visible && overflow_count > 0;
+                if idx < tabs.len() - 1 && !is_last_visible {
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x + tab_width,
@@ -340,8 +465,25 @@ impl Renderer {
                     ));
                 }
 
-                let text_x = tab_x + ((tab_width - content_width) / 2.0).max(TOPBAR_TAB_PADDING_X);
+                let content_start =
+                    tab_x + ((tab_width - content_width) / 2.0).max(TOPBAR_TAB_PADDING_X);
+                let icon_x = content_start;
+                let text_x = content_start + icon_w + icon_gap_eff;
                 let batch_start = glyphs.len() as u32;
+
+                if let Some(icon) = icon_id {
+                    self.topbar_icon_instances.push(IconDrawInstance {
+                        icon,
+                        rect: [
+                            icon_x,
+                            content_y + (content_h - icon_size) * 0.5,
+                            icon_size,
+                            icon_size,
+                        ],
+                        tint: [1.0, 1.0, 1.0, 1.0],
+                    });
+                }
+
                 self.topbar_text_system.set_font_family(font_family);
 
                 let label_color = if tab.missing_on_disk {
@@ -404,7 +546,38 @@ impl Renderer {
                         });
                     }
                 }
-                tab_x += tab_width + separator_width;
+            }
+
+            // ── Overflow indicator: a small "+N" label at the right edge when
+            //    tabs are hidden. The separator of the last visible tab already
+            //    sits immediately to its left.
+            if overflow_count > 0 {
+                let indicator_x =
+                    positions[last_visible] + geoms[last_visible].width + geoms[last_visible].separator;
+                let indicator_text_w = estimate_monospace_width(&overflow_label, font_size);
+                let indicator_text_x = indicator_x
+                    + ((overflow_width - indicator_text_w) / 2.0).max(TOPBAR_TAB_PADDING_X);
+                let start = glyphs.len() as u32;
+                glyphs.extend(layout_panel_text(
+                    &overflow_label,
+                    &mut self.topbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    indicator_text_x,
+                    origin_y,
+                    inactive_fg,
+                ));
+                let count = glyphs.len() as u32 - start;
+                if let Some(scissor) =
+                    topbar_tab_text_scissor([indicator_x, content_y, overflow_width, content_h])
+                {
+                    if count > 0 {
+                        text_batches.push(TextScissorBatch {
+                            scissor,
+                            range: InstanceDrawRange { start, count },
+                        });
+                    }
+                }
             }
         }
 

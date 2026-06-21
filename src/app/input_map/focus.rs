@@ -13,14 +13,31 @@ impl InputMap {
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
+        // `gc`-prefix (a second-stage after `g`+`c`): `gca` = auto-arrange cards.
+        // Resolved BEFORE the `g` prefix so the two-stage sequence wins.
+        let pending_gc = self.canvas_pending_gc.replace(false);
+        if pending_gc && !input.has_command_modifier() {
+            if input.physical_key == Some(KeyA) {
+                return Some(KeybindingMatch {
+                    command: Command::CanvasAutoArrange,
+                    reason: "canvas: gca -> auto-arrange cards",
+                });
+            }
+            // `gc` + anything else: a false start — fall through to a normal key.
+        }
+
         // `g`-prefix sequences: `gd` = definition, `gr` = references (synced with
-        // the main editor). The pending flag is cleared on every keypress.
+        // the main editor); `gc` opens a 2nd stage for `gca` (auto-arrange). The
+        // pending flag is cleared on every keypress.
         let pending_g = self.canvas_pending_g.replace(false);
         if pending_g && !input.has_command_modifier() {
             if input.physical_key == Some(KeyC) {
+                // Stage the `gc` prefix; `a` completes it (`gca`). A lone `gc` no
+                // longer toggles the canvas (F8 / F10 / Esc·Esc do that now).
+                self.canvas_pending_gc.set(true);
                 return Some(KeybindingMatch {
-                    command: Command::CanvasOpen,
-                    reason: "canvas: gc -> toggle canvas",
+                    command: Command::CanvasNoop,
+                    reason: "canvas: gc prefix (gca = arrange)",
                 });
             }
             if input.physical_key == Some(KeyD) {
@@ -48,10 +65,12 @@ impl InputMap {
             });
         }
 
-        if !input.has_command_modifier() && input.named_key == Some(NamedKey::F10) {
+        if !input.has_command_modifier()
+            && matches!(input.named_key, Some(NamedKey::F8 | NamedKey::F10))
+        {
             return Some(KeybindingMatch {
                 command: Command::CanvasOpen,
-                reason: "canvas: F10 -> toggle canvas",
+                reason: "canvas: F8/F10 -> toggle canvas",
             });
         }
 

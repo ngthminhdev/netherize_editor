@@ -195,6 +195,11 @@ pub struct Renderer {
     /// Redraws the glyph under the block cursor with a contrast color.
     pub(super) editor_cursor_overlay_pipeline: TextPipeline,
     pub(super) editor_scissor: Option<[u32; 4]>,
+    /// Scissor for the FULL center editor pane — `editor_scissor` clips to the
+    /// text area BELOW the breadcrumb, but the NetherCanvas layer floats over the
+    /// whole pane (incl. the breadcrumb row), so cards panned upward must not be
+    /// clipped under the breadcrumb. Set alongside `editor_scissor`.
+    pub(super) editor_full_scissor: Option<[u32; 4]>,
     /// Screen-space rect `[x, y, w, h]` of the primary editor caret, captured
     /// each editor render. The NetherCanvas overlay uses it to anchor relation
     /// connectors at the real cursor line (the editor is the focal anchor).

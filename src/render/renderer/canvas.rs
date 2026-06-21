@@ -18,6 +18,7 @@ use crate::canvas::{BlockRelation, CARD_HEADER_LINES, CanvasSpan, CanvasState};
 use crate::core::mode::EditorMode;
 use crate::codegraph::edges::elbow;
 use crate::codegraph::layout::PillRect;
+use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
 use crate::render::region_pipeline::RegionDrawInstance;
 use crate::text::text_system::StyledTextSpan;
 
@@ -26,8 +27,18 @@ const PAD: f32 = 10.0;
 /// card text system so shaped tabs and the caret's visual-column math agree —
 /// otherwise the caret drifts left of the text on tab-indented lines.
 const CARD_TAB_WIDTH: usize = 4;
+const CANVAS_TITLE_ICON_GAP: f32 = 4.0;
 
 impl Renderer {
+    /// Physical-pixel height of the canvas pane (the full editor region incl. the
+    /// breadcrumb row) — the area the canvas actually floats over. Auto-arrange
+    /// uses it (÷ zoom → world units) so cards wrap into columns that fit the
+    /// VISIBLE pane rather than the whole window (which includes tab/status bars
+    /// and any bottom panel). `None` before the first editor render.
+    pub(crate) fn canvas_pane_height(&self) -> Option<f32> {
+        self.editor_full_scissor.map(|s| s[3] as f32)
+    }
+
     /// Build + upload the canvas overlay for the given state. Read-only.
     /// `mode` is the shared global editor mode the card borrows while editing
     /// (S2). It drives: the caret shape (block in Normal/Visual, thin beam in
@@ -39,6 +50,7 @@ impl Renderer {
         canvas: &CanvasState,
         mode: EditorMode,
         card_completion: Option<&crate::app::app_state::CompletionState>,
+        pending: bool,
     ) {
         // Block caret in Normal/Visual; thin beam in Insert (matches main editor).
         let caret_block = matches!(
@@ -61,7 +73,13 @@ impl Renderer {
             self.surface_state.config.width,
             self.surface_state.config.height,
         ];
-        let scissor = self.editor_scissor.unwrap_or(full);
+        // Float over the full editor pane (incl. the breadcrumb row), NOT the
+        // text-clipped `editor_scissor` — so a card panned upward isn't cut off
+        // under the breadcrumb. Falls back to the text scissor, then the surface.
+        let scissor = self
+            .editor_full_scissor
+            .or(self.editor_scissor)
+            .unwrap_or(full);
         self.canvas_scissor = Some(scissor);
         let ax = scissor[0] as f32;
         let ay = scissor[1] as f32;
@@ -307,15 +325,44 @@ impl Renderer {
             let header_y = sy + (title_h - line_height) * 0.5;
             // Breadcrumb-style header (like the editor's): filename bright, then a
             // dim "· symbol"; line-range right-aligned in the relation color.
-            let head_budget = header_chars.saturating_sub(range.chars().count() + 2).max(1);
+            let icon_size = (line_height * 0.82).min(fs * 1.2);
+            let icon_gap = CANVAS_TITLE_ICON_GAP;
+            let icon_slot_w = icon_size + icon_gap;
+            let title_for_icon = block
+                .snapshot
+                .title
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&block.snapshot.title);
+            let icon_id = canonical_icon_id(self.theme.get_icon_for_file(title_for_icon, false));
+            let icon_slot_chars = (icon_slot_w / char_w).ceil().max(1.0) as usize;
+            let head_budget = header_chars
+                .saturating_sub(range.chars().count() + 2)
+                .saturating_sub(icon_slot_chars)
+                .max(1);
             let file = clip_line(&block.snapshot.title, head_budget);
             let file_n = file.chars().count();
+
+            if let Some(icon) = icon_id {
+                self.canvas_icon_instances.push(IconDrawInstance {
+                    icon,
+                    rect: [
+                        sx + PAD + 4.0,
+                        header_y + (line_height - icon_size) * 0.5,
+                        icon_size,
+                        icon_size,
+                    ],
+                    tint: [1.0, 1.0, 1.0, 1.0],
+                });
+            }
+
+            let file_x = sx + PAD + 4.0 + icon_slot_w;
             self.canvas_glyph_instances.extend(layout_panel_text(
                 &file,
                 &mut self.canvas_text_system,
                 &mut self.atlas,
                 &self.queue,
-                sx + PAD + 4.0,
+                file_x,
                 header_y,
                 title_fg,
             ));
@@ -327,7 +374,7 @@ impl Renderer {
                     &mut self.canvas_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    sx + PAD + 4.0 + file_n as f32 * char_w,
+                    file_x + file_n as f32 * char_w,
                     header_y,
                     gutter_fg,
                 ));
@@ -396,9 +443,39 @@ impl Renderer {
             // can still spill past the right border. Drop any glyph crossing this
             // edge (the canvas shares one scissor, so there's no per-card clip).
             let clip_right = sx + sw - PAD;
-            let max_code_chars = ((clip_right - code_x) / char_w).floor().max(1.0) as usize;
+            let visible_px = (clip_right - code_x).max(char_w);
+            let max_code_chars = (visible_px / char_w).floor().max(1.0) as usize;
             let total_lines = block.snapshot.text.split('\n').count();
             let capacity = ((body_bottom - body_top) / line_height).floor().max(0.0) as usize;
+            // Horizontal scroll (edit-target card only): when the live caret runs
+            // past the card's right edge, shift ALL code lines left so the cursor
+            // stays visible — exactly like the main editor, so `h`/`l` on a long
+            // line no longer make the text vanish off the right. Stateless: derived
+            // from the caret column each frame, keeping ~6 cols of look-ahead.
+            let h_scroll_px = if is_edit_target {
+                edit_cursor
+                    .map(|(cl, cc)| {
+                        let row = cl as i64 - (block.snapshot.start_line as i64 - 1);
+                        let cur_line = if row >= 0 {
+                            block.snapshot.text.split('\n').nth(row as usize).unwrap_or("")
+                        } else {
+                            ""
+                        };
+                        let mut v = 0usize;
+                        for ch in cur_line.chars().take(cc as usize) {
+                            v += if ch == '\t' { CARD_TAB_WIDTH - (v % CARD_TAB_WIDTH) } else { 1 };
+                        }
+                        let cursor_vx = v as f32 * char_w;
+                        (cursor_vx - (visible_px - char_w * 6.0)).max(0.0)
+                    })
+                    .unwrap_or(0.0)
+            } else {
+                0.0
+            };
+            // Code origin shifted by the horizontal scroll; glyphs left of `code_x`
+            // and right of `clip_right` are clipped out below.
+            let code_x0 = code_x - h_scroll_px;
+            let h_scroll_cols = (h_scroll_px / char_w).round() as usize;
             // Editor-style active-line highlight on the focal line (where the
             // symbol sits), so the card reads like a mini main editor. For the
             // edit-target card the band follows the LIVE caret (the transient
@@ -484,11 +561,11 @@ impl Renderer {
                         }
                         v as f32 * char_w
                     };
-                    let x0 = (code_x + visx(sc)).min(clip_right);
+                    let x0 = (code_x0 + visx(sc)).clamp(code_x, clip_right);
                     let x1 = if sel.line_mode {
                         clip_right
                     } else {
-                        (code_x + visx(ec)).min(clip_right)
+                        (code_x0 + visx(ec)).clamp(code_x, clip_right)
                     };
                     // Empty line / zero-width (e.g. selected newline) → a thin sliver
                     // so the row still reads as selected.
@@ -523,8 +600,12 @@ impl Renderer {
                     ));
                     break;
                 }
-                // Code, truncated to the card width, with rebased syntax spans.
-                let clipped: String = raw_line.chars().take(max_code_chars).collect();
+                // Code drawn from the scrolled origin (`code_x0`), taking enough
+                // chars to cover the scrolled-in window, with rebased syntax spans.
+                // Glyphs are clipped to BOTH edges so scrolled-off text disappears
+                // cleanly on the left and right.
+                let take_chars = h_scroll_cols + max_code_chars + 2;
+                let clipped: String = raw_line.chars().take(take_chars).collect();
                 if clipped.is_empty() {
                     continue;
                 }
@@ -537,11 +618,14 @@ impl Renderer {
                         &mut self.canvas_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        code_x,
+                        code_x0,
                         line_y,
                     )
                     .into_iter()
-                    .filter(|g| g.screen_pos[0] + g.glyph_size[0] <= clip_right),
+                    .filter(|g| {
+                        g.screen_pos[0] + g.glyph_size[0] <= clip_right
+                            && g.screen_pos[0] >= code_x - 0.5
+                    }),
                 );
             }
 
@@ -581,7 +665,9 @@ impl Renderer {
                         .filter(|w| *w > 0.0 || prefix.is_empty())
                         .unwrap_or_else(fallback);
                     let caret_y = body_top + row as f32 * line_height;
-                    let caret_x = (code_x + prefix_w).min(clip_right - 1.0);
+                    // Apply the same horizontal scroll so the caret rides the glyph
+                    // under the cursor even on long, scrolled lines.
+                    let caret_x = (code_x0 + prefix_w).clamp(code_x, clip_right - 1.0);
                     // Block cursor (Normal/Visual) sits on the whole cell, drawn
                     // BEHIND the glyph (chrome renders under the text pipeline) so
                     // the character shows through; a thin beam in Insert.
@@ -599,6 +685,87 @@ impl Renderer {
                     overlay_anchor = Some([caret_x, caret_y + line_height, sx, sw]);
                 }
             }
+        }
+
+        // ── Empty / loading state: when no relation cards exist yet, a bare hint
+        //    bar over an empty plane reads as broken. Show a centered panel — a
+        //    "searching…" line while a `gc` request is in flight, or a "nothing to
+        //    show" hint once it resolved with no results. Hidden in the background
+        //    (the editor is primary there).
+        let relation_count = canvas
+            .blocks
+            .iter()
+            .filter(|b| b.relation != crate::canvas::BlockRelation::Focal)
+            .count();
+        if !background && relation_count == 0 {
+            let (title, subtitle, accent) = if pending {
+                (
+                    "Loading source function…",
+                    "Resolving via LSP",
+                    self.theme.ui.info.as_f32(),
+                )
+            } else {
+                (
+                    "Nothing to show",
+                    "Put the cursor on a symbol, then press F8",
+                    self.theme.ui.fg_dim.as_f32(),
+                )
+            };
+            let t_fs = (ah * 0.022).clamp(15.0, 26.0);
+            let s_fs = (t_fs * 0.72).max(12.0);
+            let row_gap = t_fs * 0.55;
+            self.canvas_text_system.set_metrics(Metrics::new(t_fs, t_fs * 1.3));
+            self.canvas_text_system.set_size(None, None);
+            let t_w = estimate_monospace_width(title, t_fs);
+            let s_w = estimate_monospace_width(subtitle, s_fs);
+            let inner_w = t_w.max(s_w);
+            let box_pad = t_fs * 1.4;
+            let box_w = (inner_w + box_pad * 2.0).min(aw - 40.0);
+            let box_h = t_fs * 1.3 + row_gap + s_fs * 1.3 + box_pad * 1.6;
+            let box_x = ax + (aw - box_w) * 0.5;
+            let box_y = ay + (ah - box_h) * 0.5;
+            // A dim "accent dot" + soft panel so the message reads as intentional.
+            self.canvas_chrome_instances.push(
+                RegionDrawInstance::new(
+                    [box_x - 1.0, box_y - 1.0, box_w + 2.0, box_h + 2.0],
+                    divider,
+                )
+                .with_radius(13.0),
+            );
+            self.canvas_chrome_instances.push(
+                RegionDrawInstance::new([box_x, box_y, box_w, box_h], header_bg).with_radius(12.0),
+            );
+            let dot = t_fs * 0.34;
+            self.canvas_chrome_instances.push(
+                RegionDrawInstance::new(
+                    [box_x + box_pad, box_y + box_pad * 0.8 + (t_fs - dot) * 0.5, dot, dot],
+                    accent,
+                )
+                .with_radius(dot * 0.5),
+            );
+            let t_x = box_x + (box_w - t_w) * 0.5;
+            let t_y = box_y + box_pad * 0.8;
+            self.canvas_glyph_instances.extend(layout_panel_text(
+                title,
+                &mut self.canvas_text_system,
+                &mut self.atlas,
+                &self.queue,
+                t_x,
+                t_y,
+                title_fg,
+            ));
+            self.canvas_text_system.set_metrics(Metrics::new(s_fs, s_fs * 1.3));
+            let s_x = box_x + (box_w - s_w) * 0.5;
+            let s_y = t_y + t_fs * 1.3 + row_gap;
+            self.canvas_glyph_instances.extend(layout_panel_text(
+                subtitle,
+                &mut self.canvas_text_system,
+                &mut self.atlas,
+                &self.queue,
+                s_x,
+                s_y,
+                gutter_fg,
+            ));
         }
 
         // ── Chrome: a centered bottom hint bar (hidden in the background state,

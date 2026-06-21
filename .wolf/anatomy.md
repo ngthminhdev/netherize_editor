@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T02:48:46.126Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T05:04:21.593Z
 > Files: 461 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -252,7 +252,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5506 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5589 tok)
 
 ## config/themes/
 
@@ -402,13 +402,13 @@
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1823 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16557 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16671 tok)
 
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
-- `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7570 tok)
-- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~20241 tok)
+- `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~21604 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
@@ -422,9 +422,9 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37610 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37711 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
-- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~7960 tok)
+- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~8263 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7483 tok)
@@ -450,7 +450,7 @@
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` (~13930 tok)
+- `lsp.rs` (~13972 tok)
 - `mod.rs` (~9380 tok)
 - `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
@@ -466,13 +466,13 @@
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2406 tok)
-- `tests.rs` (~23545 tok)
+- `tests.rs` (~24708 tok)
 
 ## src/app/input_map/
 
-- `focus.rs` — NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter (~15287 tok)
+- `focus.rs` — NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter (~15539 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~7365 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~7380 tok)
 - `tests.rs` (~15331 tok)
 
 ## src/async_runtime/
@@ -507,7 +507,7 @@
 
 - `layout.rs` — Deterministic placement of spawned relation blocks around a focal block. (~1092 tok)
 - `mod.rs` — NetherCanvas — Spatial Canvas (Phase A: navigable read-only canvas). (~242 tok)
-- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~7420 tok)
+- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~7573 tok)
 - `navigation.rs` — Spatial focus navigation: given block centers, pick the nearest block in a (~698 tok)
 
 ## src/codegraph/
@@ -538,8 +538,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10387 tok)
-- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~8242 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10421 tok)
+- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~8283 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -549,7 +549,7 @@
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~9958 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~5008 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~5018 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
 - `palette.rs` (~7803 tok)
 - `session.rs` (~5148 tok)
@@ -573,17 +573,17 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~5360 tok)
+- `renderer.rs` — Core renderer types and module layout. (~5459 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
-- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~11522 tok)
+- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~13271 tok)
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2139 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7391 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7401 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3917 tok)
 - `ui.rs` — Panel UI rendering modules. (~48 tok)
 
@@ -604,7 +604,7 @@
 - `overlays.rs` — update_editor_overlays (~19503 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~8154 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~8244 tok)
 
 ## src/render/renderer/editor/buffers/
 
@@ -620,7 +620,7 @@
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~3810 tok)
+- `file_picker.rs` — Declares to (~3833 tok)
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
 - `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1951 tok)
 - `live_grep.rs` — Declares to (~2616 tok)
