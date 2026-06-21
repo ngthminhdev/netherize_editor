@@ -107,6 +107,7 @@ fn named_key_display(named: NamedKey) -> String {
         NamedKey::ArrowRight => "<Right>".to_string(),
         NamedKey::F1 => "<F1>".to_string(),
         NamedKey::F5 => "<F5>".to_string(),
+        NamedKey::F10 => "<F10>".to_string(),
         NamedKey::F12 => "<F12>".to_string(),
         _ => format!("<{named:?}>"),
     }
@@ -228,7 +229,16 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
         "arrowright" => Some(NamedKey::ArrowRight),
         "tab" => Some(NamedKey::Tab),
         "f1" => Some(NamedKey::F1),
+        "f2" => Some(NamedKey::F2),
+        "f3" => Some(NamedKey::F3),
+        "f4" => Some(NamedKey::F4),
         "f5" => Some(NamedKey::F5),
+        "f6" => Some(NamedKey::F6),
+        "f7" => Some(NamedKey::F7),
+        "f8" => Some(NamedKey::F8),
+        "f9" => Some(NamedKey::F9),
+        "f10" => Some(NamedKey::F10),
+        "f11" => Some(NamedKey::F11),
         "f12" => Some(NamedKey::F12),
         _ => None,
     };
@@ -651,6 +661,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(None, KeySpec::CtrlPlus(KeyCode::KeyP), FOCUS_OUTLINE);
     km.insert(None, cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
+    km.insert(None, nk(NamedKey::F10), CANVAS_OPEN);
     km.insert(None, cmd(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
     km.insert(None, cmd(KeyCode::Digit1), RIGHT_DOCK_SWITCH_1);
     km.insert(None, cmd(KeyCode::Digit2), RIGHT_DOCK_SWITCH_2);

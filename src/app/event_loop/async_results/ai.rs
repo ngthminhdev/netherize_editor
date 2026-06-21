@@ -79,6 +79,11 @@ pub(super) fn handle_ai_result(app: &mut AppShell, payload: WorkerResultPayload)
     match payload {
         WorkerResultPayload::AiInlineCompletionChunk { chunk } => {
             app.ai_inline_inflight = false;
+            // LSP completion wins: if the menu opened while this was in flight, drop
+            // the AI result — never overwrite/close the completion the user is using.
+            if app.app_state.has_completion() {
+                return;
+            }
             // The caret left the position this request was made for (movement,
             // mode or buffer switch) — drop the result instead of showing it at
             // the caret's new location.
@@ -97,6 +102,11 @@ pub(super) fn handle_ai_result(app: &mut AppShell, payload: WorkerResultPayload)
         WorkerResultPayload::AiInlineCompletionResult { suggestion } => {
             app.ai_inline_inflight = false;
             app.ai_inline_failure_streak = 0;
+            // LSP completion wins: drop the AI result if the menu is open (see the
+            // chunk arm) so it never closes the completion the user is picking from.
+            if app.app_state.has_completion() {
+                return;
+            }
             // Same guard as the chunk arm: never surface a completion at a
             // position the user has already left.
             if !app.ai_inline_anchor_is_current() {

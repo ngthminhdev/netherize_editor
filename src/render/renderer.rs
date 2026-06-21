@@ -8,6 +8,7 @@
 //! - [`helpers`]        — pure free functions shared by all render modules
 
 mod components;
+mod canvas;
 mod editor;
 mod helpers;
 mod lifecycle;
@@ -143,6 +144,9 @@ pub enum AiInlineStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct StatusbarLayoutKey {
     pub(super) mode: EditorMode,
+    /// NetherCanvas status pill label when the canvas owns/overlays focus
+    /// (`CANVAS` / `CANVAS·EDIT`); `None` shows the normal editor-mode pill.
+    pub(super) canvas_label: Option<String>,
     pub(super) pending_keys: String,
     pub(super) git_branch: String,
     pub(super) is_dirty: bool,
@@ -191,6 +195,20 @@ pub struct Renderer {
     /// Redraws the glyph under the block cursor with a contrast color.
     pub(super) editor_cursor_overlay_pipeline: TextPipeline,
     pub(super) editor_scissor: Option<[u32; 4]>,
+    /// Scissor for the FULL center editor pane — `editor_scissor` clips to the
+    /// text area BELOW the breadcrumb, but the NetherCanvas layer floats over the
+    /// whole pane (incl. the breadcrumb row), so cards panned upward must not be
+    /// clipped under the breadcrumb. Set alongside `editor_scissor`.
+    pub(super) editor_full_scissor: Option<[u32; 4]>,
+    /// Screen-space rect `[x, y, w, h]` of the primary editor caret, captured
+    /// each editor render. The NetherCanvas overlay uses it to anchor relation
+    /// connectors at the real cursor line (the editor is the focal anchor).
+    pub(super) editor_caret_screen: Option<[f32; 4]>,
+    /// Screen-space rect of the canvas FOCAL symbol's line (where `gc` was
+    /// triggered), captured each editor render while a canvas is active and the
+    /// editor shows the focal file. Connectors anchor here instead of the live
+    /// caret, so coding in the editor doesn't drag them around. `None` clears it.
+    pub(super) editor_focal_screen: Option<[f32; 4]>,
     pub(super) editor_overlay_text_system: TextSystem,
     pub(super) editor_overlay_text_pipeline: TextPipeline,
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
@@ -298,6 +316,19 @@ pub struct Renderer {
     pub(super) palette_icon_instances: Vec<IconDrawInstance>,
     pub(super) palette_scissor: Option<[u32; 4]>,
     pub(super) last_palette_model: Option<CommandPaletteRenderModel>,
+    /// Overlay enter/leave motion last applied to the palette instances. Part of
+    /// the memo key so an animating sample re-uploads each frame even when the
+    /// model is unchanged.
+    pub(super) last_palette_sample: Option<crate::workbench::motion::RevealSample>,
+
+    // ── NetherCanvas (Spatial Canvas) full-screen layer ───────────────────────
+    pub(super) canvas_text_system: TextSystem,
+    pub(super) canvas_text_pipeline: TextPipeline,
+    pub(super) canvas_glyph_instances: Vec<GlyphInstance>,
+    pub(super) canvas_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) canvas_icon_pipeline: IconPipeline,
+    pub(super) canvas_icon_instances: Vec<IconDrawInstance>,
+    pub(super) canvas_scissor: Option<[u32; 4]>,
 
     // ── Window overlays ──────────────────────────────────────────────────────
     pub(super) lsp_guide_text_system: TextSystem,

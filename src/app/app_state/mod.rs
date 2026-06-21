@@ -36,6 +36,8 @@ use crate::text::text_system::StyledTextSpan;
 use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
 
 mod buffers;
+mod canvas;
+mod canvas_edit;
 pub mod code_graph_hud;
 mod editor;
 mod multi_cursor;
@@ -44,6 +46,8 @@ mod palette;
 mod settings;
 mod state;
 mod workspace;
+
+pub(crate) use canvas_edit::CanvasEditSession;
 
 const YANK_FLASH_DURATION: Duration = Duration::from_millis(100);
 const BRACKET_RIPPLE_DURATION: Duration = Duration::from_millis(150);
@@ -2206,6 +2210,9 @@ struct ClipboardRecord {
 pub struct AppState {
     text: Rope,
     pub code_graph_hud: code_graph_hud::CodeGraphHudState,
+    /// Active NetherCanvas session (Phase A: read-only spatial canvas). `None`
+    /// when not in Canvas mode. See `src/canvas/`.
+    pub(crate) canvas: Option<crate::canvas::CanvasState>,
     cursor_char_idx: usize,
     target_col: usize,
     revision: u64,
@@ -2300,6 +2307,11 @@ pub struct AppState {
     bracket_ripple_pos: Option<usize>,
     /// Instant when the bracket ripple started, used to compute fade-out alpha.
     bracket_ripple_start: Option<Instant>,
+    /// NetherCanvas in-card edit session (v2). While a card is being edited the
+    /// card's own text/cursor/history live here; the editor engine operates on it
+    /// via a scoped swap during command dispatch, so `self.text` (the main editor)
+    /// always stays on the gc-origin file. `None` when not editing a card.
+    canvas_edit_session: Option<CanvasEditSession>,
 }
 
 impl AppState {
@@ -2326,6 +2338,7 @@ impl AppState {
             workspace_model: None,
             command_palette: CommandPalette::default(),
             code_graph_hud: code_graph_hud::CodeGraphHudState::default(),
+            canvas: None,
             file_picker_results_cache: Vec::new(),
             last_search_query: String::new(),
             search_highlights: Vec::new(),
@@ -2371,6 +2384,7 @@ impl AppState {
             matched_bracket_pos: None,
             bracket_ripple_pos: None,
             bracket_ripple_start: None,
+            canvas_edit_session: None,
         }
     }
 
@@ -2452,6 +2466,7 @@ impl AppState {
             workspace_model: None,
             command_palette: CommandPalette::default(),
             code_graph_hud: code_graph_hud::CodeGraphHudState::default(),
+            canvas: None,
             file_picker_results_cache: Vec::new(),
             last_search_query: String::new(),
             search_highlights: Vec::new(),
@@ -2492,6 +2507,7 @@ impl AppState {
             workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
             test_runner: crate::runner::TestRunnerState::new(),
             test_field_edit: None,
+            canvas_edit_session: None,
         }
     }
 

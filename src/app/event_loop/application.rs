@@ -620,7 +620,8 @@ impl AppShell {
         self.outline_selected = None;
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;
-        jumped || true
+        let _ = jumped;
+        true
     }
 
     fn current_test_runner_content_bounds(&self) -> Option<[f32; 4]> {
@@ -1042,6 +1043,16 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
+        if self.tick_panel_animation() {
+            self.request_redraw();
+        }
+        if self.tick_palette_motion() {
+            self.request_redraw();
+        }
+        let canvas_spawning = self.tick_canvas_spawn_animation();
+        if canvas_spawning {
+            self.request_redraw();
+        }
         if self.tick_lsp_loading_animation() {
             self.request_redraw();
         }
@@ -1153,6 +1164,30 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 None => ripple_deadline,
             });
         }
+        // Drive frames at ~120 Hz while a panel slide runs.
+        if self.panel_transition.is_some() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
+        // Same ~120 Hz cadence while the command-palette enter motion runs.
+        if self.palette_motion.is_some() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
+        // Same ~120 Hz cadence while canvas cards are revealing (height 0 → full).
+        if canvas_spawning {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
 
         if let Some(deadline) = next_deadline {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
@@ -1219,6 +1254,48 @@ impl AppShell {
         } else {
             false
         }
+    }
+
+    /// Advance the workbench layout slide (dock toggle / zen). While active,
+    /// marks panels dirty each frame so content follows the animated bounds;
+    /// on completion commits the authoritative target layout and clears it.
+    fn tick_panel_animation(&mut self) -> bool {
+        let now = Instant::now();
+        let Some(tr) = &self.panel_transition else {
+            return false;
+        };
+        if tr.is_done(now) {
+            self.last_committed_layout = Some(tr.target().clone());
+            self.panel_transition = None;
+            self.mark_all_panels_dirty();
+            return true;
+        }
+        self.mark_all_panels_dirty();
+        true
+    }
+
+    /// Drive the command-palette enter motion. Returns `true` while a motion is
+    /// live (request a redraw); when it completes, clears the motion so the next
+    /// redraw samples `None` and renders the palette at its settled identity.
+    fn tick_palette_motion(&mut self) -> bool {
+        let Some(m) = self.palette_motion else {
+            return false;
+        };
+        if m.is_done(Instant::now()) {
+            self.palette_motion = None;
+        }
+        true
+    }
+
+    /// Drive the canvas card spawn-reveal animation (height 0 → full). Returns
+    /// `true` while any freshly-spawned card is still revealing (so the loop keeps
+    /// requesting frames at the animation cadence); clears each card's timer once
+    /// its reveal settles.
+    fn tick_canvas_spawn_animation(&mut self) -> bool {
+        self.app_state.canvas_tick_spawn_anim(
+            Instant::now(),
+            Duration::from_millis(crate::canvas::CARD_SPAWN_MS),
+        )
     }
 
     fn tick_lsp_loading_animation(&mut self) -> bool {
@@ -1329,6 +1406,68 @@ impl AppShell {
         Some(changed)
     }
 
+    /// Mark every panel/editor surface dirty so its content is re-laid-out at
+    /// the (possibly animated) bounds on the next frame.
+    fn mark_all_panels_dirty(&mut self) {
+        self.editor_needs_layout = true;
+        self.sidebar_needs_layout = true;
+        self.terminal_needs_layout = true;
+        self.buffer_terminal_needs_layout = true;
+        self.right_terminal_needs_layout = true;
+    }
+
+    /// Layout-affecting panel state that should trigger a slide when it changes:
+    /// dock visibility + zen target. `size_px` is deliberately excluded so
+    /// drag-resize stays direct (un-animated).
+    pub(super) fn panel_layout_signature(&self) -> (bool, bool, bool, Option<FocusTarget>) {
+        (
+            self.panel_state.left.visible,
+            self.panel_state.right.visible,
+            self.panel_state.bottom.visible,
+            self.panel_state.maximized_region,
+        )
+    }
+
+    /// The layout to render this frame: the sampled transition while animating,
+    /// otherwise the plain computed layout.
+    pub(super) fn current_render_layout(
+        &self,
+        now: Instant,
+    ) -> crate::workbench::layout_engine::WorkbenchLayout {
+        if let Some(tr) = &self.panel_transition {
+            tr.sample(now)
+        } else {
+            self.layout_engine.compute(self.window_size, &self.panel_state)
+        }
+    }
+
+    /// Capture the current on-screen layout as `from`, compute the new target as
+    /// `to`, and install a transition (or snap instantly if animations are off).
+    pub(super) fn begin_layout_transition(&mut self, now: Instant) {
+        let to = self.layout_engine.compute(self.window_size, &self.panel_state);
+        let anim = self.ui_config.animation;
+        if !anim.enabled {
+            self.panel_transition = None;
+            self.last_committed_layout = Some(to);
+            self.mark_all_panels_dirty();
+            return;
+        }
+        let from = self
+            .panel_transition
+            .as_ref()
+            .map(|tr| tr.sample(now))
+            .or_else(|| self.last_committed_layout.clone())
+            .unwrap_or_else(|| to.clone());
+        self.panel_transition = Some(crate::workbench::motion::LayoutTransition::new(
+            from,
+            to,
+            now,
+            anim.dock_duration(),
+            anim.curve,
+        ));
+        self.mark_all_panels_dirty();
+    }
+
     pub(super) fn redraw(&mut self) {
         let mode = self.app_state.current_mode();
         if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
@@ -1348,9 +1487,11 @@ impl AppShell {
 
         let got_new_data = self.pump_bridge();
         self.update_frame_metrics_snapshot(Instant::now());
-        let layout = self
-            .layout_engine
-            .compute(self.window_size, &self.panel_state);
+        let now = Instant::now();
+        let layout = self.current_render_layout(now);
+        if self.panel_transition.is_none() {
+            self.last_committed_layout = Some(layout.clone());
+        }
 
         let flat_regions: Vec<_> = layout.model.flatten();
         let sidebar_region = flat_regions
@@ -2328,6 +2469,9 @@ impl AppShell {
                 let filetype = self.app_state.active_filetype_label();
                 let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
                 let is_dirty = self.app_state.is_dirty();
+                // The in-card edit session (v2) never switches the active buffer,
+                // so `active_file` already IS the gc-origin file the main editor
+                // shows — no statusbar override needed.
                 let active_file_name = statusbar_source_path_label(
                     self.app_state.active_file(),
                     self.app_state.workspace_root_path(),
@@ -2414,8 +2558,16 @@ impl AppShell {
                         }
                     })
                 };
+                // Phase B status pill: Navigate → CANVAS, EditCard → CANVAS·EDIT,
+                // Background/none → the normal editor-mode pill.
+                let canvas_label = match self.app_state.canvas_interaction() {
+                    Some(crate::canvas::CanvasInteraction::Navigate) => Some("CANVAS"),
+                    Some(crate::canvas::CanvasInteraction::EditCard { .. }) => Some("CANVAS·EDIT"),
+                    _ => None,
+                };
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
+                    canvas_label,
                     &pending_keys,
                     git_branch,
                     is_dirty,
@@ -2445,6 +2597,17 @@ impl AppShell {
             && self.app_state.command_palette_mode() == Some(CommandPaletteMode::RecentProjects);
 
         if self.app_state.is_command_palette_visible() && !welcome_recent_projects_active {
+            let now = Instant::now();
+            // Rising edge: palette just opened → start the enter (fade + pop) motion.
+            if !self.palette_was_visible && self.ui_config.animation.enabled {
+                self.palette_motion = Some(crate::workbench::motion::OverlayMotion::enter(
+                    now,
+                    self.ui_config.animation.overlay_duration(),
+                    self.ui_config.animation.curve,
+                ));
+            }
+            self.palette_was_visible = true;
+            let sample = self.palette_motion.map(|m| m.reveal_sample(now));
             let overlay_bounds = [
                 0.0,
                 0.0,
@@ -2456,10 +2619,42 @@ impl AppShell {
                 .command_palette_render_model(&self.theme, overlay_bounds)
                 && let Some(renderer) = self.renderer.as_mut()
             {
-                renderer.update_palette_content(&model);
+                renderer.update_palette_content(&model, sample);
             }
-        } else if let Some(renderer) = self.renderer.as_mut() {
-            renderer.clear_palette();
+        } else {
+            self.palette_was_visible = false;
+            self.palette_motion = None;
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_palette();
+            }
+        }
+
+        // NetherCanvas full-screen layer: build it while active, clear otherwise.
+        // While editing a card (S2), first refresh that card from the live buffer
+        // so the in-card view + caret track edits (no-op unless editing).
+        self.canvas_sync_edit_card();
+        // The card borrows the shared global editor mode; the renderer derives the
+        // caret shape, the edit-target card's mode-colored ring, and its header
+        // mode badge from it.
+        let canvas_mode = self.app_state.current_mode();
+        let card_completion = self.canvas_completion.as_ref();
+        // Loading state: a `gc` (definition/references) request is still in flight,
+        // so the canvas may have no relation cards YET — the renderer shows a
+        // spinner/“searching” line instead of a bare hint bar.
+        let canvas_pending =
+            self.canvas_def_request_id.is_some() || self.canvas_refs_request_id.is_some();
+        if let Some(renderer) = self.renderer.as_mut() {
+            // The canvas is bound to its focal (gc-origin) file: it renders only
+            // while that file is the active buffer. Switching away (file picker,
+            // Ctrl-h/Ctrl-l) or stashing it (a card opened as a tab via `o`) keeps
+            // the canvas in state but hides it — returning to the focal file (or
+            // `gc`) shows it again.
+            let render_canvas = self.app_state.canvas_should_render();
+            if let Some(canvas) = self.app_state.canvas().filter(|_| render_canvas) {
+                renderer.update_canvas_content(canvas, canvas_mode, card_completion, canvas_pending);
+            } else {
+                renderer.clear_canvas();
+            }
         }
 
         if let Some(bottom) = bottom_region {

@@ -162,6 +162,26 @@ pub(super) fn handle_lsp_result(
             parsed_blocks,
             ..
         } => {
+            // In-card hover (Phase 2): a card-issued `K` hover fills the card
+            // overlay (a doc box at the caret), never the main editor's FloatingBox.
+            if app.canvas_hover_request_id == Some(request_id) {
+                app.canvas_hover_request_id = None;
+                if content.is_empty() {
+                    return;
+                }
+                let blocks = match parsed_blocks {
+                    Some(raw) => convert_worker_hover_blocks(raw, &app.theme),
+                    None => parse_hover_markdown_blocks(&content, &app.theme),
+                };
+                let lines = flatten_hover_blocks_to_lines(&blocks);
+                if lines.is_empty() {
+                    return;
+                }
+                if app.app_state.canvas_set_card_hover(lines) {
+                    app.request_redraw();
+                }
+                return;
+            }
             if app.hover_loading_request_id == Some(request_id) {
                 app.hover_loading_request_id = None;
             }
@@ -239,6 +259,19 @@ pub(super) fn handle_lsp_result(
             locations, jump, ..
         } => {
             use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+            // NetherCanvas redirect: a canvas-issued definition request becomes a
+            // Definition block instead of the editor peek overlay.
+            if app.canvas_def_request_id == Some(request_id) {
+                app.canvas_def_request_id = None;
+                let parent = app.canvas_def_parent.take();
+                attach_canvas_relations(
+                    app,
+                    locations,
+                    crate::canvas::BlockRelation::Definition,
+                    parent,
+                );
+                return;
+            }
             if app
                 .latest_definition_request_id
                 .is_some_and(|latest| latest != request_id)
@@ -362,6 +395,18 @@ pub(super) fn handle_lsp_result(
             }
         }
         WorkerResultPayload::LspReferencesResult { locations, .. } => {
+            // NetherCanvas redirect: canvas-issued references become Caller blocks.
+            if app.canvas_refs_request_id == Some(request_id) {
+                app.canvas_refs_request_id = None;
+                let parent = app.canvas_refs_parent.take();
+                attach_canvas_relations(
+                    app,
+                    locations,
+                    crate::canvas::BlockRelation::Caller,
+                    parent,
+                );
+                return;
+            }
             if revision_id < app.references_request_revision {
                 if app
                     .app_state
@@ -519,6 +564,40 @@ pub(super) fn handle_lsp_result(
             }
             app.request_redraw();
         }
+        WorkerResultPayload::CanvasCardScopeResult { card_id, uri, symbols } => {
+            // Progressive scope refine for a spawned def/caller card whose target
+            // file wasn't the active file (so symbols weren't cached at spawn).
+            // Stale results are harmlessly dropped: `canvas_card_scope_target`
+            // returns None when the card was closed / opened-as-tab / canvas gone.
+            let Some(path) = lsp_uri_to_path(&uri) else {
+                return;
+            };
+            let Some((line, character, symbol)) =
+                app.app_state.canvas_card_scope_target(card_id)
+            else {
+                return;
+            };
+            let Some(range) = super::canvas_scope::enclosing_definition(&symbols, line) else {
+                return; // no enclosing definition → keep the ±N window
+            };
+            let Some((_o, snap)) = build_canvas_relation_snapshot_range(
+                &app.theme,
+                &path,
+                range.start.line,
+                range.end.line,
+                character,
+                &symbol,
+            ) else {
+                return;
+            };
+            if app.app_state.canvas_apply_card_scope(
+                card_id,
+                snap,
+                Some((range.start.line, range.end.line)),
+            ) {
+                app.request_redraw();
+            }
+        }
         WorkerResultPayload::LspFormattingResult { uri, edits } => {
             let Some(path) = lsp_uri_to_path(&uri) else {
                 eprintln!("[AppShell] LSP formatting: cannot parse URI {uri}");
@@ -598,6 +677,36 @@ pub(super) fn handle_lsp_result(
             prefix_start_col,
             prefix,
         } => {
+            // In-card completion (Phase 3): a card-issued request fills the card
+            // menu (card-scoped state), never the main editor's completion.
+            if app.canvas_completion_request_id == Some(request_id) {
+                app.canvas_completion_request_id = None;
+                if app.app_state.canvas_edit_session_block().is_none()
+                    || app.app_state.current_mode() != EditorMode::Insert
+                {
+                    return;
+                }
+                let language_id = app.app_state.canvas_edit_session_path().and_then(|p| {
+                    crate::lsp::registry::language_profile_for_path(&p)
+                        .map(|pr| pr.key.to_string())
+                });
+                let completion = crate::app::app_state::CompletionState::from_lsp_items(
+                    items,
+                    cursor_line,
+                    cursor_col,
+                    prefix_start_col,
+                    prefix,
+                    app.app_state.workspace_symbol_cache(),
+                    language_id.as_deref(),
+                );
+                if completion.filtered_items.is_empty() {
+                    app.dismiss_canvas_card_completion();
+                    return;
+                }
+                app.canvas_set_card_completion(completion);
+                app.request_redraw();
+                return;
+            }
             if app.active_lsp_completion_request_id != Some(request_id) {
                 return;
             }
@@ -784,6 +893,280 @@ pub(super) fn handle_lsp_missing_dependency(app: &mut AppShell, tool_name: Strin
     app.request_redraw();
 }
 
+/// Syntax-highlight a code snippet and pack the spans into the canvas-core
+/// [`crate::canvas::CanvasSpan`] form. Shared by relation-card snapshots
+/// (read from disk) and the live edit-card snapshot (read from the buffer).
+pub(crate) fn canvas_snapshot_spans(
+    theme: &crate::config::theme_config::ThemeConfig,
+    text: &str,
+    extension: &str,
+) -> Vec<crate::canvas::CanvasSpan> {
+    use crate::canvas::CanvasSpan;
+    syntax_spans_to_styled(
+        &crate::syntax::highlight::highlight_snippet(text, extension, theme),
+        text,
+        theme,
+    )
+    .into_iter()
+    .map(|s| CanvasSpan {
+        start: s.start,
+        end: s.end,
+        color: s.color_rgba,
+        bold: s.bold,
+        italic: s.italic,
+    })
+    .collect()
+}
+
+/// Build a relation card's `(origin, snapshot)` from a file location: read
+/// `context` lines around `line`, syntax-highlight them, and pack the spans
+/// into the canvas-core [`crate::canvas::CanvasSpan`] form. Shared by the
+/// initial LSP attach and the `+`/`-` context re-source so both produce
+/// identical snapshots. Returns `None` when the file can't be read (no lines).
+pub(crate) fn build_canvas_relation_snapshot(
+    theme: &crate::config::theme_config::ThemeConfig,
+    path: &Path,
+    line: u32,
+    character: u32,
+    symbol: &str,
+    context: usize,
+) -> Option<(crate::canvas::BlockOrigin, crate::canvas::BlockSnapshot)> {
+    use crate::canvas::{BlockOrigin, BlockSnapshot};
+    let (lines, start0) = super::preview::read_file_lines(path, line as usize, context);
+    if lines.is_empty() {
+        return None;
+    }
+    let text = lines.join("\n");
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let spans = canvas_snapshot_spans(theme, &text, extension);
+    let file = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Some((
+        BlockOrigin {
+            path: path.to_path_buf(),
+            start_byte: 0,
+            end_byte: 0,
+            symbol_name: symbol.to_string(),
+            lsp_line: line,
+            lsp_character: character,
+        },
+        BlockSnapshot {
+            title: file,
+            symbol: symbol.to_string(),
+            start_line: start0 as u32 + 1,
+            text,
+            spans,
+        },
+    ))
+}
+
+/// Like `build_canvas_relation_snapshot` but for an explicit enclosing-symbol line
+/// range (scope-aware). Clamps to 60 lines + a "+N more" marker so a huge function
+/// never makes a giant card; the full body is available on Enter-to-edit.
+pub(crate) fn build_canvas_relation_snapshot_range(
+    theme: &crate::config::theme_config::ThemeConfig,
+    path: &Path,
+    start_line: u32,
+    end_line: u32,
+    character: u32,
+    symbol: &str,
+) -> Option<(crate::canvas::BlockOrigin, crate::canvas::BlockSnapshot)> {
+    use crate::canvas::{BlockOrigin, BlockSnapshot};
+    const MAX_LINES: usize = 60;
+    let (mut lines, start0, total) = super::preview::read_file_lines_range(
+        path,
+        start_line as usize,
+        end_line as usize,
+        MAX_LINES,
+    );
+    if lines.is_empty() {
+        return None;
+    }
+    if total > MAX_LINES {
+        lines.push(format!("    \u{2026} +{} more", total - MAX_LINES));
+    }
+    let text = lines.join("\n");
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let spans = canvas_snapshot_spans(theme, &text, extension);
+    let file = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Some((
+        BlockOrigin {
+            path: path.to_path_buf(),
+            start_byte: 0,
+            end_byte: 0,
+            symbol_name: symbol.to_string(),
+            lsp_line: start_line,
+            lsp_character: character,
+        },
+        BlockSnapshot {
+            title: file,
+            symbol: symbol.to_string(),
+            start_line: start0 as u32 + 1,
+            text,
+            spans,
+        },
+    ))
+}
+
+/// Convert LSP locations into NetherCanvas relation blocks and append them.
+/// `Definition` keeps the first location; `Caller` keeps several. Each block's
+/// snapshot is a read-only preview of the lines around the location, sized to
+/// the canvas's current context-line count.
+fn attach_canvas_relations(
+    app: &mut AppShell,
+    locations: Vec<crate::async_runtime::message::LspLocation>,
+    relation: crate::canvas::BlockRelation,
+    parent: Option<crate::canvas::BlockId>,
+) {
+    use crate::canvas::BlockRelation;
+    let cap = if relation == BlockRelation::Caller { 6 } else { 1 };
+    let focal_symbol = app
+        .app_state
+        .canvas_focal_origin()
+        .map(|o| o.symbol_name)
+        .unwrap_or_default();
+    let context = app.app_state.canvas_context_lines();
+    // Snapshot the ids present before the spawn so we can identify the newly-added
+    // cards (for progressive scope resolution) without poking the private next_id.
+    let pre_ids: Vec<crate::canvas::BlockId> = app
+        .app_state
+        .canvas()
+        .map(|c| c.blocks.iter().map(|b| b.id).collect())
+        .unwrap_or_default();
+    let mut rels = Vec::new();
+    for loc in locations.into_iter().take(cap) {
+        let Some(path) = lsp_uri_to_path(&loc.uri) else {
+            continue;
+        };
+        if let Some((origin, snapshot)) = build_canvas_relation_snapshot(
+            &app.theme,
+            &path,
+            loc.line,
+            loc.character,
+            &focal_symbol,
+            context,
+        ) {
+            rels.push((relation, origin, snapshot));
+        }
+    }
+    if rels.is_empty() {
+        return;
+    }
+    if app.app_state.canvas_add_relations_with_parent(rels, parent) {
+        // In-card gd/gr: focus already jumped to the spawned child card. Leave
+        // EditCard (→ Navigate) so the focus visibly lands on the child instead of
+        // waiting for an Esc, and release the parent card's LSP document. Only when
+        // we're still editing the very card that spawned this (don't yank focus if
+        // the user has moved on to another card meanwhile).
+        if let Some(parent_id) = parent
+            && app.app_state.canvas_end_edit_for_spawn(parent_id)
+        {
+            app.dismiss_canvas_card_completion();
+            app.canvas_hover_request_id = None;
+            app.submit_canvas_card_did_close();
+        }
+        // Progressive scope resolution (T4/T5): for each newly-spawned card, if its
+        // target file's documentSymbols are already cached (the active file),
+        // resolve the enclosing-definition scope synchronously right now (one
+        // reflow, no async request). Other cards get an async CanvasCardScopeRequest
+        // wired in Pass B.
+        let cached_path = app.cached_document_symbols_path.clone();
+        let cached_symbols = app.cached_document_symbols.clone();
+        let new_cards: Vec<(crate::canvas::BlockId, std::path::PathBuf, u32, u32, String)> = app
+            .app_state
+            .canvas()
+            .map(|c| {
+                c.blocks
+                    .iter()
+                    .filter(|b| !pre_ids.contains(&b.id) && b.relation != BlockRelation::Focal)
+                    .map(|b| {
+                        (
+                            b.id,
+                            b.origin.path.clone(),
+                            b.origin.lsp_line,
+                            b.origin.lsp_character,
+                            b.origin.symbol_name.clone(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        for (id, path, line, character, symbol) in new_cards {
+            let is_cached = cached_path.as_ref().is_some_and(|p| path == *p);
+            if is_cached {
+                // Sync resolve: symbols already in memory → one reflow, no request.
+                if let Some(range) = super::canvas_scope::enclosing_definition(&cached_symbols, line)
+                {
+                    if let Some((_o, snap)) = build_canvas_relation_snapshot_range(
+                        &app.theme,
+                        &path,
+                        range.start.line,
+                        range.end.line,
+                        character,
+                        &symbol,
+                    ) {
+                        app.app_state.canvas_apply_card_scope(
+                            id,
+                            snap,
+                            Some((range.start.line, range.end.line)),
+                        );
+                    }
+                }
+            } else {
+                // Async resolve: ask the worker for documentSymbol of the card's
+                // target file, correlated by `card_id`. Best-effort — an empty
+                // result keeps the ±N window (no regression).
+                let uri = crate::lsp::client::path_to_lsp_uri(&path);
+                app.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::LspRequest,
+                    payload: WorkerRequestPayload::CanvasCardScopeRequest {
+                        card_id: id,
+                        uri,
+                    },
+                });
+            }
+        }
+        let w = app.window_size.width as f32;
+        let (pane_top, pane_h) = app.canvas_pane_metrics();
+        // Tidy the freshly-spawned cards into columns that fit the VISIBLE canvas
+        // pane (in world units, so they wrap inward instead of overflowing), no-op
+        // once the user has hand-arranged; then anchor the camera so the whole
+        // cluster sits inside the pane.
+        let arrange_h = app.canvas_arrange_viewport_height();
+        app.app_state.canvas_auto_arrange(arrange_h);
+        app.app_state.canvas_anchor_cards_right(w, pane_top, pane_h);
+        app.request_redraw();
+    }
+}
+
+/// Flatten hover doc blocks into plain display lines for the card overlay box
+/// (the card popup renders monospace lines, not the rich main-editor FloatingBox).
+fn flatten_hover_blocks_to_lines(
+    blocks: &[crate::app::app_state::FloatingBoxBlock],
+) -> Vec<String> {
+    use crate::app::app_state::FloatingBoxBlock;
+    let mut lines = Vec::new();
+    for block in blocks {
+        match block {
+            FloatingBoxBlock::Prose(text) | FloatingBoxBlock::Code { text, .. } => {
+                for line in text.split('\n') {
+                    lines.push(line.to_string());
+                }
+            }
+        }
+    }
+    while lines.last().is_some_and(|l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    lines
+}
+
 pub(crate) fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
     let url = url::Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
@@ -875,7 +1258,7 @@ mod tests {
             "/Users/qc-bright/.fvm/versions/3.35.3/bin/cache/dart-sdk/lib/core/core.dart"
         )));
         assert!(is_dependency_diagnostic_path(Path::new(
-            "/workspace/.fvm/flutter_sdk/packages/flutter/lib/src/material/card.dart"
+            "/workspace/.fvm/flutter_sdk/packages/flutter/lib/src/material/button.dart"
         )));
         assert!(is_dependency_diagnostic_path(Path::new(
             "/workspace/.fvm/flutter_sdk/bin/cache/dart-sdk/lib/core/core.dart"
@@ -886,5 +1269,27 @@ mod tests {
         assert!(!is_dependency_diagnostic_path(Path::new(
             "/workspace/lib/src/material/button.dart"
         )));
+    }
+
+    #[test]
+    fn snapshot_range_reads_exact_lines_and_clamps() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_scope_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.rs");
+        let body = (0..100).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        std::fs::write(&f, body).unwrap();
+
+        let theme = crate::config::theme_config::ThemeConfig::builtin_dark();
+        // Range lines 10..=80 (0-based) is 71 lines → clamp to 60 + "+N more".
+        let (_o, snap) =
+            super::build_canvas_relation_snapshot_range(&theme, &f, 10, 80, 0, "s").unwrap();
+        assert_eq!(snap.start_line, 11); // 1-based
+        let n = snap.text.split('\n').count();
+        assert!(n <= 61, "clamped to <=60 lines + marker, got {n}");
+        assert!(snap.text.contains("+") && snap.text.contains("more"), "has +N more marker");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

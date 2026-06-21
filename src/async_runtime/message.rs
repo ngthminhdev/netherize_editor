@@ -299,6 +299,14 @@ pub enum WorkerRequestPayload {
         language_id: String,
         uri: String,
     },
+    /// Request documentSymbol for a NON-active file (a spawned canvas card's
+    /// target), correlated to the card by `card_id` so the result can refine that
+    /// one card's snapshot to the enclosing-definition scope. Best-effort: an
+    /// empty/error result keeps the card's ±N window snapshot (no regression).
+    CanvasCardScopeRequest {
+        card_id: u64,
+        uri: String,
+    },
     /// textDocument/formatting request.
     LspFormattingRequest {
         language_id: String,
@@ -761,6 +769,13 @@ pub enum WorkerResultPayload {
     },
     /// textDocument/documentSymbol response.
     LspDocumentSymbolsResult {
+        uri: String,
+        symbols: Vec<LspDocumentSymbol>,
+    },
+    /// documentSymbol response for a spawned canvas card (correlated by `card_id`).
+    /// Empty `symbols` → no enclosing definition → the card keeps its ±N window.
+    CanvasCardScopeResult {
+        card_id: u64,
         uri: String,
         symbols: Vec<LspDocumentSymbol>,
     },

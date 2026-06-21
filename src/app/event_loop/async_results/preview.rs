@@ -70,6 +70,55 @@ pub(super) fn active_diagnostics_preview_target(
     Some((item.file_path.clone(), Some(item.line + 1)))
 }
 
+/// Read raw lines (no gutter baked) around `center_line`. Returns
+/// `(lines, start_line_0based)` for callers that render their own gutter.
+pub(super) fn read_file_lines(
+    path: &std::path::Path,
+    center_line: usize,
+    context: usize,
+) -> (Vec<String>, usize) {
+    use std::io::{BufRead, BufReader};
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return (Vec::new(), 0),
+    };
+    let start = center_line.saturating_sub(context);
+    let end = center_line + context + 1;
+    let lines: Vec<String> = BufReader::new(file)
+        .lines()
+        .enumerate()
+        .take(end) // stop reading once past the window (don't scan the whole file)
+        .filter_map(|(i, line)| (i >= start).then(|| line.unwrap_or_default()))
+        .collect();
+    (lines, start)
+}
+
+/// Read an inclusive 0-based line range `[start_line, end_line]` from `path`,
+/// clamped to `max_lines` rows. Returns `(lines, start0, total_in_range)`; when
+/// `total_in_range > max_lines` the caller appends a "+N more" marker.
+pub(super) fn read_file_lines_range(
+    path: &std::path::Path,
+    start_line: usize,
+    end_line: usize,
+    max_lines: usize,
+) -> (Vec<String>, usize, usize) {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return (Vec::new(), start_line, 0);
+    };
+    let all: Vec<&str> = content.lines().collect();
+    if all.is_empty() || start_line >= all.len() {
+        return (Vec::new(), start_line, 0);
+    }
+    let end = end_line.min(all.len().saturating_sub(1));
+    let total = end.saturating_sub(start_line) + 1;
+    let take = total.min(max_lines);
+    let lines = all[start_line..start_line + take]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    (lines, start_line, total)
+}
+
 pub(super) fn read_file_preview(
     path: &std::path::Path,
     center_line: usize,

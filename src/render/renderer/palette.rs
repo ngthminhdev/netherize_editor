@@ -280,8 +280,12 @@ impl Renderer {
     ///
     /// The palette model is precomputed by `CommandPalette::render()` so the
     /// renderer only consumes geometry/text and uploads GPU instances.
-    pub fn update_palette_content(&mut self, model: &CommandPaletteRenderModel) {
-        if self.last_palette_model.as_ref() == Some(model) {
+    pub fn update_palette_content(
+        &mut self,
+        model: &CommandPaletteRenderModel,
+        reveal: Option<crate::workbench::motion::RevealSample>,
+    ) {
+        if self.last_palette_model.as_ref() == Some(model) && self.last_palette_sample == reveal {
             return;
         }
         if matches!(
@@ -306,12 +310,89 @@ impl Renderer {
                 ],
             );
         }
+        // Dot → Line → Panel Reveal motion, applied to the freshly built
+        // instances before upload. The frame/panel-bg quads are collapsed to a
+        // growing reveal rect (dot → line → panel); the scrim only fades; all
+        // content (rows, badges, glyphs, icons) is held hidden until the panel
+        // is nearly open, then faded in.
+        if let Some(r) = reveal {
+            self.apply_palette_reveal(model, r);
+            // Icons were uploaded at identity inside the build branches above;
+            // re-upload the transformed set so the reveal fade applies to them.
+            self.palette_icon_pipeline.upload_instances(
+                &self.device,
+                &self.palette_icon_instances,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
+            );
+        }
         self.palette_text_pipeline.upload_instances(
             &self.device,
             &self.queue,
             &self.palette_glyph_instances,
         );
         self.last_palette_model = Some(model.clone());
+        self.last_palette_sample = reveal;
+    }
+
+    /// Apply a [`RevealSample`](crate::workbench::motion::RevealSample) to the
+    /// already-built palette instances. The frame and panel-background quads are
+    /// replaced with a centered reveal rect that grows horizontally (dot → line)
+    /// then vertically (line → panel); the full-screen scrim only fades; every
+    /// other quad plus all glyphs/icons fade in via `content_alpha`.
+    fn apply_palette_reveal(
+        &mut self,
+        model: &CommandPaletteRenderModel,
+        r: crate::workbench::motion::RevealSample,
+    ) {
+        let [px, py, pw, ph] = model.panel_bounds;
+        let cx = px + pw * 0.5;
+        let cy = py + ph * 0.5;
+        let scrim = model.overlay_bounds;
+        // render_palette_chrome pushes the frame border as panel_bounds grown 1px.
+        let frame = [px - 1.0, py - 1.0, pw + 2.0, ph + 2.0];
+
+        // The dot/line thickness — also the minimum width so frame 0 reads as a dot.
+        let line_px = 3.0_f32;
+        let rw = (pw * r.width_factor).max(line_px);
+        let rh = line_px + (ph - line_px) * r.height_factor;
+        let reveal = [cx - rw * 0.5, cy - rh * 0.5, rw, rh];
+        let reveal_frame = [
+            reveal[0] - 1.0,
+            reveal[1] - 1.0,
+            reveal[2] + 2.0,
+            reveal[3] + 2.0,
+        ];
+        // Clamp corner radius so the thin line renders as a clean pill, not an
+        // over-rounded blob, at every size.
+        let radius_of = |base: f32, rect: [f32; 4]| base.min(rect[2].min(rect[3]) * 0.5);
+
+        for inst in &mut self.palette_chrome_instances {
+            if inst.rect == scrim {
+                inst.color[3] *= r.scrim_alpha;
+            } else if inst.rect == frame {
+                inst.rect = reveal_frame;
+                let radius = radius_of(PALETTE_FRAME_RADIUS, reveal_frame);
+                inst.border_radius = radius;
+                inst.corner_radii = [radius; 4];
+            } else if inst.rect == model.panel_bounds {
+                inst.rect = reveal;
+                let radius = radius_of(PALETTE_PANEL_RADIUS, reveal);
+                inst.border_radius = radius;
+                inst.corner_radii = [radius; 4];
+            } else {
+                // Content chrome (rows, badges, dividers, footer) fades in last.
+                inst.color[3] *= r.content_alpha;
+            }
+        }
+        for g in &mut self.palette_glyph_instances {
+            g.color[3] *= r.content_alpha;
+        }
+        for ic in &mut self.palette_icon_instances {
+            ic.tint[3] *= r.content_alpha;
+        }
     }
 
     pub fn clear_palette(&mut self) {

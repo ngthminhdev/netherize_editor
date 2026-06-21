@@ -381,7 +381,7 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
         return Some("built_in:cargolock");
     }
     if filename == "package.json" {
-        return Some("built_in:node");
+        return Some("built_in:npmlock");
     }
     if matches!(filename, "package-lock.json" | "npm-shrinkwrap.json") {
         return Some("built_in:npmlock");

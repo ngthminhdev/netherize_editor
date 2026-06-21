@@ -1,5 +1,7 @@
 #[path = "commands_ai_agent.rs"]
 mod commands_ai_agent;
+#[path = "commands_canvas.rs"]
+mod commands_canvas;
 #[path = "commands_completion.rs"]
 mod commands_completion;
 #[path = "commands_editor.rs"]
@@ -255,6 +257,7 @@ impl AppShell {
         repeat_count: usize,
     ) -> bool {
         let test_edit_before = self.app_state.test_field_edit.is_some();
+        let layout_sig_before = self.panel_layout_signature();
         let res = self.handle_command_with_count_impl(command, repeat_count);
         let test_edit_after = self.app_state.test_field_edit.is_some();
         if test_edit_before && !test_edit_after {
@@ -263,6 +266,11 @@ impl AppShell {
                 .right
                 .switch_to_tab(crate::workbench::panel_state::PanelTabId::TestRunner);
             self.focus_manager.set(FocusTarget::RightSidebar);
+        }
+        // Animate any dock toggle / zen change with a layout slide. Drag-resize
+        // (size_px only) is intentionally excluded so it stays direct.
+        if self.panel_layout_signature() != layout_sig_before {
+            self.begin_layout_transition(std::time::Instant::now());
         }
         let outline_focused = match self.focus_manager.current() {
             FocusTarget::LeftSidebar => {
@@ -282,6 +290,96 @@ impl AppShell {
     fn handle_command_with_count_impl(&mut self, command: Command, repeat_count: usize) -> bool {
         if matches!(command, Command::NewInstance) {
             return self.spawn_new_instance();
+        }
+
+        // NetherCanvas in-card editing (v2): ONLY while actively editing a card
+        // (interaction == EditCard) do we route editor text/cursor/mode commands
+        // to the card via a scoped swap so `self.text` (the main editor) never
+        // leaves the gc-origin file. The edit session is KEPT stashed after
+        // leaving edit mode (to resume unsaved edits when re-entering the same
+        // card), so gating on the session alone would hijack the main editor's
+        // hjkl/d/c/b/w after `o` (open card as a buffer) or when the canvas is in
+        // the Background — hence the explicit EditCard gate. `⌘S` is handled
+        // specially (the card is not a buffer slot). During the recursive dispatch
+        // the session is taken out, so this does not re-enter.
+        if matches!(
+            self.app_state.canvas_interaction(),
+            Some(crate::canvas::CanvasInteraction::EditCard { .. })
+        ) && self.app_state.canvas_edit_session_block().is_some()
+        {
+            if matches!(command, Command::SaveFile) {
+                return self.canvas_save_edit_card();
+            }
+            // `gd`/`gr` from a card spawn NEW cards from the card cursor instead
+            // of jumping the main editor.
+            if matches!(command, Command::LspGoToDefinition) {
+                return self.canvas_card_spawn(true);
+            }
+            if matches!(command, Command::LspReferences) {
+                return self.canvas_card_spawn(false);
+            }
+            // `gD` peek behaves like `gd` in a card — spawn a child card.
+            if matches!(command, Command::LspPreviewDefinition) {
+                return self.canvas_card_spawn(true);
+            }
+            // `K` hover → a doc box at the card caret (Phase 2 in-card LSP), not
+            // the main editor's FloatingBox.
+            if matches!(command, Command::LspHover) {
+                return self.canvas_card_hover();
+            }
+            // Ctrl-Space → manual completion FOR THE CARD (was leaking to the main
+            // editor's dropdown). Focus is in the card, so the action stays here.
+            if matches!(command, Command::TriggerCompletion) {
+                return self.submit_canvas_card_completion();
+            }
+            // Autocomplete navigation/accept while the card menu is open (Phase 3).
+            if self.canvas_completion.is_some()
+                && let Some(changed) = self.handle_canvas_completion_command(&command)
+            {
+                return changed;
+            }
+            // `Ctrl-d`/`Ctrl-u` half-page scroll: the editor's variants live in the
+            // SHELL layer (act on the main viewport), so the card's core dispatch
+            // never sees them — translate to N× MoveDown/MoveUp on the card cursor
+            // (N = half the card's visible rows). The A1 viewport-follow then scrolls
+            // the card to keep the cursor on screen.
+            if matches!(
+                command,
+                Command::ScrollHalfPageDown | Command::ScrollHalfPageUp
+            ) {
+                let half = self
+                    .app_state
+                    .canvas_edit_card_visible_lines()
+                    .map(|n| (n / 2).max(1))
+                    .unwrap_or(1);
+                let motion = if matches!(command, Command::ScrollHalfPageDown) {
+                    Command::MoveDown
+                } else {
+                    Command::MoveUp
+                };
+                return self.dispatch_card_editing_command(motion, half);
+            }
+            // Editor actions that target the ACTIVE buffer are not card-scoped yet
+            // — suppress them while editing a card so they don't act on the main
+            // editor behind it ("focus here ⇒ act here"). Consumed as a no-op:
+            // in-card rename/format/code-action/search/fold are future work.
+            if matches!(
+                command,
+                Command::LspRename
+                    | Command::LspFormatDocument
+                    | Command::CodeAction
+                    | Command::OpenInFileSearch
+                    | Command::SearchNext
+                    | Command::SearchPrev
+                    | Command::SearchWordUnderCursor
+                    | Command::ToggleFold
+                    | Command::ToggleFoldAll
+            ) {
+                return false;
+            }
+            if command.is_card_editing_command() {
+                return self.dispatch_card_editing_command(command, repeat_count);
+            }
         }
 
         let command_for_post_hooks = command.clone();
@@ -369,6 +467,13 @@ impl AppShell {
         }
 
         if let Some(changed) = self.handle_settings_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
+        if let Some(changed) = self.handle_canvas_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
                 should_persist_history_after,

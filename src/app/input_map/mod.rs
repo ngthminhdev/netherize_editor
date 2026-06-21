@@ -54,6 +54,8 @@ pub enum InputFocusContext {
     Outline,
     /// Code Graph HUD overlay (gp) — owns hjkl/Enter/Esc while open.
     CodeGraph,
+    /// NetherCanvas spatial canvas (gc) — full-screen modal owning hjkl/Tab/Enter/Esc.
+    Canvas,
 }
 
 impl InputFocusContext {
@@ -77,6 +79,7 @@ impl InputFocusContext {
             Self::SettingsTab => "settings_tab",
             Self::Outline => "outline",
             Self::CodeGraph => "code_graph",
+            Self::Canvas => "canvas",
         }
     }
 
@@ -125,6 +128,10 @@ pub struct KeybindingContext {
     /// True when the AI Chat tab is showing its in-panel agent picker (no agent
     /// running). Lets the input layer route j/k/Enter to the picker.
     pub ai_agent_picker_active: bool,
+    /// NetherCanvas Phase B sub-state (None when no canvas is open). Lets the
+    /// input layer route the staged Esc (exit edit / close canvas) while the
+    /// editor holds focus during edit/background states.
+    pub canvas_interaction: Option<crate::canvas::CanvasInteraction>,
 }
 
 impl KeybindingContext {
@@ -147,6 +154,7 @@ impl KeybindingContext {
             right_sidebar_terminal: false,
             test_runner_editing: false,
             ai_agent_picker_active: false,
+            canvas_interaction: None,
         }
     }
 
@@ -175,6 +183,7 @@ impl KeybindingContext {
             right_sidebar_terminal: false,
             test_runner_editing: false,
             ai_agent_picker_active: false,
+            canvas_interaction: None,
         }
     }
 }
@@ -222,6 +231,13 @@ fn humanize_command_id(id: &str) -> String {
 pub struct InputMap {
     open_file_path: PathBuf,
     keymap: ResolvedKeymap,
+    /// Pending `g` prefix while in Canvas focus (for `gd`/`gr`). Interior
+    /// mutability so `resolve` (which takes `&self`) can track the sequence.
+    canvas_pending_g: std::cell::Cell<bool>,
+    /// Pending `space` prefix while in Canvas focus (for `space x` = close card).
+    canvas_pending_space: std::cell::Cell<bool>,
+    /// Pending `gc` prefix while in Canvas focus (for `gca` = auto-arrange).
+    canvas_pending_gc: std::cell::Cell<bool>,
 }
 
 impl InputMap {
@@ -231,6 +247,9 @@ impl InputMap {
         Self {
             open_file_path,
             keymap,
+            canvas_pending_g: std::cell::Cell::new(false),
+            canvas_pending_space: std::cell::Cell::new(false),
+            canvas_pending_gc: std::cell::Cell::new(false),
         }
     }
 
@@ -238,6 +257,9 @@ impl InputMap {
         Self {
             open_file_path,
             keymap,
+            canvas_pending_g: std::cell::Cell::new(false),
+            canvas_pending_space: std::cell::Cell::new(false),
+            canvas_pending_gc: std::cell::Cell::new(false),
         }
     }
 
@@ -338,6 +360,29 @@ impl InputMap {
             }
         }
 
+        // NetherCanvas Phase B: while a card is being EDITED (S2) the editor holds
+        // focus for full editing but Esc must exit the card edit (the staged exit),
+        // so it's intercepted here. In the BACKGROUND (S3) the editor is already
+        // the focus and the canvas is just a floating reference — Esc must keep its
+        // normal editor meaning (clear search highlights, drop Visual, …); the
+        // canvas is closed with F8/F10, NOT Esc. So we ONLY intercept EditCard and
+        // let Background fall through to the keymap. Guarded to EDITOR focus + Normal
+        // mode (Esc still drops Insert → Normal first).
+        if input.named_key == Some(NamedKey::Escape)
+            && !input.has_command_modifier()
+            && context.mode == EditorMode::Normal
+            && context.focus == InputFocusContext::Editor
+            && matches!(
+                context.canvas_interaction,
+                Some(crate::canvas::CanvasInteraction::EditCard { .. })
+            )
+        {
+            return Some(KeybindingMatch {
+                command: Command::CanvasExitEdit,
+                reason: "canvas edit: Esc -> exit edit (S2->S1)",
+            });
+        }
+
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,
         // mọi input sẽ được forward thẳng vào PTY trong handler.rs.
         // NHƯNG: Cho phép Cmd-R và F12 đi qua để resolve bình thường.
@@ -371,6 +416,9 @@ impl InputMap {
             }
         }
 
+        if context.focus == InputFocusContext::Canvas {
+            return self.resolve_canvas_focus(input);
+        }
         if context.focus == InputFocusContext::CodeGraph {
             return self.resolve_code_graph_focus(input);
         }
@@ -663,6 +711,7 @@ impl InputMap {
             InputFocusContext::SettingsTab => editor_mode_str(context.mode),
             InputFocusContext::Outline => "normal",
             InputFocusContext::CodeGraph => "code_graph",
+            InputFocusContext::Canvas => "canvas",
         }
     }
 

@@ -80,6 +80,88 @@ fn move_to_first_line_uses_viewport_layout_path() {
 }
 
 #[test]
+fn canvas_open_toggles_off_when_canvas_has_navigation_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let path = std::env::temp_dir().join(format!(
+        "netherize_canvas_toggle_{}.rs",
+        std::process::id()
+    ));
+    std::fs::write(&path, "fn main() {}\n").expect("write canvas fixture");
+    shell.app_state = AppState::new(path.clone());
+    shell.app_state.open_file(path.clone()).expect("open canvas fixture");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+    assert_eq!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::Navigate)
+    );
+    assert_eq!(shell.build_context().focus, InputFocusContext::Canvas);
+
+    assert!(shell.handle_command(Command::CanvasOpen));
+
+    assert!(!shell.app_state.is_canvas_active());
+    let _ = std::fs::remove_file(path);
+}
+
+/// Regression: the in-card edit session is KEPT stashed after leaving edit mode
+/// (to resume unsaved edits), so once you back the canvas to the Background — or
+/// open a card as a real buffer with `o` — the main editor must regain full vim
+/// control. Before the `EditCard`-gate fix, the bare session check hijacked
+/// hjkl/d/c/b/w into the (hidden) card and the editor looked frozen.
+#[test]
+fn background_canvas_with_stashed_session_lets_main_editor_move() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let nanos = std::process::id();
+    let dir = std::env::temp_dir().join(format!("netherize_canvas_bg_{nanos}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let foo = dir.join("foo.rs");
+    let bar = dir.join("bar.rs");
+    std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
+    std::fs::write(&bar, "fn helper() {\n    let x = 1;\n}\n").unwrap();
+
+    shell.app_state = AppState::new(foo.clone());
+    shell.app_state.open_file(foo.clone()).expect("open foo");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+    let bar_canon = bar.canonicalize().unwrap();
+    shell.app_state.canvas_add_relations(vec![(
+        crate::canvas::BlockRelation::Definition,
+        crate::canvas::BlockOrigin {
+            path: bar_canon,
+            start_byte: 0,
+            end_byte: 1,
+            symbol_name: "helper".into(),
+            lsp_line: 0,
+            lsp_character: 0,
+        },
+        {
+            let mut s = crate::canvas::BlockSnapshot::default();
+            s.text = "fn helper() {".into();
+            s
+        },
+    )]);
+
+    // Enter then leave edit → Navigate, but the session stays stashed.
+    assert!(shell.app_state.canvas_begin_edit());
+    assert!(shell.app_state.canvas_end_edit());
+    // Back the canvas to the editor (S3). Session is STILL present.
+    assert!(shell.app_state.canvas_enter_background());
+    assert!(
+        shell.app_state.canvas_edit_session_block().is_some(),
+        "session is intentionally kept stashed for resume"
+    );
+
+    let (line_before, _) = shell.app_state.cursor_line_col();
+    assert_eq!(line_before, 0);
+    // `j` in the Background must move the MAIN editor, not the hidden card.
+    assert!(shell.handle_command(Command::MoveDown));
+    let (line_after, _) = shell.app_state.cursor_line_col();
+    assert_eq!(line_after, 1, "main editor cursor must advance — not the card");
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn insert_edit_clears_stale_semantic_highlight_spans() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "bootstrap.NewApp";
@@ -3574,6 +3656,54 @@ fn manual_trigger_completion_dismisses_ghost_text_and_invalidates_inflight_ai() 
 
     assert!(shell.app_state.inline_suggestion().is_none());
     assert!(shell.app_state.completion().is_some());
+}
+
+#[test]
+fn ai_inline_result_yields_to_open_completion_menu() {
+    // LSP completion wins: a VALID (current-revision, current-anchor) AI inline
+    // result that arrives while the completion menu is open must be dropped — it
+    // must neither show ghost text nor close the menu the user is picking from.
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("ai_yields_to_completion");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("post", "post")],
+        0,
+        "axios.p".chars().count(),
+        "axios.".chars().count(),
+        "p".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    assert!(shell.app_state.set_completion(completion));
+    assert!(shell.app_state.has_completion());
+    // Anchor the AI pipeline at the current caret so the anchor guard would PASS —
+    // proving the result is dropped by the completion-open guard, not the anchor one.
+    shell.reanchor_ai_inline();
+    let revision = shell.ai_inline_revision;
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 999,
+        revision_id: revision,
+        topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionResult {
+            suggestion: "ost()".to_string(),
+        },
+    });
+
+    assert!(
+        shell.app_state.inline_suggestion().is_none(),
+        "AI ghost text must not show over the completion menu"
+    );
+    assert!(
+        shell.app_state.has_completion(),
+        "the LSP completion menu must stay open (AI inline yields to it)"
+    );
 }
 
 #[test]

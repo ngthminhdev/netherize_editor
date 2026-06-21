@@ -97,6 +97,8 @@ impl Renderer {
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let palette_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let canvas_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let test_runner_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let markdown_preview_header_image_pipeline =
@@ -134,6 +136,7 @@ impl Renderer {
         let topbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let statusbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let palette_text_system = make_text_system(ui_metrics, font_family.as_deref());
+        let canvas_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let system_dep_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
@@ -167,6 +170,8 @@ impl Renderer {
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let palette_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let canvas_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
         let lsp_guide_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let system_dep_text_pipeline =
@@ -198,6 +203,9 @@ impl Renderer {
             caret_pipeline,
             editor_cursor_overlay_pipeline,
             editor_scissor: None,
+            editor_full_scissor: None,
+            editor_caret_screen: None,
+            editor_focal_screen: None,
             editor_overlay_text_system,
             editor_overlay_text_pipeline,
             editor_overlay_glyph_instances: Vec::new(),
@@ -283,6 +291,14 @@ impl Renderer {
             palette_icon_instances: Vec::new(),
             palette_scissor: None,
             last_palette_model: None,
+            last_palette_sample: None,
+            canvas_text_system,
+            canvas_text_pipeline,
+            canvas_glyph_instances: Vec::new(),
+            canvas_chrome_instances: Vec::new(),
+            canvas_icon_pipeline,
+            canvas_icon_instances: Vec::new(),
+            canvas_scissor: None,
             lsp_guide_text_system,
             lsp_guide_text_pipeline,
             lsp_guide_scissor: None,
@@ -422,6 +438,10 @@ impl Renderer {
         // Sidebar text must use NerdFont to render PUA glyphs without mojibake.
         self.text_system.set_font_family(family);
         self.editor_overlay_text_system.set_font_family(family);
+        // NetherCanvas cards must track the configured editor font too — without
+        // this they keep the startup default font (the cards looked like a
+        // different font than the editor after the real theme config was applied).
+        self.canvas_text_system.set_font_family(family);
         self.sidebar_text_system.set_font_family(nerd_family);
         self.terminal_text_system.set_font_family(nerd_family);
         self.right_terminal_text_system.set_font_family(nerd_family);
@@ -543,6 +563,11 @@ impl Renderer {
             &mut self.topbar_text_pipeline,
             &mut self.statusbar_text_pipeline,
             &mut self.palette_text_pipeline,
+            // NetherCanvas overlay text — MUST be resized too, else its
+            // `screen_size` uniform goes stale and canvas glyphs project at a
+            // different scale than the canvas region backgrounds (cards/hint
+            // bar), so text drifts off its card and the hint text lands off-bar.
+            &mut self.canvas_text_pipeline,
             &mut self.lsp_guide_text_pipeline,
             &mut self.system_dep_text_pipeline,
             &mut self.diagnostic_hover_text_pipeline,

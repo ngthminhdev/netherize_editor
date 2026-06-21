@@ -502,6 +502,37 @@ fn execute_lsp_request(
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_document_symbols(&handle.process, uri)
         }
+        WorkerRequestPayload::CanvasCardScopeRequest { card_id, uri } => {
+            // Best-effort documentSymbol for a spawned canvas card's target file.
+            // On any failure (no server / not open / timeout) return EMPTY symbols
+            // so the card keeps its ±N window — never surface an error toast for a
+            // background scope refine.
+            let handle = lsp_handle_for_uri_or_profile(lsp_sessions, uri, None)?;
+            let Some(handle) = handle else {
+                return Ok(WorkerResultPayload::CanvasCardScopeResult {
+                    card_id: *card_id,
+                    uri: uri.clone(),
+                    symbols: Vec::new(),
+                });
+            };
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            match handle_lsp_document_symbols(&handle.process, uri) {
+                Ok(WorkerResultPayload::LspDocumentSymbolsResult { symbols, .. }) => {
+                    Ok(WorkerResultPayload::CanvasCardScopeResult {
+                        card_id: *card_id,
+                        uri: uri.clone(),
+                        symbols,
+                    })
+                }
+                _ => Ok(WorkerResultPayload::CanvasCardScopeResult {
+                    card_id: *card_id,
+                    uri: uri.clone(),
+                    symbols: Vec::new(),
+                }),
+            }
+        }
         WorkerRequestPayload::LspFormattingRequest {
             language_id,
             uri,

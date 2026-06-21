@@ -214,6 +214,10 @@ impl AppShell {
             sidebar_needs_layout: true,
             terminal_needs_layout: true,
             buffer_terminal_needs_layout: true,
+            panel_transition: None,
+            last_committed_layout: None,
+            palette_motion: None,
+            palette_was_visible: false,
             terminal_search_palette_active: false,
             last_frame_time: now,
             last_fps_metrics_update_at: now,
@@ -231,6 +235,15 @@ impl AppShell {
             hover_loading_request_id: None,
             latest_hover_request_id: None,
             latest_definition_request_id: None,
+            canvas_def_request_id: None,
+            canvas_refs_request_id: None,
+            canvas_def_parent: None,
+            canvas_refs_parent: None,
+            canvas_card_lsp_open: None,
+            canvas_card_lsp_version: 0,
+            canvas_hover_request_id: None,
+            canvas_completion_request_id: None,
+            canvas_completion: None,
             document_symbols_request_revision: 0,
             lsp_rename_request_revision: 0,
             latest_rename_request_id: None,
@@ -739,7 +752,17 @@ impl AppShell {
             && (!self.app_state.is_command_palette_visible()
                 || self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::RecentProjects));
-        let focus = if self.app_state.code_graph_hud.open {
+        let canvas_interaction = self.app_state.canvas_interaction();
+        let focus = if canvas_interaction == Some(crate::canvas::CanvasInteraction::Navigate)
+            && self.app_state.canvas_should_render()
+        {
+            // NetherCanvas card-navigation (S1) owns hjkl/Tab/Enter/Esc. While
+            // editing a card (S2) or backgrounded (S3) the editor keeps focus for
+            // full editing; the canvas state machine intercepts only Esc. A canvas
+            // that is hidden — stashed (opened a card as a tab) or showing a
+            // non-focal file — yields focus to the editor entirely.
+            InputFocusContext::Canvas
+        } else if self.app_state.code_graph_hud.open {
             // The Code Graph HUD is modal: it owns hjkl/Enter/Esc while open,
             // regardless of the underlying editor/sidebar focus.
             InputFocusContext::CodeGraph
@@ -836,7 +859,11 @@ impl AppShell {
                 None
             },
             welcome_visible,
-            completion_visible: self.app_state.has_completion(),
+            // Card completion (Phase 3 in-card LSP) uses a separate menu state, so
+            // the keymap must treat completion as visible for either one to route
+            // Tab/Enter/Ctrl-n-p to CompletionAccept/Next/Prev.
+            completion_visible: self.app_state.has_completion()
+                || self.canvas_completion.is_some(),
             inline_suggestion_visible: self.app_state.inline_suggestion().is_some(),
             hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),
@@ -849,6 +876,7 @@ impl AppShell {
                 && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat)
                 && self.right_pty_session_id.is_none()
                 && !self.pending_right_pty_spawn,
+            canvas_interaction,
         }
     }
 
@@ -1240,6 +1268,13 @@ impl AppShell {
             self.cancel_ai_inline_completion();
             return;
         }
+        // LSP completion wins: while the completion menu is open (the user is
+        // typing to pick a field/func), AI inline must NOT cut in. It only fires in
+        // Insert mode when no completion menu is showing.
+        if self.app_state.has_completion() {
+            self.cancel_ai_inline_completion();
+            return;
+        }
         if self.app_state.active_buffer_is_terminal() || self.app_state.active_file().is_none() {
             self.cancel_ai_inline_completion();
             return;
@@ -1299,6 +1334,12 @@ impl AppShell {
         let Some(pending) = self.pending_ai_inline_request.as_ref() else {
             return;
         };
+        // The completion menu opened after this was queued (race): drop the AI
+        // request rather than firing it over the menu — LSP completion wins.
+        if self.app_state.has_completion() {
+            self.cancel_ai_inline_completion();
+            return;
+        }
         let Some(cfg) = self.ai_config.inline_completion().cloned() else {
             self.cancel_ai_inline_completion();
             return;

@@ -365,6 +365,7 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::LspReferencesRequest { .. }
         | WorkerRequestPayload::LspRenameRequest { .. }
         | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
+        | WorkerRequestPayload::CanvasCardScopeRequest { .. }
         | WorkerRequestPayload::LspFormattingRequest { .. }
         | WorkerRequestPayload::LspCompletionRequest { .. }
         | WorkerRequestPayload::LspCompletionResolveRequest { .. }

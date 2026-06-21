@@ -239,6 +239,8 @@ impl Renderer {
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.editor_scissor = None;
+        self.editor_full_scissor = None;
+        self.editor_caret_screen = None;
         self.image_pipeline.clear();
         self.image_scissor = None;
         // Invalidate text cache so the next update_editor_content always reshapes.
@@ -332,6 +334,10 @@ impl Renderer {
             center_bounds[2],
             geometry.viewport_text_height,
         ]);
+        // The NetherCanvas layer floats over the WHOLE pane (incl. the breadcrumb
+        // row above the text area), so it gets the full center bounds — otherwise a
+        // card panned upward is clipped under the breadcrumb.
+        self.editor_full_scissor = rect_to_scissor(center_bounds);
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
         let tab_width = u16::from(app_state.indent_config().tab_width.max(1));
@@ -412,6 +418,23 @@ impl Renderer {
                     self.cursor_block_width,
                     self.cursor_underline_height,
                 );
+                self.editor_caret_screen = Some([
+                    primary_caret.x,
+                    primary_caret.y,
+                    primary_caret.width,
+                    primary_caret.height,
+                ]);
+                // A full re-render also runs on scroll — re-pin the canvas focal
+                // connector anchor here too, else it goes stale and the connector
+                // freezes at its last position instead of following / hiding with
+                // the focal line. See `compute_focal_screen`.
+                self.editor_focal_screen = self.compute_focal_screen(
+                    app_state,
+                    projection.caret_layout.top,
+                    geometry.font_size,
+                    geometry.viewport_text_left,
+                    geometry.line_height,
+                );
                 let caret_rects = build_caret_rects(
                     app_state,
                     &self.text_system,
@@ -441,6 +464,7 @@ impl Renderer {
             Err(e) => {
                 eprintln!("[Renderer] text layout: {e}");
                 self.glyph_instances.clear();
+                self.editor_caret_screen = None;
                 self.caret_pipeline.upload_caret(&self.queue, None);
                 self.editor_cursor_overlay_pipeline.upload_instances(
                     &self.device,
@@ -465,6 +489,38 @@ impl Renderer {
                 .max(3),
             geometry.gutter_width,
         );
+    }
+
+    /// Project the canvas relation connectors' FOCAL anchor (the `gc` line) to a
+    /// screen rect, RELATIVE to the caret line whose visual top is `caret_top`
+    /// (known-correct). Returns `None` when the editor isn't showing the focal
+    /// file (`canvas_focal_position`). Computing the focal line's top as a delta
+    /// from the caret line keeps it invariant under cursor moves and free of any
+    /// absolute-projection off-by-one. MUST be called from BOTH the full
+    /// re-render (`update_editor_content`) and the caret-only fast path
+    /// (`update_editor_caret`) so the connector re-pins to the focal line on
+    /// every viewport change (scroll) — otherwise a stale anchor leaves the
+    /// connector frozen at its last position when the focal line scrolls away.
+    fn compute_focal_screen(
+        &self,
+        app_state: &AppState,
+        caret_top: f32,
+        font_size: f32,
+        viewport_text_left: f32,
+        line_height: f32,
+    ) -> Option<[f32; 4]> {
+        app_state.canvas_focal_position().map(|(fl, fc)| {
+            let folds = app_state.folded_ranges();
+            let cursor_line = app_state.cursor_line_col().0;
+            let visual_cursor_y =
+                visual_y_for_logical_scroll_with_folds(&self.text_system, cursor_line as f32, folds);
+            let visual_focal_y =
+                visual_y_for_logical_scroll_with_folds(&self.text_system, fl as f32, folds);
+            let focal_top = caret_top + (visual_focal_y - visual_cursor_y);
+            let char_w = (font_size * 0.6).max(1.0);
+            let x = viewport_text_left + fc as f32 * char_w;
+            [x, focal_top, char_w, line_height]
+        })
     }
 
     /// Fast path for cursor movement: reuse existing layout and update caret only.
@@ -503,6 +559,21 @@ impl Renderer {
             self.cursor_beam_width,
             self.cursor_block_width,
             self.cursor_underline_height,
+        );
+        self.editor_caret_screen = Some([
+            primary_caret.x,
+            primary_caret.y,
+            primary_caret.width,
+            primary_caret.height,
+        ]);
+        // Re-pin the canvas relation connectors at the FOCAL line (where `gc` was
+        // triggered) on every caret move/scroll. See `compute_focal_screen`.
+        self.editor_focal_screen = self.compute_focal_screen(
+            app_state,
+            caret_layout.top,
+            geometry.font_size,
+            geometry.viewport_text_left,
+            geometry.line_height,
         );
         let caret_rects = build_caret_rects(
             app_state,

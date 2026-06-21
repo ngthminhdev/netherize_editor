@@ -964,6 +964,19 @@ command = "codegraph.open_graph_hud"
 
 [[bindings]]
 mode = "normal"
+key = "F8"
+command = "canvas.open"
+
+# `gca` re-arranges the canvas cards when the canvas is in the Background (editor
+# focus); inside the canvas (Navigate) the same `gca` is handled by the canvas
+# focus map. `g c` alone stays free so `g c c` (line comment) works again.
+[[bindings]]
+mode = "normal"
+key = "g c a"
+command = "canvas.auto_arrange"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>r n"
 command = "lsp.rename"
 

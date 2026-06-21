@@ -211,6 +211,36 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::CodeGraphNavDown
         | Command::CodeGraphJump
         | Command::CodeGraphClose
+        | Command::CanvasOpen
+        | Command::CanvasClose
+        | Command::CanvasFocusLeft
+        | Command::CanvasFocusRight
+        | Command::CanvasFocusUp
+        | Command::CanvasFocusDown
+        | Command::CanvasCycleNext
+        | Command::CanvasCyclePrev
+        | Command::CanvasSpawnRelations
+        | Command::CanvasExpandCallee
+        | Command::CanvasExpandCaller
+        | Command::CanvasTogglePin
+        | Command::CanvasNoop
+        | Command::CanvasContextExpand
+        | Command::CanvasContextShrink
+        | Command::CanvasWidthExpand
+        | Command::CanvasWidthShrink
+        | Command::CanvasPanLeft
+        | Command::CanvasPanRight
+        | Command::CanvasPanUp
+        | Command::CanvasPanDown
+        | Command::CanvasMoveLeft
+        | Command::CanvasMoveRight
+        | Command::CanvasMoveUp
+        | Command::CanvasMoveDown
+        | Command::CanvasCloseFocused
+        | Command::CanvasEnterEdit
+        | Command::CanvasOpenCardBuffer
+        | Command::CanvasExitEdit
+        | Command::CanvasEnterBackground
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection

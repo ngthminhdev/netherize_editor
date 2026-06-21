@@ -109,6 +109,35 @@ pub struct EditorUiConfig {
     pub smooth_scroll_snap_epsilon: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnimationConfig {
+    pub enabled: bool,
+    pub dock_duration_ms: u32,
+    pub overlay_duration_ms: u32,
+    pub curve: crate::workbench::motion::EaseCurve,
+}
+
+impl Default for AnimationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dock_duration_ms: 150,
+            overlay_duration_ms: 110,
+            curve: crate::workbench::motion::EaseCurve::EaseOutCubic,
+        }
+    }
+}
+
+impl AnimationConfig {
+    pub fn dock_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.dock_duration_ms as u64)
+    }
+
+    pub fn overlay_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.overlay_duration_ms as u64)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct IndentConfig {
     pub tab_width: u8,
@@ -145,6 +174,7 @@ pub struct UiConfig {
     pub editor: EditorUiConfig,
     pub welcome: WelcomeUiConfig,
     pub indent: IndentConfig,
+    pub animation: AnimationConfig,
     pub border_radius_px: f32,
     pub enable_outline: bool,
 }
@@ -259,6 +289,7 @@ impl UiConfig {
                 border_radius_px: 18.0,
             },
             indent: IndentConfig::default(),
+            animation: AnimationConfig::default(),
             border_radius_px: 10.0,
             enable_outline: true,
         }
@@ -587,6 +618,22 @@ impl UiConfig {
                     .insert_spaces
                     .unwrap_or(fallback.indent.insert_spaces),
             },
+            animation: {
+                let fb = fallback.animation;
+                AnimationConfig {
+                    enabled: raw.animation.enabled.unwrap_or(fb.enabled),
+                    dock_duration_ms: raw.animation.dock_duration_ms.unwrap_or(fb.dock_duration_ms),
+                    overlay_duration_ms: raw
+                        .animation
+                        .overlay_duration_ms
+                        .unwrap_or(fb.overlay_duration_ms),
+                    curve: raw
+                        .animation
+                        .curve
+                        .map(|s| crate::workbench::motion::EaseCurve::from_str_or_default(&s))
+                        .unwrap_or(fb.curve),
+                }
+            },
             border_radius_px: raw
                 .border_radius_px
                 .unwrap_or(if fallback.layout.round_ui {
@@ -774,8 +821,18 @@ struct RawUiFile {
     welcome: RawWelcome,
     #[serde(default)]
     indent: RawIndent,
+    #[serde(default)]
+    animation: RawAnimation,
     border_radius_px: Option<f32>,
     enable_outline: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawAnimation {
+    enabled: Option<bool>,
+    dock_duration_ms: Option<u32>,
+    overlay_duration_ms: Option<u32>,
+    curve: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -949,5 +1006,45 @@ impl From<&UiConfig> for UserUiConfigFile {
             border_radius_px: value.border_radius_px,
             enable_outline: value.enable_outline,
         }
+    }
+}
+
+#[cfg(test)]
+mod animation_config_tests {
+    use super::*;
+    use crate::workbench::motion::EaseCurve;
+
+    #[test]
+    fn animation_config_defaults() {
+        let cfg = UiConfig::builtin();
+        assert!(cfg.animation.enabled);
+        assert_eq!(cfg.animation.dock_duration_ms, 150);
+        assert_eq!(cfg.animation.overlay_duration_ms, 110);
+        assert_eq!(cfg.animation.curve, EaseCurve::EaseOutCubic);
+    }
+
+    #[test]
+    fn animation_config_parses_overrides() {
+        let toml_src = r#"
+            [animation]
+            enabled = false
+            dock_duration_ms = 200
+            overlay_duration_ms = 90
+            curve = "linear"
+        "#;
+        let raw: RawUiFile = toml::from_str(toml_src).unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert!(!cfg.animation.enabled);
+        assert_eq!(cfg.animation.dock_duration_ms, 200);
+        assert_eq!(cfg.animation.overlay_duration_ms, 90);
+        assert_eq!(cfg.animation.curve, EaseCurve::Linear);
+    }
+
+    #[test]
+    fn animation_config_missing_block_uses_fallback() {
+        let raw: RawUiFile = toml::from_str("").unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert!(cfg.animation.enabled);
+        assert_eq!(cfg.animation.curve, EaseCurve::EaseOutCubic);
     }
 }

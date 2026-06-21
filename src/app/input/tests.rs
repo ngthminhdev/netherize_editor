@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::{Duration, Instant}};
 
 use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
@@ -2337,4 +2337,231 @@ fn palette_focus_vim_normal_routes_letters_to_vim_not_text_append() {
         ),
         other => panic!("expected FilePickerAppendQuery for 'd' in Insert, got {other:?}"),
     }
+}
+
+// ── NetherCanvas Phase B: focus / two-stage Esc routing ──────────────────────
+
+#[test]
+fn canvas_navigate_enter_edits_and_esc_backgrounds() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S1: card-navigation owns the keys (focus == Canvas).
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Canvas);
+    context.canvas_interaction = Some(CanvasInteraction::Navigate);
+
+    // Enter promotes the focused card to a live mini-editor.
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Enter, None), context),
+        Some(Command::CanvasEnterEdit),
+    );
+    // First Esc pushes the canvas to the background (does NOT close it).
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        Some(Command::CanvasEnterBackground),
+    );
+}
+
+#[test]
+fn canvas_edit_card_normal_esc_exits_edit() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S2: the editor holds focus for full editing; only Esc is intercepted.
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
+    context.canvas_interaction = Some(CanvasInteraction::EditCard {
+        block: 1,
+        cursor_line: 3,
+        cursor_col: 0,
+    });
+    assert_eq!(
+        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        Some(Command::CanvasExitEdit),
+    );
+}
+
+#[test]
+fn canvas_edit_card_insert_esc_falls_through_to_editor() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // In Insert mode, Esc must drop to Normal first (vim), NOT exit the card.
+    let mut context = KeybindingContext::with_focus(EditorMode::Insert, InputFocusContext::Editor);
+    context.canvas_interaction = Some(CanvasInteraction::EditCard {
+        block: 1,
+        cursor_line: 3,
+        cursor_col: 0,
+    });
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context);
+    assert_ne!(cmd, Some(Command::CanvasExitEdit));
+    assert_ne!(cmd, Some(Command::CanvasClose));
+}
+
+#[test]
+fn canvas_background_normal_esc_keeps_normal_editor_meaning() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S3: the editor already HAS focus and the canvas is just a floating
+    // reference, so Esc must keep its normal editor meaning (here: clear search
+    // highlights) — it must NOT be hijacked into a no-op FocusEditor, which used
+    // to swallow Esc and stop `*`-search highlights from clearing. The canvas is
+    // closed with F8/F10, not Esc.
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
+    context.canvas_interaction = Some(CanvasInteraction::Background);
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context);
+    assert_eq!(cmd, Some(Command::ClearSearchHighlights));
+    assert_ne!(cmd, Some(Command::CanvasClose), "Esc must not close the floating canvas");
+}
+
+#[test]
+fn canvas_open_is_f8_and_gc_is_free_for_comment() {
+    // `gc` was remapped OFF the canvas (it shadowed `gcc` line-comment); F8 opens
+    // the canvas now, and `g c a` re-arranges the cards.
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let mut handler = InputHandler::new();
+    let now = Instant::now();
+
+    // F8 → CanvasOpen.
+    match handler.route_normalized_input(named_input(NamedKey::F8, None), &map, context, now) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
+        other => panic!("expected F8 -> CanvasOpen, got {other:?}"),
+    }
+
+    // `g c c` is line-comment again (gc no longer steals it).
+    let mut h = InputHandler::new();
+    let t0 = Instant::now();
+    let _ = h.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    let _ = h.route_normalized_input(
+        char_input('c', KeyCode::KeyC),
+        &map,
+        context,
+        t0 + Duration::from_millis(1),
+    );
+    match h.route_normalized_input(
+        char_input('c', KeyCode::KeyC),
+        &map,
+        context,
+        t0 + Duration::from_millis(2),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => {
+            assert_eq!(t.command, Command::ToggleLineComment, "gcc must comment again")
+        }
+        other => panic!("expected gcc -> ToggleLineComment, got {other:?}"),
+    }
+
+    // `g c a` → CanvasAutoArrange (editor-focus / Background path).
+    let mut h2 = InputHandler::new();
+    let _ = h2.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    let _ = h2.route_normalized_input(
+        char_input('c', KeyCode::KeyC),
+        &map,
+        context,
+        t0 + Duration::from_millis(1),
+    );
+    match h2.route_normalized_input(
+        char_input('a', KeyCode::KeyA),
+        &map,
+        context,
+        t0 + Duration::from_millis(2),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasAutoArrange),
+        other => panic!("expected gca -> CanvasAutoArrange, got {other:?}"),
+    }
+}
+
+#[test]
+fn canvas_focused_gca_arranges_and_f10_toggles() {
+    use crate::canvas::CanvasInteraction;
+
+    let map = make_default_profile_map();
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Canvas);
+    context.canvas_interaction = Some(CanvasInteraction::Navigate);
+    let mut handler = InputHandler::new();
+    let now = Instant::now();
+
+    // In the canvas, `g` then `c` stage the `gca` prefix (no longer toggles the
+    // canvas), and `a` completes it → CanvasAutoArrange.
+    match handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasNoop),
+        other => panic!("expected focused canvas g prefix -> CanvasNoop, got {other:?}"),
+    }
+    match handler.route_normalized_input(
+        char_input('c', KeyCode::KeyC),
+        &map,
+        context,
+        now + Duration::from_millis(1),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasNoop),
+        other => panic!("expected focused canvas gc prefix -> CanvasNoop, got {other:?}"),
+    }
+    match handler.route_normalized_input(
+        char_input('a', KeyCode::KeyA),
+        &map,
+        context,
+        now + Duration::from_millis(2),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasAutoArrange),
+        other => panic!("expected focused canvas gca -> CanvasAutoArrange, got {other:?}"),
+    }
+
+    // F10 still toggles the canvas closed.
+    match handler.route_normalized_input(named_input(NamedKey::F10, None), &map, context, now) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasOpen),
+        other => panic!("expected focused canvas F10 -> CanvasOpen, got {other:?}"),
+    }
+}
+
+#[test]
+fn canvas_does_not_hijack_esc_from_other_panels() {
+    use crate::canvas::CanvasInteraction;
+    let map = make_map();
+    // S3 with the Explorer focused: the canvas owns Esc only while the EDITOR
+    // holds focus — a focused sidebar/panel must keep its own Esc.
+    let mut ctx = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+    ctx.canvas_interaction = Some(CanvasInteraction::Background);
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), ctx);
+    assert_ne!(cmd, Some(Command::CanvasClose), "Esc on a focused panel must not close the canvas");
+    assert_ne!(cmd, Some(Command::CanvasExitEdit));
+
+    // S2 with the Explorer focused: Esc must not exit the edit either.
+    ctx.canvas_interaction = Some(CanvasInteraction::EditCard {
+        block: 1,
+        cursor_line: 0,
+        cursor_col: 0,
+    });
+    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), ctx);
+    assert_ne!(cmd, Some(Command::CanvasExitEdit));
+    assert_ne!(cmd, Some(Command::CanvasClose));
+}
+
+#[test]
+fn canvas_navigate_keys_press_and_hold_repeat() {
+    use crate::canvas::CanvasInteraction;
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Canvas);
+    context.canvas_interaction = Some(CanvasInteraction::Navigate);
+
+    // Helper: a held key must keep dispatching its canvas command (not stall).
+    let mut held = |input: NormalizedInput, expected: Command| {
+        match handler.route_repeated_normalized_input(input, &map, context) {
+            Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, expected),
+            other => panic!("expected repeated {expected:?}, got {other:?}"),
+        }
+    };
+
+    // hjkl glide the focused card.
+    held(char_input('j', KeyCode::KeyJ), Command::CanvasMoveDown);
+    held(char_input('l', KeyCode::KeyL), Command::CanvasMoveRight);
+    // Shift+hjkl pan the plane.
+    let shift_h = NormalizedInput {
+        physical_key: Some(KeyCode::KeyH),
+        named_key: None,
+        text: Some("H".into()),
+        modifiers: ModifiersState::SHIFT,
+    };
+    held(shift_h, Command::CanvasPanLeft);
+    // Arrows sweep focus between cards.
+    held(named_input(NamedKey::ArrowDown, None), Command::CanvasFocusDown);
+    // `+`/`-` ramp the focused card's context.
+    held(char_input('+', KeyCode::Equal), Command::CanvasContextExpand);
+    held(char_input('-', KeyCode::Minus), Command::CanvasContextShrink);
 }

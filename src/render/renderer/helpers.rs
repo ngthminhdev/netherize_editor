@@ -462,6 +462,43 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
     }
 }
 
+/// The card header's mode badge shows ONLY the modes a card is actually edited
+/// in. App-global modes (palette/terminal/multi-cursor/resize) return `None`, so
+/// the badge is hidden — the card is not being edited in those.
+pub(super) fn card_mode_label(mode: EditorMode) -> Option<&'static str> {
+    match mode {
+        EditorMode::Normal => Some("NORMAL"),
+        EditorMode::Insert => Some("INSERT"),
+        EditorMode::Visual | EditorMode::VisualBlock => Some("VISUAL"),
+        EditorMode::PaletteFocus
+        | EditorMode::TerminalFocus
+        | EditorMode::TerminalNormal
+        | EditorMode::MultiCursor
+        | EditorMode::MultiInsert
+        | EditorMode::Resize => None,
+    }
+}
+
 pub(super) fn theme_color_to_wgpu(color: ThemeColor) -> wgpu::Color {
     color.as_linear().to_wgpu()
+}
+
+#[cfg(test)]
+mod card_mode_tests {
+    use super::*;
+    use crate::core::mode::EditorMode;
+
+    #[test]
+    fn card_mode_label_only_edit_modes() {
+        assert_eq!(card_mode_label(EditorMode::Normal), Some("NORMAL"));
+        assert_eq!(card_mode_label(EditorMode::Insert), Some("INSERT"));
+        assert_eq!(card_mode_label(EditorMode::Visual), Some("VISUAL"));
+        assert_eq!(card_mode_label(EditorMode::VisualBlock), Some("VISUAL"));
+        assert_eq!(card_mode_label(EditorMode::PaletteFocus), None);
+        assert_eq!(card_mode_label(EditorMode::TerminalFocus), None);
+        assert_eq!(card_mode_label(EditorMode::TerminalNormal), None);
+        assert_eq!(card_mode_label(EditorMode::MultiCursor), None);
+        assert_eq!(card_mode_label(EditorMode::MultiInsert), None);
+        assert_eq!(card_mode_label(EditorMode::Resize), None);
+    }
 }

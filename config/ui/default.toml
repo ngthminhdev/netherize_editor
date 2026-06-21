@@ -60,6 +60,12 @@ smooth_scroll_snap_epsilon = 0.01
 tab_width = 4
 insert_spaces = true
 
+[animation]
+enabled = true
+dock_duration_ms = 150
+overlay_duration_ms = 280
+curve = "ease_out_cubic"
+
 [welcome]
 version = "v1.0.8-alpha"
 card_max_width = 560.0

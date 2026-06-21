@@ -683,7 +683,8 @@ impl AppState {
 
     pub fn toggle_search_case_sensitive(&mut self) -> bool {
         self.search_case_sensitive = !self.search_case_sensitive;
-        self.refresh_active_search_highlights() || true
+        let _ = self.refresh_active_search_highlights();
+        true
     }
 
     pub(super) fn refresh_active_search_highlights(&mut self) -> bool {

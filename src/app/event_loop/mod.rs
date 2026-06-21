@@ -179,6 +179,15 @@ pub struct AppShell {
     sidebar_needs_layout: bool,
     terminal_needs_layout: bool,
     buffer_terminal_needs_layout: bool,
+    /// Active workbench layout slide (dock toggle / zen). `None` when settled.
+    panel_transition: Option<crate::workbench::motion::LayoutTransition>,
+    /// The authoritative (non-animated) layout currently on screen, used as the
+    /// `from` snapshot when a new transition starts.
+    last_committed_layout: Option<crate::workbench::layout_engine::WorkbenchLayout>,
+    /// Active command-palette enter/leave motion (fade + pop). `None` when settled.
+    palette_motion: Option<crate::workbench::motion::OverlayMotion>,
+    /// Whether the command palette was rendered last frame, to detect the open edge.
+    palette_was_visible: bool,
     /// Track whether the InFileSearch palette was opened from terminal context
     /// (via `TerminalSearchOpen`), so focus returns to the terminal when the
     /// palette closes instead of the center editor.
@@ -218,6 +227,34 @@ pub struct AppShell {
     /// arrival to avoid a flicker (or a wrong jump) if the server replies out
     /// of order.
     latest_definition_request_id: Option<u64>,
+    /// In-flight LSP request ids whose results should populate the NetherCanvas
+    /// (definition → Definition block, references → Caller blocks) instead of the
+    /// normal peek/references-buffer flow.
+    canvas_def_request_id: Option<u64>,
+    canvas_refs_request_id: Option<u64>,
+    /// The card a pending canvas def/refs request was spawned FROM (in-card
+    /// `gd`/`gr`), so the resulting cards record their parent + the connector is
+    /// drawn from that card. `None` when spawned from the focal symbol.
+    canvas_def_parent: Option<crate::canvas::BlockId>,
+    canvas_refs_parent: Option<crate::canvas::BlockId>,
+    /// The card file we registered with the LSP (`didOpen`) for the active in-card
+    /// edit session, so `gd`/`gr`/completion resolve against it. `None` when no
+    /// card doc is ours to manage (the file is the active buffer / already open).
+    /// Cleared on `didClose`. (In-card LSP Phase 1: document lifecycle.)
+    canvas_card_lsp_open: Option<PathBuf>,
+    /// Monotonic LSP document version for the card doc above (separate from the
+    /// main buffer revision); bumped on each `didChange`.
+    canvas_card_lsp_version: i32,
+    /// In-flight in-card `K` hover request id; its result fills the card overlay
+    /// (Phase 2 in-card LSP) instead of the main editor's FloatingBox.
+    canvas_hover_request_id: Option<u64>,
+    /// In-flight in-card completion request id; its result fills the card
+    /// completion menu (Phase 3 in-card LSP), not the main editor's.
+    canvas_completion_request_id: Option<u64>,
+    /// Card-scoped completion state (the source of truth for navigate/accept while
+    /// editing a card); mirrored to `CanvasState.card_overlay` for rendering. Kept
+    /// separate from `app_state.completion` so the main editor is untouched.
+    canvas_completion: Option<crate::app::app_state::CompletionState>,
     /// Request id of the latest `textDocument/rename`; stale responses are dropped.
     latest_rename_request_id: Option<u64>,
     fzf_search_revision: u64,

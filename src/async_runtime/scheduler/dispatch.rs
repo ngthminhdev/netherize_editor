@@ -186,6 +186,7 @@ pub(super) async fn dispatch_loop(
                 | WorkerRequestPayload::LspRenameRequest { .. }
                 | WorkerRequestPayload::LspDocumentHighlightRequest { .. }
                 | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
+                | WorkerRequestPayload::CanvasCardScopeRequest { .. }
                 | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::LspCompletionRequest { .. }
                 | WorkerRequestPayload::LspCompletionResolveRequest { .. }
