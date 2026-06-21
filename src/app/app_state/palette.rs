@@ -687,6 +687,25 @@ impl AppState {
         true
     }
 
+    pub fn toggle_collapse_expand(&mut self) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(buffer) = self.buffers.get_mut(index) {
+                match &mut buffer.content {
+                    BufferContent::FuzzyPicker(_state) => {
+                        // TODO: Implement collapse/expand for FuzzyPicker
+                        return false;
+                    }
+                    BufferContent::References(_state) => {
+                        // TODO: Implement collapse/expand for References
+                        return false;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        false
+    }
+
     pub fn close_file_picker(&mut self) -> bool {
         if !self.is_file_picker_open() {
             return false;

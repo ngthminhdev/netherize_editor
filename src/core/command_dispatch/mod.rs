@@ -504,7 +504,17 @@ fn dispatch_command_with_clipboard_once(
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown
         | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),
-        Command::ToggleFold | Command::ToggleFoldAll => session::dispatch(&mut ctx, command),
+        Command::ToggleFold | Command::ToggleFoldAll | Command::ToggleCollapseExpand => session::dispatch(&mut ctx, command),
+        Command::NewLeetCodeFile => {
+            // Open the picker; the AppShell repopulates it with MRU-sorted
+            // language items right after this dispatch returns.
+            let changed = ctx.app_state.open_leetcode_language_selector();
+            DispatchReport::success_with_flags(
+                "Dispatch: leetcode language selector opened".to_string(),
+                changed,
+                changed,
+            )
+        }
         Command::ReloadWorkspace => DispatchReport::success(
             "Dispatch: reload workspace routed to event loop".to_string(),
             false,
@@ -521,16 +531,6 @@ fn dispatch_command_with_clipboard_once(
             let changed = ctx.app_state.open_dart_env_selector();
             DispatchReport::success_with_flags(
                 "Dispatch: dart env selector opened".to_string(),
-                changed,
-                changed,
-            )
-        }
-        Command::NewLeetCodeFile => {
-            // Open the picker; the AppShell repopulates it with MRU-sorted
-            // language items right after this dispatch returns.
-            let changed = ctx.app_state.open_leetcode_language_selector();
-            DispatchReport::success_with_flags(
-                "Dispatch: leetcode language selector opened".to_string(),
                 changed,
                 changed,
             )

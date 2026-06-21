@@ -570,8 +570,10 @@ pub enum Command {
     // ── Code folding ─────────────────────────────────────────────────────────
     /// Toggle fold/unfold the scope at the cursor line (Vim `za`).
     ToggleFold,
-    /// Toggle fold all / unfold all scopes in the current file (Vim `zA`).
+    /// Toggle fold/unfold the scope at the cursor line (Vim `za`).
     ToggleFoldAll,
+    /// Collapse/expand file groups in FuzzyPicker and References buffers.
+    ToggleCollapseExpand,
 }
 
 impl Command {
