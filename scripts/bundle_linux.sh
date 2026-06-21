@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_NAME="netherize-editor"
 BINARY="netherize_editor"
-VERSION="${1:-v1.0.8-alpha}"
+VERSION="${1:-v1.0.9-alpha}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET="x86_64-unknown-linux-gnu"

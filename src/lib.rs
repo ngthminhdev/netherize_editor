@@ -17,4 +17,4 @@ pub mod workspace;
 /// Phiên bản hiển thị trong UI (Welcome screen, status bar…).
 /// Đổi ở đây là xong — đồng bộ toàn bộ code.
 /// Lưu ý: config/ui/default.toml cũng có `[welcome] version` cần cập nhật cùng.
-pub const APP_VERSION: &str = "v1.0.8-alpha";
+pub const APP_VERSION: &str = "v1.0.9-alpha";

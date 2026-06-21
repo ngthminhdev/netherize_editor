@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_NAME="Netherize"
 BINARY="netherize_editor"
-VERSION="${1:-v1.0.8-alpha}"
+VERSION="${1:-v1.0.9-alpha}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$PROJECT_DIR/target/$APP_NAME.app"
 ZIP="$PROJECT_DIR/target/${APP_NAME}-${VERSION}-macos.zip"
