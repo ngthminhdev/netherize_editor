@@ -1049,6 +1049,10 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_palette_motion() {
             self.request_redraw();
         }
+        let canvas_spawning = self.tick_canvas_spawn_animation();
+        if canvas_spawning {
+            self.request_redraw();
+        }
         if self.tick_lsp_loading_animation() {
             self.request_redraw();
         }
@@ -1176,6 +1180,14 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 None => next_frame,
             });
         }
+        // Same ~120 Hz cadence while canvas cards are revealing (height 0 → full).
+        if canvas_spawning {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
 
         if let Some(deadline) = next_deadline {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
@@ -1273,6 +1285,17 @@ impl AppShell {
             self.palette_motion = None;
         }
         true
+    }
+
+    /// Drive the canvas card spawn-reveal animation (height 0 → full). Returns
+    /// `true` while any freshly-spawned card is still revealing (so the loop keeps
+    /// requesting frames at the animation cadence); clears each card's timer once
+    /// its reveal settles.
+    fn tick_canvas_spawn_animation(&mut self) -> bool {
+        self.app_state.canvas_tick_spawn_anim(
+            Instant::now(),
+            Duration::from_millis(crate::canvas::CARD_SPAWN_MS),
+        )
     }
 
     fn tick_lsp_loading_animation(&mut self) -> bool {

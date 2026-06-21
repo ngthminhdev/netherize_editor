@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T05:04:21.593Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T05:43:42.128Z
 > Files: 461 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -408,7 +408,7 @@
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
-- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~21604 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~23852 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
@@ -422,9 +422,9 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37711 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~37975 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
-- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~8263 tok)
+- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~8485 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7483 tok)
@@ -450,7 +450,7 @@
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` (~13972 tok)
+- `lsp.rs` (~13990 tok)
 - `mod.rs` (~9380 tok)
 - `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
@@ -506,8 +506,8 @@
 ## src/canvas/
 
 - `layout.rs` — Deterministic placement of spawned relation blocks around a focal block. (~1092 tok)
-- `mod.rs` — NetherCanvas — Spatial Canvas (Phase A: navigable read-only canvas). (~242 tok)
-- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~7573 tok)
+- `mod.rs` — NetherCanvas — Spatial Canvas (Phase A: navigable read-only canvas). (~246 tok)
+- `model.rs` — Core data model for the spatial canvas: blocks, the camera (world↔screen (~7775 tok)
 - `navigation.rs` — Spatial focus navigation: given block centers, pick the nearest block in a (~698 tok)
 
 ## src/codegraph/
@@ -579,7 +579,7 @@
 
 ## src/render/renderer/
 
-- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~13271 tok)
+- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~13951 tok)
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2139 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)

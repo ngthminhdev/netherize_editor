@@ -90,6 +90,11 @@ pub struct CanvasBlock {
     /// editing scrolls within those rows. Pure visual resize — never re-sources
     /// extra file context (the card already shows only its scope).
     pub height_rows: Option<usize>,
+    /// When this card was spawned — drives the height 0 → full reveal animation.
+    /// The renderer scales the drawn box height by the eased elapsed progress;
+    /// the event loop clears it to `None` once the reveal settles. `None` for the
+    /// focal anchor (never drawn) and for any card past its animation window.
+    pub spawned_at: Option<std::time::Instant>,
 }
 
 /// An axis-aligned rectangle in world space.
@@ -137,6 +142,12 @@ pub const CARD_BOTTOM_LINES: f32 = 1.0;
 /// the renderer shows a "+N more" marker instead of an ever-taller card.
 pub const CARD_MIN_LINES: usize = 3;
 pub const CARD_MAX_LINES: usize = 30;
+
+/// Spawn-reveal animation duration (the card box unrolls height 0 → full, like
+/// the command-palette enter motion) in milliseconds. The renderer scales the
+/// drawn card height by the eased progress; the event loop drives frames while
+/// any card is still revealing and clears [`CanvasBlock::spawned_at`] once done.
+pub const CARD_SPAWN_MS: u64 = 200;
 
 /// Maps the infinite world plane onto the screen. `screen = (world - offset) *
 /// zoom`. `offset` is in world units; `zoom` is a uniform scale.
@@ -528,6 +539,7 @@ mod tests {
             parent: None,
             scope_lines: None,
             height_rows: None,
+            spawned_at: None,
             // (test helper)
         }
     }

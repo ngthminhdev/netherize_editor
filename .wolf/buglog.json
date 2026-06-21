@@ -3964,5 +3964,23 @@
       "palette",
       "leader-ff"
     ]
+  },
+  {
+    "id": 231,
+    "timestamp": "2026-06-21T12:46:54+07:00",
+    "error_message": "Auto-arrange lost spawned cards: when a column filled, overflow wrapped into NEW columns to the RIGHT (anchored ~95% off the window right edge), pushing earlier columns off-screen; the 12%-top vs 92%-budget mismatch could also clip the bottom card. Also requested: spawn cards with a height 0->full reveal like the command palette.",
+    "file": "src/app/app_state/canvas.rs, src/render/renderer/canvas.rs, src/canvas/model.rs, src/app/event_loop/{commands_canvas.rs,async_results/lsp.rs,application.rs}",
+    "root_cause": "canvas_auto_arrange wrapped columns rightward (x = base_x + col*step) while canvas_anchor_cards_right pinned the RIGHTMOST edge to ~95% of the window, so each added column shoved the left columns off the visible pane. Vertical margins were inconsistent (anchor top 0.12*window vs col_budget 0.92*pane), wasting/clipping space. No spawn animation existed.",
+    "fix": "Wrap INWARD: x = base_x - col*step so column 0 (first cards) stays pinned at the right edge and overflow grows LEFT toward the focal (user-chosen). Unified padding via CANVAS_VIEWPORT_PAD_FRAC=0.05: col_budget=(1-2*PAD)*pane; anchor now takes (view_w_px, pane_top_px, pane_h_px) and frames the cluster inside the pane (right edge at 1-PAD of window, top card at pane_top+PAD*pane_h) so nothing clips top/bottom. gca re-anchors after force-reflow. Spawn animation: CanvasBlock.spawned_at:Option<Instant> stamped on spawn; renderer scales drawn card height by EaseOutCubic over CARD_SPAWN_MS=200 (body capacity reveals rows as the box grows); event loop tick_canvas_spawn_animation drives ~120Hz frames and clears the timer on settle.",
+    "tags": [
+      "canvas",
+      "nethercanvas",
+      "auto-arrange",
+      "layout",
+      "camera",
+      "animation",
+      "spawn-reveal",
+      "wrap"
+    ]
   }
 ]

@@ -14,13 +14,14 @@ use super::helpers::{
     card_mode_label, estimate_monospace_width, layout_panel_rich_text, layout_panel_text,
     mode_pill_color,
 };
-use crate::canvas::{BlockRelation, CARD_HEADER_LINES, CanvasSpan, CanvasState};
+use crate::canvas::{BlockRelation, CARD_HEADER_LINES, CARD_SPAWN_MS, CanvasSpan, CanvasState};
 use crate::core::mode::EditorMode;
 use crate::codegraph::edges::elbow;
 use crate::codegraph::layout::PillRect;
 use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
 use crate::render::region_pipeline::RegionDrawInstance;
 use crate::text::text_system::StyledTextSpan;
+use crate::workbench::motion::EaseCurve;
 
 const PAD: f32 = 10.0;
 /// Tab width (in columns) the card body **and** the edit caret use. Set on the
@@ -37,6 +38,14 @@ impl Renderer {
     /// and any bottom panel). `None` before the first editor render.
     pub(crate) fn canvas_pane_height(&self) -> Option<f32> {
         self.editor_full_scissor.map(|s| s[3] as f32)
+    }
+
+    /// `(top_px, height_px)` of the canvas pane (full editor region incl. the
+    /// breadcrumb row), from the full editor scissor. Used to anchor the spawned
+    /// card cluster INSIDE the visible pane (no top/bottom clip). `None` before the
+    /// first editor render.
+    pub(crate) fn canvas_pane_metrics(&self) -> Option<(f32, f32)> {
+        self.editor_full_scissor.map(|s| (s[1] as f32, s[3] as f32))
     }
 
     /// Build + upload the canvas overlay for the given state. Read-only.
@@ -239,6 +248,8 @@ impl Renderer {
         // caret, rendered AFTER the card loop so it floats above the other cards.
         // [caret_x, caret_bottom_y, card_x, card_w].
         let mut overlay_anchor: Option<[f32; 4]> = None;
+        // Sampled once per frame for the per-card spawn-reveal animation.
+        let now = std::time::Instant::now();
 
         for block in &canvas.blocks {
             // The editor is the focal anchor — never draw the focal as a card.
@@ -246,6 +257,19 @@ impl Renderer {
                 continue;
             }
             let [sx, sy, sw, sh] = cam.world_to_screen(block.world);
+            // Spawn reveal: the box unrolls height 0 → full (ease-out cubic) over
+            // its first CARD_SPAWN_MS. `sy` stays fixed so the card grows downward
+            // into its laid-out slot; the body capacity math below reveals code
+            // rows as the box grows, so it reads like the palette's panel unfold.
+            let sh = match block.spawned_at {
+                Some(t) => {
+                    let secs = (CARD_SPAWN_MS as f32 / 1000.0).max(0.001);
+                    let p =
+                        (now.saturating_duration_since(t).as_secs_f32() / secs).clamp(0.0, 1.0);
+                    sh * EaseCurve::EaseOutCubic.apply(p)
+                }
+                None => sh,
+            };
             if sx + sw < ax || sy + sh < ay || sx > ax + aw || sy > ay + ah || sw < 8.0 || sh < 8.0
             {
                 continue;

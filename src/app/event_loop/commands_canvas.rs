@@ -66,10 +66,17 @@ impl AppShell {
             // `o`: open the focused card's file as a real buffer tab + stash canvas.
             Command::CanvasOpenCardBuffer => self.canvas_open_card_as_buffer(),
             Command::CanvasEnterBackground => self.app_state.canvas_enter_background(),
-            // `gca`: re-flow the cards into tidy columns (unfreezes user-arranged).
+            // `gca`: re-flow the cards into tidy columns (unfreezes user-arranged),
+            // then re-frame the camera so the re-flowed cluster stays inside the pane.
             Command::CanvasAutoArrange => {
                 let h = self.canvas_arrange_viewport_height();
-                self.app_state.canvas_force_auto_arrange(h)
+                let reflowed = self.app_state.canvas_force_auto_arrange(h);
+                if reflowed {
+                    let w = self.window_size.width as f32;
+                    let (pane_top, pane_h) = self.canvas_pane_metrics();
+                    self.app_state.canvas_anchor_cards_right(w, pane_top, pane_h);
+                }
+                reflowed
             }
             Command::CanvasNoop => false,
             // `=`/`-`: resize the focused card's HEIGHT (visible rows) in place.
@@ -337,6 +344,16 @@ impl AppShell {
             .unwrap_or(1.0)
             .max(0.01);
         pane / zoom
+    }
+
+    /// `(top_px, height_px)` of the editor pane the canvas floats over — used to
+    /// frame the spawned card cluster inside the visible pane. Falls back to the
+    /// whole window before the first editor render.
+    pub(crate) fn canvas_pane_metrics(&self) -> (f32, f32) {
+        self.renderer
+            .as_ref()
+            .and_then(|r| r.canvas_pane_metrics())
+            .unwrap_or((0.0, self.window_size.height as f32))
     }
 
     fn canvas_block_size(&self) -> (f32, f32, f32) {

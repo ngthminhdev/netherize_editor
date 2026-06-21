@@ -3171,3 +3171,35 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+| 12:38 | Edited src/canvas/model.rs | expanded (+6 lines) | ~116 |
+| 12:38 | Edited src/canvas/model.rs | 3→8 lines | ~128 |
+| 12:38 | Edited src/canvas/model.rs | 5→6 lines | ~42 |
+| 12:38 | Edited src/app/app_state/canvas.rs | 6→8 lines | ~82 |
+| 12:38 | Edited src/app/app_state/canvas.rs | modified is_none() | ~119 |
+| 12:39 | Edited src/app/app_state/canvas.rs | expanded (+6 lines) | ~191 |
+| 12:39 | Edited src/app/app_state/canvas.rs | 2→4 lines | ~78 |
+| 12:39 | Edited src/app/app_state/canvas.rs | modified INWARD() | ~137 |
+| 12:39 | Edited src/app/app_state/canvas.rs | modified canvas_anchor_cards_right() | ~425 |
+| 12:40 | Edited src/app/app_state/canvas.rs | modified canvas_tick_spawn_anim() | ~337 |
+| 12:40 | Edited src/app/app_state/canvas.rs | 6→7 lines | ~137 |
+| 12:40 | Edited src/render/renderer/canvas.rs | modified canvas_pane_height() | ~144 |
+| 12:40 | Edited src/render/renderer/canvas.rs | inline fix | ~26 |
+| 12:41 | Edited src/canvas/mod.rs | 3→3 lines | ~59 |
+| 12:41 | Edited src/render/renderer/canvas.rs | added 1 import(s) | ~23 |
+| 12:41 | Edited src/render/renderer/canvas.rs | expanded (+15 lines) | ~358 |
+| 12:41 | Edited src/app/event_loop/commands_canvas.rs | modified canvas_arrange_viewport_height() | ~231 |
+| 12:41 | Edited src/app/event_loop/async_results/lsp.rs | 9→10 lines | ~163 |
+| 12:41 | Edited src/app/event_loop/commands_canvas.rs | expanded (+7 lines) | ~176 |
+| 12:42 | Edited src/app/event_loop/application.rs | modified tick_canvas_spawn_animation() | ~145 |
+| 12:42 | Edited src/app/event_loop/application.rs | modified tick_palette_motion() | ~85 |
+| 12:42 | Edited src/app/event_loop/application.rs | modified is_some() | ~195 |
+| 12:42 | Edited src/app/app_state/canvas.rs | modified auto_arrange_wraps_inward_toward_focal_not_off_the_right_edge() | ~1462 |
+| 12:43 | Edited src/app/app_state/canvas.rs | modified window() | ~162 |
+| 12:43 | Edited src/app/app_state/canvas.rs | modified focal() | ~46 |
+
+## 2026-06-21 — Canvas auto-arrange inward wrap + spawn reveal (buglog 231)
+- `canvas_auto_arrange`: overflow columns wrap LEFT toward focal (`x = base_x - col*step`); col0 (first cards) pins at right edge. Added `CANVAS_VIEWPORT_PAD_FRAC=0.05`; `col_budget=(1-2*PAD)*pane`.
+- `canvas_anchor_cards_right(view_w, pane_top, pane_h)` — frames cluster inside the pane (no breadcrumb/statusbar clip). New `Renderer::canvas_pane_metrics()` + `AppShell::canvas_pane_metrics()`; used by lsp spawn handler + `gca` (now re-anchors).
+- Spawn animation: `CanvasBlock.spawned_at: Option<Instant>` (`CARD_SPAWN_MS=200`, EaseOutCubic); renderer scales drawn card height → body capacity reveals rows. `tick_canvas_spawn_animation`/`canvas_tick_spawn_anim` drive ~120Hz frames (wired beside palette_motion in about_to_wait).
+- 1006 tests green, clippy clean, uncommitted (human commits).
+| 12:47 | Session end: 25 writes across 6 files (model.rs, canvas.rs, mod.rs, commands_canvas.rs, lsp.rs) | 10 reads | ~124322 tok |

@@ -1133,13 +1133,14 @@ fn attach_canvas_relations(
             }
         }
         let w = app.window_size.width as f32;
-        let h = app.window_size.height as f32;
+        let (pane_top, pane_h) = app.canvas_pane_metrics();
         // Tidy the freshly-spawned cards into columns that fit the VISIBLE canvas
-        // pane (in world units, so they wrap instead of overflowing downward), no-op
-        // once the user has hand-arranged; then anchor the camera to show them.
+        // pane (in world units, so they wrap inward instead of overflowing), no-op
+        // once the user has hand-arranged; then anchor the camera so the whole
+        // cluster sits inside the pane.
         let arrange_h = app.canvas_arrange_viewport_height();
         app.app_state.canvas_auto_arrange(arrange_h);
-        app.app_state.canvas_anchor_cards_right(w, h);
+        app.app_state.canvas_anchor_cards_right(w, pane_top, pane_h);
         app.request_redraw();
     }
 }

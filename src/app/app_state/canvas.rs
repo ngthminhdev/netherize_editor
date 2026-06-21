@@ -22,6 +22,12 @@ const CANVAS_CONTEXT_LINES: usize = 8;
 /// scope snapshot's own read cap (`build_canvas_relation_snapshot_range`'s
 /// `MAX_LINES`) so a card can be grown to show its whole sourced scope.
 const CANVAS_CARD_HARD_MAX: usize = 60;
+/// Fraction of the visible canvas pane kept as padding at each edge when
+/// auto-arranging columns and anchoring the camera. Symmetric on all sides, so a
+/// column uses ~90% of the pane height (top/bottom 5% each) and the card cluster
+/// sits ~5% in from the right edge — just enough breathing room against the two
+/// borders without wasting vertical space (more rows per column → fewer columns).
+const CANVAS_VIEWPORT_PAD_FRAC: f32 = 0.05;
 
 impl AppState {
     pub fn is_canvas_active(&self) -> bool {
@@ -103,6 +109,8 @@ impl AppState {
             parent: None,
             scope_lines: None,
             height_rows: None,
+            // The focal anchor is never drawn as a card — no spawn animation.
+            spawned_at: None,
             world: WorldRect::new(0.0, 0.0, block_w, block_h),
         });
         self.canvas = Some(state);
@@ -747,6 +755,9 @@ impl AppState {
                 parent,
                 scope_lines: None,
                 height_rows: None,
+                // Stamp the spawn time so the renderer plays the height 0→full
+                // reveal; the event loop clears it once the animation settles.
+                spawned_at: Some(std::time::Instant::now()),
             });
             if first_new_id.is_none() {
                 first_new_id = Some(id);
@@ -784,10 +795,14 @@ impl AppState {
         added
     }
 
-    /// Anchor the relation-card column to the **right** of the viewport with a
-    /// ~5% right margin (and a small top margin), so cards sit out near the
-    /// right edge over the editor rather than floating mid-screen.
-    pub fn canvas_anchor_cards_right(&mut self, viewport_w: f32, viewport_h: f32) -> bool {
+    /// Frame the relation-card cluster within the visible editor pane: the
+    /// rightmost card edge sits ~`PAD` in from the window's right border, and the
+    /// topmost card sits ~`PAD` of the pane height below the pane's top edge — so
+    /// cards float over the editor near the right, fully inside the pane (no top
+    /// clip under the breadcrumb, no bottom clip past the status bar). `view_w` is
+    /// the window width (px); `pane_top`/`pane_h` are the editor pane's top offset
+    /// and height (px, from the renderer's full editor scissor).
+    pub fn canvas_anchor_cards_right(&mut self, view_w: f32, pane_top: f32, pane_h: f32) -> bool {
         let Some(state) = self.canvas.as_mut() else {
             return false;
         };
@@ -804,16 +819,19 @@ impl AppState {
         if !right.is_finite() || !top.is_finite() {
             return false;
         }
-        // screen = (world - offset) * zoom  →  solve offset for the target edge.
-        state.camera.offset_x = right - (viewport_w * 0.95) / zoom;
-        state.camera.offset_y = top - (viewport_h * 0.12) / zoom;
+        let pad_px = pane_h * CANVAS_VIEWPORT_PAD_FRAC;
+        // screen = (world - offset) * zoom  →  solve offset so the rightmost card
+        // edge maps to `view_w * (1 - PAD)` and the topmost card to `pane_top + pad`.
+        state.camera.offset_x = right - (view_w * (1.0 - CANVAS_VIEWPORT_PAD_FRAC)) / zoom;
+        state.camera.offset_y = top - (pane_top + pad_px) / zoom;
         true
     }
 
-    /// Re-lay ALL relation cards into uniform-width columns to the RIGHT of the
-    /// focal anchor, each column holding as many as fit within `viewport_h`
-    /// (world units ≈ px at zoom 1), overflowing into further columns — so cards
-    /// are tidy and visible on open instead of piling into one tall column.
+    /// Re-lay ALL relation cards into uniform-width columns, each holding as many
+    /// as fit within `viewport_h` (world units ≈ px at zoom 1). Column 0 (the first
+    /// cards) is anchored at the right edge and overflow columns wrap INWARD (left,
+    /// toward the focal) into the free space — so cards stay tidy and on-screen
+    /// instead of piling into one tall column or spilling off the right edge.
     /// **Skipped once the user hand-arranges** (moves/pins a card). Returns
     /// whether it ran.
     /// `gca`: FORCE a re-arrange even after the user hand-placed cards — clears the
@@ -843,8 +861,10 @@ impl AppState {
         } else {
             focal.w
         };
-        // Leave a margin so a column doesn't hug the viewport's bottom edge.
-        let col_budget = (viewport_h * 0.92).max(focal.h);
+        // Leave only a small symmetric padding (top + bottom) so a column packs
+        // as many cards as the pane height allows before wrapping — fewer columns,
+        // less horizontal spread.
+        let col_budget = (viewport_h * (1.0 - 2.0 * CANVAS_VIEWPORT_PAD_FRAC)).max(focal.h);
         // Heights first (immutable borrow), then place (mutable).
         let cards: Vec<(BlockId, f32)> = state
             .blocks
@@ -874,7 +894,12 @@ impl AppState {
                 col += 1;
                 y = focal.y;
             }
-            let x = base_x + col as f32 * (block_w + CANVAS_GAP_X);
+            // Wrap INWARD (toward the focal): column 0 — the first cards — stays
+            // pinned at the right edge (`base_x`, where the camera anchors it ~5%
+            // off the window's right border), and each overflow column grows LEFT
+            // into the free space toward the focal, never off the right edge where
+            // a card would be lost.
+            let x = base_x - col as f32 * (block_w + CANVAS_GAP_X);
             if let Some(b) = state.blocks.iter_mut().find(|b| b.id == id) {
                 b.world.x = x;
                 b.world.y = y;
@@ -884,6 +909,36 @@ impl AppState {
             y += h + CANVAS_GAP_Y;
         }
         true
+    }
+
+    /// Advance the per-card spawn-reveal animation: clear `spawned_at` on any card
+    /// whose reveal has run past `dur` (it settles at full height), and report
+    /// whether any card is STILL revealing (so the event loop keeps driving
+    /// frames). Returns `false` (and does nothing) when no canvas is open. `now`
+    /// is taken as a parameter so the logic is deterministic under test.
+    pub fn canvas_tick_spawn_anim(
+        &mut self,
+        now: std::time::Instant,
+        dur: std::time::Duration,
+    ) -> bool {
+        let Some(state) = self.canvas.as_mut() else {
+            return false;
+        };
+        let mut changed = false;
+        let mut animating = false;
+        for b in &mut state.blocks {
+            if let Some(t) = b.spawned_at {
+                if now.saturating_duration_since(t) >= dur {
+                    b.spawned_at = None; // settled → full height
+                    changed = true;
+                } else {
+                    animating = true;
+                }
+            }
+        }
+        // `changed` keeps one extra frame so the just-settled card redraws at its
+        // full, un-scaled height.
+        animating || changed
     }
 }
 
@@ -1662,6 +1717,120 @@ mod tests {
             !app.canvas_auto_arrange(VH),
             "auto-arrange must freeze after a manual move"
         );
+    }
+
+    #[test]
+    fn auto_arrange_wraps_inward_toward_focal_not_off_the_right_edge() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        // Enough cards (tall enough) to force several columns.
+        let rels: Vec<_> = (0..9)
+            .map(|i| {
+                (
+                    BlockRelation::Caller,
+                    origin_at(&format!("/p/f{i}.rs"), (i * 10) as u32),
+                    snap_lines(8),
+                )
+            })
+            .collect();
+        app.canvas_add_relations(rels);
+        assert!(app.canvas_auto_arrange(VH));
+        let c = app.canvas().unwrap();
+        let focal = c.blocks[0].world;
+        let base_x = focal.x + focal.w + CANVAS_GAP_X;
+        let cards: Vec<&CanvasBlock> = c
+            .blocks
+            .iter()
+            .filter(|b| b.relation != BlockRelation::Focal)
+            .collect();
+        // Column 0 (the FIRST-spawned cards) is the RIGHTMOST column, pinned at
+        // base_x; no card ever sits to the right of it (nothing spills off-screen).
+        let rightmost = cards.iter().map(|b| b.world.x).fold(f32::NEG_INFINITY, f32::max);
+        assert!((rightmost - base_x).abs() < 1e-3, "column 0 must pin to base_x (right edge)");
+        // The first relation card lives in that rightmost column.
+        assert!((cards[0].world.x - base_x).abs() < 1e-3, "first card is in the right column");
+        // Overflow wrapped INWARD: at least one column sits LEFT of base_x, and
+        // none to the right.
+        assert!(cards.iter().any(|b| b.world.x < base_x - 1.0), "overflow must wrap left");
+        assert!(
+            cards.iter().all(|b| b.world.x <= base_x + 1.0),
+            "no column may grow right past base_x (off-screen)"
+        );
+    }
+
+    #[test]
+    fn anchor_frames_card_cluster_inside_the_pane() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![
+            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(6)),
+            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(6)),
+        ]);
+        app.canvas_auto_arrange(VH);
+        // Pane occupies [pane_top, pane_top+pane_h] of an 800px-tall window.
+        let (view_w, pane_top, pane_h) = (1200.0_f32, 60.0_f32, 700.0_f32);
+        assert!(app.canvas_anchor_cards_right(view_w, pane_top, pane_h));
+        let c = app.canvas().unwrap();
+        let cam = c.camera;
+        // Rightmost card edge sits ~5% in from the window's right edge.
+        let right = c
+            .blocks
+            .iter()
+            .filter(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.world.x + b.world.w)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let (rx, _) = cam.world_to_screen_point(right, 0.0);
+        assert!((rx - view_w * 0.95).abs() < 1.0, "right edge ~5% off the window right");
+        // Topmost card sits ~5% of pane height below the pane's top — inside it.
+        let top = c
+            .blocks
+            .iter()
+            .filter(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.world.y)
+            .fold(f32::INFINITY, f32::min);
+        let (_, ty) = cam.world_to_screen_point(0.0, top);
+        assert!((ty - (pane_top + pane_h * 0.05)).abs() < 1.0, "top card just below the pane top");
+    }
+
+    #[test]
+    fn spawned_cards_animate_then_settle() {
+        use std::time::Duration;
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        // The focal anchor never animates.
+        assert_eq!(app.canvas().unwrap().blocks[0].spawned_at, None);
+        app.canvas_add_relations(vec![
+            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(4)),
+            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(4)),
+        ]);
+        // Freshly-spawned relation cards carry a spawn timestamp.
+        let spawned_at = {
+            let c = app.canvas().unwrap();
+            let rels: Vec<_> = c
+                .blocks
+                .iter()
+                .filter(|b| b.relation != BlockRelation::Focal)
+                .collect();
+            assert!(rels.iter().all(|b| b.spawned_at.is_some()), "relation cards animate on spawn");
+            rels[0].spawned_at.unwrap()
+        };
+        let dur = Duration::from_millis(crate::canvas::CARD_SPAWN_MS);
+        // Mid-animation: still revealing (the loop keeps requesting frames).
+        assert!(app.canvas_tick_spawn_anim(spawned_at + dur / 2, dur));
+        assert!(
+            app.canvas().unwrap().blocks.iter().any(|b| b.spawned_at.is_some()),
+            "cards still mid-reveal keep their timer"
+        );
+        // Past the window (a hair beyond, since the two cards carry near-but-not-
+        // equal stamps): one settling frame, then all timers are cleared.
+        let past = spawned_at + dur + Duration::from_millis(10);
+        assert!(app.canvas_tick_spawn_anim(past, dur), "settling frame still redraws");
+        assert!(
+            app.canvas().unwrap().blocks.iter().all(|b| b.spawned_at.is_none()),
+            "settled cards drop their timer (full height)"
+        );
+        // Nothing left to animate → no more frames requested.
+        assert!(!app.canvas_tick_spawn_anim(past + dur, dur));
     }
 
     #[test]
