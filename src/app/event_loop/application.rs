@@ -343,8 +343,13 @@ impl AppShell {
             .flatten();
         let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
 
-        // Task 5 fills in `card_hit`; panels-only for now.
-        let card_hit = None;
+        let card_hit = if self.app_state.canvas_is_navigating() {
+            self.app_state.canvas().and_then(|c| {
+                crate::canvas::interaction::card_pointer_hit_test(&c.blocks, &c.camera, cursor)
+            })
+        } else {
+            None
+        };
         let Some(target) =
             resolve_press_target(self.app_state.canvas_is_navigating(), card_hit, splitter_hit)
         else {
@@ -359,8 +364,16 @@ impl AppShell {
                     PanelSide::Bottom => self.panel_state.bottom.size_px,
                 },
             },
-            // Card anchors are added in Task 5.
-            _ => return false,
+            DragTarget::CardMove(id) => {
+                let start_world = self
+                    .app_state
+                    .canvas()
+                    .and_then(|c| c.block(id))
+                    .map(|b| (b.world.x, b.world.y))
+                    .unwrap_or((0.0, 0.0));
+                DragAnchor::CardMove { start_world }
+            }
+            DragTarget::CardResize(_, _) => DragAnchor::CardResize,
         };
         self.active_drag = Some(ActiveDrag {
             target,
@@ -390,7 +403,45 @@ impl AppShell {
                 }
                 true
             }
-            // Card cases are added in Task 5.
+            (DragTarget::CardMove(id), DragAnchor::CardMove { start_world }) => {
+                let zoom = self
+                    .app_state
+                    .canvas()
+                    .map(|c| c.camera.zoom)
+                    .unwrap_or(1.0);
+                let z = if zoom > 0.0 { zoom } else { 1.0 };
+                let wx = start_world.0 + dx / z;
+                let wy = start_world.1 + dy / z;
+                self.app_state.canvas_pointer_move_block(id, wx, wy)
+            }
+            (DragTarget::CardResize(id, zone), DragAnchor::CardResize) => {
+                use crate::canvas::interaction::{resize_height_rows, resize_width_world, CardZone};
+                // Copy out the card's fixed screen top-left + zoom + line height
+                // BEFORE the mutable resize call (ends the immutable borrow).
+                let geom = self.app_state.canvas().and_then(|c| {
+                    c.block(id).map(|b| {
+                        let [sx, sy, _, _] = c.camera.world_to_screen(b.world);
+                        (sx, sy, c.camera.zoom, c.line_h)
+                    })
+                });
+                let Some((sx, sy, zoom, line_h)) = geom else {
+                    return false;
+                };
+                let (new_w, new_rows) = match zone {
+                    CardZone::ResizeRight => {
+                        (Some(resize_width_world(sx, cursor.0, zoom)), None)
+                    }
+                    CardZone::ResizeBottom => {
+                        (None, Some(resize_height_rows(sy, cursor.1, zoom, line_h)))
+                    }
+                    CardZone::ResizeCorner => (
+                        Some(resize_width_world(sx, cursor.0, zoom)),
+                        Some(resize_height_rows(sy, cursor.1, zoom, line_h)),
+                    ),
+                    CardZone::Body => (None, None),
+                };
+                self.app_state.canvas_pointer_resize_block(id, new_w, new_rows)
+            }
             _ => false,
         }
     }
