@@ -687,23 +687,82 @@ impl AppState {
         true
     }
 
-    pub fn toggle_collapse_expand(&mut self) -> bool {
-        if let Some(index) = self.active_buffer_index {
-            if let Some(buffer) = self.buffers.get_mut(index) {
-                match &mut buffer.content {
-                    BufferContent::FuzzyPicker(_state) => {
-                        // TODO: Implement collapse/expand for FuzzyPicker
-                        return false;
-                    }
-                    BufferContent::References(_state) => {
-                        // TODO: Implement collapse/expand for References
-                        return false;
-                    }
-                    _ => {}
-                }
+    pub fn toggle_collapse_expand_fuzzy(&mut self) -> bool {
+        let Some(idx) = self.active_buffer_index else { return false; };
+        let Some(buffer) = self.buffers.get_mut(idx) else { return false; };
+        let BufferContent::FuzzyPicker(ref mut state) = buffer.content else { return false; };
+
+        let selected = state.results.get(state.selected_index);
+        let Some(item) = selected else { return false; };
+
+        // Determine the group key for the selected item
+        let group_key = match state.mode {
+            CommandPaletteMode::LiveGrep => {
+                // For live grep, group by file path (from secondary_label or label)
+                item.secondary_label.as_deref().unwrap_or(&item.label).split(':').next().unwrap_or("").to_string()
             }
+            _ => {
+                // For file picker, group by parent folder
+                std::path::Path::new(&item.label)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "".to_string())
+            }
+        };
+
+        if group_key.is_empty() { return false; }
+
+        let changed = if state.collapsed_paths.contains(&group_key) {
+            state.collapsed_paths.remove(&group_key);
+            false // expanding
+        } else {
+            state.collapsed_paths.insert(group_key);
+            true // collapsing
+        };
+
+        if changed {
+            self.bump_revision();
         }
-        false
+        changed
+    }
+
+    pub fn toggle_collapse_expand_references(&mut self) -> bool {
+        let Some(idx) = self.active_buffer_index else { return false; };
+        let Some(buffer) = self.buffers.get_mut(idx) else { return false; };
+        let BufferContent::References(ref mut state) = buffer.content else { return false; };
+
+        let selected = state.items.get(state.selected_index);
+        let Some(item) = selected else { return false; };
+
+        let path = item.relative_path.clone();
+        if path.is_empty() { return false; }
+
+        let changed = if state.collapsed_paths.contains(&path) {
+            state.collapsed_paths.remove(&path);
+            false
+        } else {
+            state.collapsed_paths.insert(path);
+            true
+        };
+
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn is_fuzzy_picker_active(&self) -> bool {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get(idx))
+            .map(|b| matches!(b.content, BufferContent::FuzzyPicker(_)))
+            .unwrap_or(false)
+    }
+
+    pub fn is_references_buffer_active(&self) -> bool {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get(idx))
+            .map(|b| matches!(b.content, BufferContent::References(_)))
+            .unwrap_or(false)
     }
 
     pub fn close_file_picker(&mut self) -> bool {
