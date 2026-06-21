@@ -8,6 +8,7 @@
 //!
 //! See `docs/superpowers/specs/2026-06-19-spatial-canvas-phaseA-design.md`.
 
+pub mod interaction;
 pub mod layout;
 pub mod model;
 pub mod navigation;
