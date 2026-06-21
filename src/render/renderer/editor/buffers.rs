@@ -247,8 +247,10 @@ impl Renderer {
                     count_label.clear();
                     let _ = write!(count_label, "{}", group_count);
                     let count_w = estimate_monospace_width(count_label, font_size).max(16.0 * s);
+                    let is_collapsed = references.collapsed_paths.contains(&item.relative_path);
+                    let indicator = if is_collapsed { "▸" } else { "▾" };
                     right_header_buffer.clear();
-                    let _ = write!(right_header_buffer, "▾ {}", file_name);
+                    let _ = write!(right_header_buffer, "{} {}", indicator, file_name);
                     glyphs.extend(layout_panel_text_bold(
                         &clamp_monospace_text(
                             right_header_buffer,
@@ -287,6 +289,10 @@ impl Renderer {
                     ));
                     draw_y += group_header_h;
                     previous_group_path = Some(item.relative_path.as_str());
+
+                    if is_collapsed {
+                        continue;
+                    }
                 }
 
                 let row_y = draw_y;
