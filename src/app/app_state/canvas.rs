@@ -443,6 +443,90 @@ impl AppState {
         true
     }
 
+    /// True when a canvas is open and in the `Navigate` interaction sub-state —
+    /// the only state where mouse drag/resize of cards is allowed.
+    pub fn canvas_is_navigating(&self) -> bool {
+        matches!(
+            self.canvas.as_ref().map(|c| c.interaction),
+            Some(CanvasInteraction::Navigate)
+        )
+    }
+
+    /// Move a card to an absolute world position (mouse drag). Overrides `pinned`
+    /// (direct manipulation is explicit intent); never moves the Focal anchor.
+    /// Marks the layout user-arranged. Returns whether a card moved.
+    pub fn canvas_pointer_move_block(&mut self, id: BlockId, world_x: f32, world_y: f32) -> bool {
+        let Some(state) = self.canvas.as_mut() else {
+            return false;
+        };
+        let Some(b) = state.blocks.iter_mut().find(|b| b.id == id) else {
+            return false;
+        };
+        if b.relation == BlockRelation::Focal {
+            return false;
+        }
+        b.world.x = world_x;
+        b.world.y = world_y;
+        state.user_arranged = true;
+        true
+    }
+
+    /// Resize a card (mouse drag on an edge/corner). `new_w` sets `world.w` clamped
+    /// to `[block_w*0.5, block_w*2.5]`; `new_rows` sets `height_rows` clamped to
+    /// `[CARD_MIN_LINES, min(snapshot_lines, CANVAS_CARD_HARD_MAX)]` and recomputes
+    /// `world.h`. Never the Focal anchor. Returns whether anything changed.
+    pub fn canvas_pointer_resize_block(
+        &mut self,
+        id: BlockId,
+        new_w: Option<f32>,
+        new_rows: Option<usize>,
+    ) -> bool {
+        let Some(state) = self.canvas.as_mut() else {
+            return false;
+        };
+        let base_w = if state.block_w > 0.0 { state.block_w } else { 400.0 };
+        let min_w = base_w * 0.5;
+        let max_w = base_w * 2.5;
+
+        // Compute the clamped row count + its world height BEFORE the mutable borrow.
+        let (snapshot_lines, line_h) = match state.blocks.iter().find(|b| b.id == id) {
+            Some(b) => (b.snapshot.text.split('\n').count().max(1), state.line_h),
+            None => return false,
+        };
+        let max_rows = snapshot_lines.clamp(CARD_MIN_LINES, CANVAS_CARD_HARD_MAX);
+        let clamped_rows = new_rows.map(|r| r.clamp(CARD_MIN_LINES, max_rows));
+        let new_h = clamped_rows
+            .and_then(|r| (line_h > 0.0).then(|| state.card_height_exact(r)));
+
+        let Some(b) = state.blocks.iter_mut().find(|b| b.id == id) else {
+            return false;
+        };
+        if b.relation == BlockRelation::Focal {
+            return false;
+        }
+        let mut changed = false;
+        if let Some(w) = new_w {
+            let cw = w.clamp(min_w, max_w);
+            if (cw - b.world.w).abs() >= 0.5 {
+                b.world.w = cw;
+                changed = true;
+            }
+        }
+        if let Some(r) = clamped_rows {
+            if b.height_rows != Some(r) {
+                b.height_rows = Some(r);
+                changed = true;
+            }
+            if let Some(h) = new_h {
+                b.world.h = h; // top-left fixed; grow/shrink downward
+            }
+        }
+        if changed {
+            state.user_arranged = true;
+        }
+        changed
+    }
+
     /// Replace a card's snapshot with a scope-resolved one (progressive refine).
     /// The card regrows to fit the new snapshot height (top-left fixed, mirroring
     /// [`canvas_apply_focused_context`]); the focal anchor is never targeted
@@ -950,6 +1034,14 @@ fn canvas_focal_rect(state: &CanvasState) -> Option<WorldRect> {
         .find(|b| b.relation == BlockRelation::Focal)
         .or_else(|| state.blocks.first())
         .map(|b| b.world)
+}
+
+#[cfg(test)]
+impl AppState {
+    /// Test-only mutable accessor for the canvas state.
+    pub(crate) fn canvas_mut_for_test(&mut self) -> Option<&mut CanvasState> {
+        self.canvas.as_mut()
+    }
 }
 
 #[cfg(test)]
@@ -2135,5 +2227,92 @@ mod tests {
         assert_eq!(foo_after, main_before, "the origin file on disk is untouched");
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pointer_move_block_sets_absolute_world_and_user_arranged() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Caller,
+            origin_at("/p/a.rs", 10),
+            snap_lines(4),
+        )]);
+        let id = app
+            .canvas()
+            .unwrap()
+            .blocks
+            .iter()
+            .find(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id)
+            .expect("a relation card exists");
+        assert!(app.canvas_pointer_move_block(id, 123.0, 456.0));
+        let b = app.canvas().unwrap().block(id).unwrap();
+        assert_eq!((b.world.x, b.world.y), (123.0, 456.0));
+        assert!(app.canvas().unwrap().user_arranged);
+    }
+
+    #[test]
+    fn pointer_move_overrides_pin_but_not_focal() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Caller,
+            origin_at("/p/a.rs", 10),
+            snap_lines(4),
+        )]);
+        let canvas = app.canvas().unwrap();
+        let focal = canvas
+            .blocks
+            .iter()
+            .find(|b| b.relation == BlockRelation::Focal)
+            .map(|b| b.id);
+        let card = canvas
+            .blocks
+            .iter()
+            .find(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id)
+            .unwrap();
+        // Pin the card, then confirm a mouse move still relocates it.
+        app.canvas_mut_for_test()
+            .unwrap()
+            .blocks
+            .iter_mut()
+            .find(|b| b.id == card)
+            .unwrap()
+            .pinned = true;
+        assert!(app.canvas_pointer_move_block(card, 10.0, 20.0));
+        // The focal anchor is never movable.
+        if let Some(f) = focal {
+            assert!(!app.canvas_pointer_move_block(f, 10.0, 20.0));
+        }
+    }
+
+    #[test]
+    fn pointer_resize_clamps_width_and_rows() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Caller,
+            origin_at("/p/a.rs", 10),
+            snap_lines(40),
+        )]);
+        let id = app
+            .canvas()
+            .unwrap()
+            .blocks
+            .iter()
+            .find(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id)
+            .unwrap();
+        // Width far above max (block_w*2.5 = 2500) clamps to 2500.
+        assert!(app.canvas_pointer_resize_block(id, Some(99999.0), None));
+        assert!((app.canvas().unwrap().block(id).unwrap().world.w - 2500.0).abs() < 1.0);
+        // Rows below CARD_MIN_LINES clamp up.
+        assert!(app.canvas_pointer_resize_block(id, None, Some(0)));
+        assert_eq!(
+            app.canvas().unwrap().block(id).unwrap().height_rows,
+            Some(CARD_MIN_LINES)
+        );
     }
 }
