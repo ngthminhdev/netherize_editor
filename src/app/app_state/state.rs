@@ -759,19 +759,33 @@ impl AppState {
             return false;
         };
 
-        if state.items.is_empty() {
-            return false;
+        let old_index = state.selected_index;
+        let mut new_index = old_index;
+        let len = state.items.len();
+
+        loop {
+            if new_index + 1 < len {
+                new_index += 1;
+            } else {
+                break;
+            }
+
+            let item = &state.items[new_index];
+            if !state.collapsed_paths.contains(&item.relative_path) {
+                break;
+            }
         }
-        let next = (state.selected_index + 1) % state.items.len();
-        if next == state.selected_index {
-            return false;
+
+        if new_index != old_index {
+            state.selected_index = new_index;
+            state.preview_lines.clear();
+            state.preview_text.clear();
+            state.preview_spans.clear();
+            self.bump_revision();
+            true
+        } else {
+            false
         }
-        state.selected_index = next;
-        state.preview_lines.clear();
-        state.preview_text.clear();
-        state.preview_spans.clear();
-        self.bump_revision();
-        true
     }
 
     pub fn references_select_prev(&mut self) -> bool {
@@ -783,23 +797,32 @@ impl AppState {
             return false;
         };
 
-        if state.items.is_empty() {
-            return false;
+        let old_index = state.selected_index;
+        let mut new_index = old_index;
+
+        loop {
+            if new_index > 0 {
+                new_index -= 1;
+            } else {
+                break;
+            }
+
+            let item = &state.items[new_index];
+            if !state.collapsed_paths.contains(&item.relative_path) {
+                break;
+            }
         }
-        let next = if state.selected_index == 0 {
-            state.items.len().saturating_sub(1)
+
+        if new_index != old_index {
+            state.selected_index = new_index;
+            state.preview_lines.clear();
+            state.preview_text.clear();
+            state.preview_spans.clear();
+            self.bump_revision();
+            true
         } else {
-            state.selected_index - 1
-        };
-        if next == state.selected_index {
-            return false;
+            false
         }
-        state.selected_index = next;
-        state.preview_lines.clear();
-        state.preview_text.clear();
-        state.preview_spans.clear();
-        self.bump_revision();
-        true
     }
 
     pub fn diagnostics_select_next(&mut self) -> bool {

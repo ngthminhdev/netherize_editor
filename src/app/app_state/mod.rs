@@ -2043,12 +2043,39 @@ impl FuzzyState {
         true
     }
 
-    pub fn select_next(&mut self) -> bool {
-        if self.results.is_empty() {
-            return false;
+    pub fn fuzzy_select_next(&mut self) -> bool {
+        let old_index = self.selected_index;
+        let mut new_index = old_index;
+        let len = self.results.len();
+
+        loop {
+            if new_index + 1 < len {
+                new_index += 1;
+            } else {
+                break;
+            }
+
+            let item = &self.results[new_index];
+            let group_key = match self.mode {
+                CommandPaletteMode::LiveGrep => {
+                    item.secondary_label.as_deref().unwrap_or(&item.label)
+                        .split(':').next().unwrap_or("").to_string()
+                }
+                _ => {
+                    std::path::Path::new(&item.label)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default()
+                }
+            };
+
+            if !self.collapsed_paths.contains(&group_key) {
+                break;
+            }
         }
-        if self.selected_index + 1 < self.results.len() {
-            self.selected_index += 1;
+
+        if new_index != old_index {
+            self.selected_index = new_index;
             self.preview_lines.clear();
             self.preview_text.clear();
             self.preview_spans.clear();
@@ -2058,9 +2085,38 @@ impl FuzzyState {
         }
     }
 
-    pub fn select_prev(&mut self) -> bool {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
+    pub fn fuzzy_select_prev(&mut self) -> bool {
+        let old_index = self.selected_index;
+        let mut new_index = old_index;
+
+        loop {
+            if new_index > 0 {
+                new_index -= 1;
+            } else {
+                break;
+            }
+
+            let item = &self.results[new_index];
+            let group_key = match self.mode {
+                CommandPaletteMode::LiveGrep => {
+                    item.secondary_label.as_deref().unwrap_or(&item.label)
+                        .split(':').next().unwrap_or("").to_string()
+                }
+                _ => {
+                    std::path::Path::new(&item.label)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default()
+                }
+            };
+
+            if !self.collapsed_paths.contains(&group_key) {
+                break;
+            }
+        }
+
+        if new_index != old_index {
+            self.selected_index = new_index;
             self.preview_lines.clear();
             self.preview_text.clear();
             self.preview_spans.clear();

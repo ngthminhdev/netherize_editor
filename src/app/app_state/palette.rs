@@ -555,7 +555,7 @@ impl AppState {
                 ..
             }) = self.buffers.get_mut(index)
             {
-                let changed = state.select_next();
+                let changed = state.fuzzy_select_next();
                 if changed {
                     self.bump_revision();
                 }
@@ -572,7 +572,7 @@ impl AppState {
                 ..
             }) = self.buffers.get_mut(index)
             {
-                let changed = state.select_prev();
+                let changed = state.fuzzy_select_prev();
                 if changed {
                     self.bump_revision();
                 }
