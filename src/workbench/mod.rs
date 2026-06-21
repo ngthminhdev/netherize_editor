@@ -5,5 +5,6 @@ pub mod layout_engine;
 pub mod motion;
 pub mod overlay_manager;
 pub mod panel_state;
+pub mod pointer_drag;
 pub mod region_model;
 pub mod text_coordinate_map;
