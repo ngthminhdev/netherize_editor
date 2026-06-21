@@ -147,20 +147,88 @@ impl Renderer {
             .scroll_offset_rows
             .min(model.result_labels.len().saturating_sub(max_visible));
 
-        for (visible_idx, (label, ranges)) in model
+        // Group results by parent folder for file picker modes
+        let mut current_folder: Option<String> = None;
+        let mut rendered_rows = 0usize;
+
+        for (absolute_idx, (label, ranges)) in model
             .result_labels
             .iter()
             .zip(model.result_match_ranges.iter())
-            .skip(scroll_offset)
-            .take(max_visible)
             .enumerate()
+            .skip(scroll_offset)
         {
-            let absolute_idx = scroll_offset + visible_idx;
+            if rendered_rows >= max_visible {
+                break;
+            }
+
+            // Determine folder for this item (only in FilePicker mode)
+            let folder = if is_file_picker {
+                let file_path = label.split(':').next().unwrap_or(label);
+                std::path::Path::new(file_path)
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .map(|s| s.to_string())
+            } else {
+                None
+            };
+
+            // Render group header when folder changes
+            let is_collapsed = if let Some(ref folder_str) = folder {
+                let collapsed = model.collapsed_paths.contains(folder_str);
+                if current_folder.as_ref() != Some(folder_str) {
+                    // New group header
+                    if rendered_rows >= max_visible {
+                        break;
+                    }
+                    current_folder = Some(folder_str.clone());
+
+                    let header_bg = [
+                        model.panel_bg[0] * 1.05,
+                        model.panel_bg[1] * 1.05,
+                        model.panel_bg[2] * 1.05,
+                        model.panel_bg[3],
+                    ];
+                    quads.push(RegionDrawInstance::new(
+                        [panel_x, row_top, panel_w, row_h],
+                        header_bg,
+                    ));
+
+                    let arrow = if collapsed { "▸" } else { "▾" };
+                    let header_text = format!("{} {}", arrow, folder_str);
+                    let header_color = model.hint_color;
+                    let header_y = row_top + (row_h - line_h) * 0.5;
+                    glyphs.extend(layout_panel_text(
+                        &header_text,
+                        &mut self.palette_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        text_x,
+                        header_y,
+                        header_color,
+                    ));
+
+                    row_top += row_h;
+                    rendered_rows += 1;
+
+                    if rendered_rows >= max_visible {
+                        break;
+                    }
+                }
+                collapsed
+            } else {
+                false
+            };
+
+            // Skip items in collapsed groups
+            if is_collapsed {
+                continue;
+            }
 
             if absolute_idx == model.selected_index {
                 render_palette_selection(model, &mut quads, row_top, row_h);
             }
-            if visible_idx > 0 {
+            if rendered_rows > 0 {
                 let mut sep = model.border_color;
                 sep[3] *= 0.30;
                 quads.push(RegionDrawInstance::new(
@@ -267,6 +335,7 @@ impl Renderer {
                 &mut glyphs,
             );
             row_top += row_h;
+            rendered_rows += 1;
         }
 
         if model.result_labels.is_empty()

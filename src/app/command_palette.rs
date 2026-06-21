@@ -508,6 +508,7 @@ pub struct CommandPaletteRenderModel {
     pub vim_mode_label: Option<&'static str>,
     pub vim_mode_color: Option<[f32; 4]>,
     pub vim_caret_block: bool,
+    pub collapsed_paths: std::collections::HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1312,6 +1313,7 @@ impl CommandPalette {
                 self.vim_mode,
                 PaletteVimMode::Normal | PaletteVimMode::Visual
             ),
+            collapsed_paths: std::collections::HashSet::new(),
         })
     }
 }
