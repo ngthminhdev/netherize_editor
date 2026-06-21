@@ -303,6 +303,23 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
+        Command::ToggleCollapseExpand => {
+            let changed = if ctx.app_state.is_fuzzy_picker_active() {
+                ctx.app_state.toggle_collapse_expand_fuzzy()
+            } else if ctx.app_state.is_references_buffer_active() {
+                ctx.app_state.toggle_collapse_expand_references()
+            } else {
+                false
+            };
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: toggled collapse/expand".to_string()
+                } else {
+                    "Dispatch: toggle collapse/expand ignored".to_string()
+                },
+                changed,
+            )
+        }
         Command::SwitchMode(event) => match ctx.app_state.apply_mode_event(event) {
             Ok(result) => {
                 let mut changed = result.changed;
