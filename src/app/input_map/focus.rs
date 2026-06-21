@@ -544,7 +544,6 @@ impl InputMap {
                 reason: "diagnostics: Enter -> DiagnosticsOpenSelection",
             });
         }
-
         resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
             |command| KeybindingMatch {
                 command,
@@ -596,6 +595,12 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::ReferencesOpenSelection,
                 reason: "references: Enter -> ReferencesOpenSelection",
+            });
+        }
+        if !input.has_command_modifier() && input.physical_key == Some(KeyT) {
+            return Some(KeybindingMatch {
+                command: Command::ToggleCollapseExpand,
+                reason: "references: t -> ToggleCollapseExpand",
             });
         }
 
@@ -1403,6 +1408,12 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::EditorPaste,
                 reason: "fuzzy picker: mod+v -> EditorPaste",
+            });
+        }
+        if !input.has_command_modifier() && input.physical_key == Some(KeyT) {
+            return Some(KeybindingMatch {
+                command: Command::ToggleCollapseExpand,
+                reason: "fuzzy picker: t -> ToggleCollapseExpand",
             });
         }
 

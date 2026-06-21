@@ -69,7 +69,7 @@ fn topbar_tab_asset_icon(
         TopbarTabKind::References => "built_in:symbol-reference",
         TopbarTabKind::Diagnostics => "built_in:error",
         TopbarTabKind::MarkdownPreview => "built_in:markdown",
-        TopbarTabKind::FuzzyPicker => "built_in:identifier",
+        TopbarTabKind::FuzzyPicker => "built_in:text-search",
         TopbarTabKind::Settings => "built_in:conf",
         TopbarTabKind::Help => "built_in:info",
         TopbarTabKind::ExtensionsManager => "built_in:file",

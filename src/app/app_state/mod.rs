@@ -1998,6 +1998,19 @@ struct FileHistoryPreviewSession {
 }
 
 impl FuzzyState {
+    pub(crate) fn group_key_for_item(&self, item: &CommandPaletteItem) -> String {
+        match self.mode {
+            CommandPaletteMode::LiveGrep => match &item.action {
+                CommandPaletteAction::OpenSearchMatch { path, .. } => path.display().to_string(),
+                _ => String::new(),
+            },
+            _ => std::path::Path::new(&item.label)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        }
+    }
+
     pub fn new(mode: CommandPaletteMode) -> Self {
         Self {
             mode,
@@ -2056,18 +2069,7 @@ impl FuzzyState {
             }
 
             let item = &self.results[new_index];
-            let group_key = match self.mode {
-                CommandPaletteMode::LiveGrep => {
-                    item.secondary_label.as_deref().unwrap_or(&item.label)
-                        .split(':').next().unwrap_or("").to_string()
-                }
-                _ => {
-                    std::path::Path::new(&item.label)
-                        .parent()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default()
-                }
-            };
+            let group_key = self.group_key_for_item(item);
 
             if !self.collapsed_paths.contains(&group_key) {
                 break;
@@ -2097,18 +2099,7 @@ impl FuzzyState {
             }
 
             let item = &self.results[new_index];
-            let group_key = match self.mode {
-                CommandPaletteMode::LiveGrep => {
-                    item.secondary_label.as_deref().unwrap_or(&item.label)
-                        .split(':').next().unwrap_or("").to_string()
-                }
-                _ => {
-                    std::path::Path::new(&item.label)
-                        .parent()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default()
-                }
-            };
+            let group_key = self.group_key_for_item(item);
 
             if !self.collapsed_paths.contains(&group_key) {
                 break;

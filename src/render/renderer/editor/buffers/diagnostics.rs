@@ -234,6 +234,7 @@ impl Renderer {
             |left, right| {
                 diagnostics.results[left].file_path == diagnostics.results[right].file_path
             },
+            |_| false,
         );
         let left_text_width = (left_w - 20.0).max(1.0);
         let mut draw_y = content_top;

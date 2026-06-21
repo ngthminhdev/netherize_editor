@@ -3264,3 +3264,33 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+| 23:25 | Edited src/render/icon_pipeline.rs | 1→2 lines | ~33 |
+| 23:25 | Fixed normal-mode `t` collapse/expand in FuzzyPicker and References tabs | src/app/input_map/focus.rs, src/app/app_state/palette.rs, tests | route + redraw contract fixed; targeted tests/cargo check pass | ~19000 |
+| 23:39 | Fixed buffer-backed Live Grep collapse rendering follow-up | src/render/renderer/editor/fuzzy.rs, src/app/app_state/palette.rs, tests | renderer now consumes collapsed_paths and LiveGrep key matches OpenSearchMatch.path | ~12000 |
+| 23:26 | Edited src/render/icon_pipeline.rs | 4→8 lines | ~70 |
+| 23:26 | Edited src/render/renderer/ui/topbar.rs | "built_in:identifier" → "built_in:text-search" | ~17 |
+| 23:26 | Session end: 3 writes across 2 files (icon_pipeline.rs, topbar.rs) | 2 reads | ~16996 tok |
+
+## Session: 2026-06-21 23:44
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:58 | Edited src/render/renderer/editor/buffers.rs | modified simulate_selected_y() | ~1740 |
+| 23:58 | Edited src/render/renderer/editor/buffers.rs | modified grouped_list_window_start() | ~687 |
+| 23:58 | Edited src/render/renderer/editor/buffers.rs | 4→9 lines | ~94 |
+| 23:58 | Edited src/render/renderer/editor/fuzzy.rs | expanded (+6 lines) | ~96 |
+| 23:59 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 4→5 lines | ~45 |
+| 00:01 | Edited src/render/renderer/editor/buffers.rs | modified collapsed() | ~576 |
+| 00:02 | Edited src/app/app_state/tests.rs | modified collapsing_fuzzy_group_moves_selection_to_group_header() | ~939 |
+| 00:03 | Edited src/app/app_state/state.rs | added optional chaining | ~98 |
+| 00:03 | Edited src/app/app_state/palette.rs | modified toggle_collapse_expand_references() | ~192 |
+| 00:03 | Edited src/app/app_state/palette.rs | modified contains() | ~165 |
+| 00:04 | Edited src/render/renderer/editor/fuzzy.rs | expanded (+26 lines) | ~577 |
+| 00:04 | Edited src/render/renderer/editor/buffers.rs | expanded (+26 lines) | ~549 |
+| 00:04 | Edited src/render/renderer/editor/buffers.rs | 3→2 lines | ~46 |
+
+## 2026-06-22 — Fix collapse jitter in grouped result lists
+- `grouped_list_window_start` (src/render/renderer/editor/buffers.rs) is now collapse-aware: takes a `collapsed(idx)` predicate, centers the selection in rendered-height space (header drawn once per group; the window's first item always redraws its header; collapsed rows contribute 0), with an end-clamp.
+- Callers: fuzzy.rs (live-grep collapse via `group_key_for_item`), buffers.rs references (collapsed_paths by relative_path), diagnostics.rs passes `|_| false` (no collapse).
+- Collapsing the selected group anchors `selected_index` to the group's first item; both renderers draw the selection highlight on the group HEADER when the selected item is in that collapsed group.
+| 00:09 | Session end: 13 writes across 6 files (buffers.rs, fuzzy.rs, diagnostics.rs, tests.rs, state.rs) | 8 reads | ~114466 tok |

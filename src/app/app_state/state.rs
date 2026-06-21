@@ -681,6 +681,14 @@ impl AppState {
         }
     }
 
+    pub fn active_references_buffer_mut(&mut self) -> Option<&mut ReferencesBufferState> {
+        let idx = self.active_buffer_index?;
+        match &mut self.buffers.get_mut(idx)?.content {
+            BufferContent::References(state) => Some(state),
+            _ => None,
+        }
+    }
+
     pub fn active_diagnostics_buffer(&self) -> Option<&DiagnosticsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::Diagnostics(state)) => Some(state),

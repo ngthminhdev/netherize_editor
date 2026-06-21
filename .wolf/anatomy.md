@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T14:47:28.566Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T17:04:25.527Z
 > Files: 463 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -416,10 +416,10 @@
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~19695 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~20558 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
-- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
-- `tests.rs` — [cfg(test)] (~21719 tok)
+- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12572 tok)
+- `tests.rs` — [cfg(test)] (~24580 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
@@ -570,7 +570,7 @@
 - `caret.rs` — [derive(Debug, Clone, Copy)] (~2993 tok)
 - `color_space.rs` — srgb_color_target_state (~236 tok)
 - `glyph_instance.rs` — Vertex tĩnh của một quad đơn vị (0..1). (~844 tok)
-- `icon_pipeline.rs` — [repr(C)] (~12235 tok)
+- `icon_pipeline.rs` — [repr(C)] (~12208 tok)
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
@@ -598,10 +598,10 @@
 
 ## src/render/renderer/editor/
 
-- `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5570 tok)
+- `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~8541 tok)
 - `completion.rs` — Declares MAX_VISIBLE_ROWS (~4455 tok)
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
-- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8342 tok)
+- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~9366 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~19503 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
@@ -610,7 +610,7 @@
 
 ## src/render/renderer/editor/buffers/
 
-- `diagnostics.rs` — update_diagnostics_buffer_content (~6058 tok)
+- `diagnostics.rs` — update_diagnostics_buffer_content (~5700 tok)
 
 ## src/render/renderer/editor/overlays/
 
@@ -638,7 +638,7 @@
 - `statusbar.rs` — Render the three-zone status bar. (~5944 tok)
 - `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~10622 tok)
 - `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~11022 tok)
-- `topbar.rs` — update_topbar_content (~4633 tok)
+- `topbar.rs` — update_topbar_content (~6451 tok)
 - `utils.rs` — Declares BORDER (~1962 tok)
 - `welcome.rs` — update_welcome_screen_content (~9261 tok)
 - `whichkey.rs` — Which-key overlay: while a chord is pending (e.g. Space …), show every (~1932 tok)

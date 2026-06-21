@@ -388,10 +388,17 @@ impl Renderer {
                     _ => false,
                 }
             },
+            |idx| {
+                is_live_grep
+                    && fuzzy_state
+                        .collapsed_paths
+                        .contains(&fuzzy_state.group_key_for_item(&fuzzy_state.results[idx]))
+            },
         );
         let left_text_width = (left_w - 20.0 * s).max(1.0);
         let mut draw_y = content_top;
         let mut previous_group_path: Option<String> = None;
+        let mut group_collapsed = false;
         let mut rendered_rows = 0usize;
         for item_idx in start_idx..fuzzy_state.results.len() {
             if rendered_rows >= visible_rows || draw_y + row_h > content_bottom + 1.0 {
@@ -414,27 +421,55 @@ impl Renderer {
                     if draw_y + group_header_h + row_h > content_bottom + 1.0 {
                         break;
                     }
+                    group_collapsed = fuzzy_state.collapsed_paths.contains(path_label);
                     self.editor_overlay_text_system
                         .set_size(Some(left_text_width), Some(line_height));
                     let (file_name, folder_label) = split_search_path(path_label);
-                    let mut group_bg = self.theme.ui.overlay_bg.as_f32();
-                    group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
-                    chrome.push(RegionDrawInstance::new(
-                        [
-                            left_x + 8.0 * s,
-                            draw_y + 2.0 * s,
-                            (left_w - 16.0 * s).max(1.0),
-                            (line_height + 3.0 * s).max(12.0 * s),
-                        ],
-                        group_bg,
-                    ));
+                    // When the selection lives inside this collapsed group its own row
+                    // is hidden, so the highlight rides the group header instead.
+                    let header_selected = group_collapsed
+                        && fuzzy_state
+                            .results
+                            .get(fuzzy_state.selected_index)
+                            .map(|sel| fuzzy_state.group_key_for_item(sel))
+                            .as_deref()
+                            == Some(path_label);
+                    let header_h_px = (line_height + 3.0 * s).max(12.0 * s);
+                    if header_selected {
+                        chrome.push(RegionDrawInstance::new(
+                            [
+                                left_x + 6.0 * s,
+                                draw_y + 2.0 * s,
+                                (left_w - 12.0 * s).max(1.0),
+                                header_h_px,
+                            ],
+                            selection_bg,
+                        ));
+                        chrome.push(RegionDrawInstance::new(
+                            [left_x + 6.0 * s, draw_y + 2.0 * s, 3.0 * s, header_h_px],
+                            accent,
+                        ));
+                    } else {
+                        let mut group_bg = self.theme.ui.overlay_bg.as_f32();
+                        group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
+                        chrome.push(RegionDrawInstance::new(
+                            [
+                                left_x + 8.0 * s,
+                                draw_y + 2.0 * s,
+                                (left_w - 16.0 * s).max(1.0),
+                                header_h_px,
+                            ],
+                            group_bg,
+                        ));
+                    }
                     let group_count =
                         count_search_matches_for_path(&fuzzy_state.results, path_label);
                     let count_label = format!("{}", group_count);
                     let count_w = estimate_monospace_width(&count_label, font_size).max(16.0 * s);
+                    let indicator = if group_collapsed { "▸" } else { "▾" };
                     glyphs.extend(layout_panel_text_bold(
                         &clamp_monospace_text(
-                            &format!("▾ {}", file_name),
+                            &format!("{indicator} {file_name}"),
                             left_text_width * 0.50,
                             font_size,
                         ),
@@ -471,6 +506,9 @@ impl Renderer {
                     draw_y += group_header_h;
                     previous_group_path = current_group_path.clone();
                 }
+            }
+            if is_live_grep && group_collapsed {
+                continue;
             }
             let row_y = draw_y;
             let is_selected = item_idx == fuzzy_state.selected_index;

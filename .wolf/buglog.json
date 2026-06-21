@@ -1,5 +1,30 @@
 [
   {
+    "id": "bug-016",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "Live-grep / references / fuzzy result list (left pane) jumps and jitters when moving the selection down or toggling collapse/expand (t); collapsing the selected group also made the selection highlight disappear.",
+    "file": "src/render/renderer/editor/buffers.rs",
+    "root_cause": "grouped_list_window_start() computed the scroll window assuming EVERY item occupies a full row_height (collapsed members included) and centered using raw index space (selected_index - visible_rows/2). But the render loops draw a collapsed group as header-only (collapsed members are skipped via `continue`, contributing 0 height). So the scroll math and the drawn layout disagreed: (1) toggling collapse changed what was drawn but produced the same start -> content above the selection shifted (jump); (2) navigation skips collapsed members (fuzzy_select_next/prev, FuzzyState in app_state/mod.rs), so selected_index leaps over a whole collapsed group, and raw-index centering translated that 1-row visual move into a viewport-sized scroll jump (jitter). Separately, collapsing the group containing the selection left selected_index inside the now-hidden group, so no row drew the highlight.",
+    "fix": "Rewrote grouped_list_window_start to work in RENDERED height: added a `collapsed(idx)` predicate, centered the selection by extending the window upward while the rendered span (header-once-per-group + non-collapsed rows, with the window's first item always drawing its header) stays within half the viewport, plus an end-clamp so the last group never leaves blank space. Threaded the collapsed predicate through all three callers (fuzzy.rs live-grep, buffers.rs references, diagnostics.rs -> |_| false). On collapse, toggle_collapse_expand_fuzzy/_references now anchor selected_index to the group's first item, and both renderers draw the selection highlight (selection_bg + accent bar) on the group HEADER when the selected item belongs to that collapsed group. Added 5 windowing tests (with a render-simulation helper) + 2 selection-anchor tests.",
+    "tags": [
+      "render",
+      "live-grep",
+      "references",
+      "fuzzy",
+      "collapse",
+      "scroll",
+      "windowing",
+      "jitter",
+      "selection",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-011"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
     "id": "bug-015",
     "timestamp": "2026-06-18T00:00:00+00:00",
     "error_message": "Code Graph HUD (gp) stopped working; HUD reports the codegraph module is 'not installed' in the extensions manager, even though the `codegraph` CLI is installed.",
@@ -4002,6 +4027,41 @@
       "terminal",
       "card-spawn",
       "user-reported"
+    ]
+  },
+  {
+    "id": 233,
+    "timestamp": "2026-06-21T23:25:00+07:00",
+    "error_message": "In normal mode, pressing `t` in search/list buffer tabs like File Finder/Live Grep and References (`gr`) did not toggle collapse/expand reliably.",
+    "file": "src/app/input_map/focus.rs, src/app/app_state/palette.rs",
+    "root_cause": "`Command::ToggleCollapseExpand` existed, but the focused FuzzyPicker and References input resolvers did not map normal-mode `t` to it. Separately, `toggle_collapse_expand_fuzzy` and `toggle_collapse_expand_references` returned false when expanding even though they removed a collapsed path, so the shell could skip redraw/revision updates after an expand.",
+    "fix": "Mapped normal-mode `t` to `ToggleCollapseExpand` for FuzzyPicker and References focus. Changed both toggle helpers to bump revision and return true for both collapse and expand mutations. Added input-map and AppState regression tests for the route and both toggle directions.",
+    "tags": [
+      "input-map",
+      "fuzzy-picker",
+      "references",
+      "collapse-expand",
+      "normal-mode",
+      "redraw",
+      "regression"
+    ]
+  },
+  {
+    "id": 234,
+    "timestamp": "2026-06-21T23:39:00+07:00",
+    "error_message": "Follow-up screenshot: pressing `t` in buffer-backed Live Grep/Fuzzy Finder still did not visually collapse the selected file group.",
+    "file": "src/render/renderer/editor/fuzzy.rs, src/app/app_state/palette.rs, src/app/app_state/tests.rs",
+    "root_cause": "The buffer-backed Live Grep renderer drew group headers but never checked `fuzzy_state.collapsed_paths`, so state changes from ToggleCollapseExpand had no visible effect. The Live Grep toggle helper also derived its group key from `secondary_label`, while the renderer groups by `CommandPaletteAction::OpenSearchMatch.path`.",
+    "fix": "Changed Live Grep collapse key derivation to use the selected OpenSearchMatch path, and updated the editor fuzzy renderer to read `collapsed_paths`, switch the header arrow, and skip all rows in collapsed groups. Added a regression test matching the screenshot-style Live Grep search-match group.",
+    "tags": [
+      "fuzzy-picker",
+      "live-grep",
+      "collapse-expand",
+      "renderer",
+      "collapsed-paths",
+      "normal-mode",
+      "follow-up",
+      "regression"
     ]
   }
 ]

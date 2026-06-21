@@ -73,6 +73,7 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "hash" => "built_in:hash",
         "html" => "built_in:html",
         "identifier" | "symbol" => "built_in:identifier",
+        "text-search" | "fuzzy-search" => "built_in:text-search",
         "function" | "symbol-function" => "built_in:symbol-function",
         "method" | "symbol-method" => "built_in:symbol-method",
         "constructor" | "symbol-constructor" => "built_in:symbol-constructor",
@@ -658,6 +659,10 @@ fn build_bearded_atlas() -> BuiltAtlas {
         (
             "built_in:identifier",
             include_bytes!("../../assets/bearded-icons/identifier.svg"),
+        ),
+        (
+            "built_in:text-search",
+            include_bytes!("../../assets/bearded-icons/text-search.svg"),
         ),
         (
             "built_in:image",

@@ -213,6 +213,11 @@ impl Renderer {
                 |left, right| {
                     references.items[left].relative_path == references.items[right].relative_path
                 },
+                |idx| {
+                    references
+                        .collapsed_paths
+                        .contains(&references.items[idx].relative_path)
+                },
             );
 
             let mut draw_y = content_top;
@@ -228,17 +233,43 @@ impl Renderer {
                         break;
                     }
                     let (file_name, folder_label) = split_reference_path(&item.relative_path);
-                    let mut group_bg = self.theme.ui.overlay_bg.as_f32();
-                    group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
-                    chrome.push(RegionDrawInstance::new(
-                        [
-                            left_x + 8.0 * s,
-                            draw_y + 2.0 * s,
-                            (left_w - 16.0 * s).max(1.0),
-                            (line_height + 3.0 * s).max(12.0 * s),
-                        ],
-                        group_bg,
-                    ));
+                    let is_collapsed = references.collapsed_paths.contains(&item.relative_path);
+                    // When the selection lives inside this collapsed group its own row
+                    // is hidden, so the highlight rides the group header instead.
+                    let header_selected = is_collapsed
+                        && references
+                            .items
+                            .get(references.selected_index)
+                            .map(|sel| sel.relative_path == item.relative_path)
+                            .unwrap_or(false);
+                    let header_h_px = (line_height + 3.0 * s).max(12.0 * s);
+                    if header_selected {
+                        chrome.push(RegionDrawInstance::new(
+                            [
+                                left_x + 6.0 * s,
+                                draw_y + 2.0 * s,
+                                (left_w - 12.0 * s).max(1.0),
+                                header_h_px,
+                            ],
+                            selection_bg,
+                        ));
+                        chrome.push(RegionDrawInstance::new(
+                            [left_x + 6.0 * s, draw_y + 2.0 * s, 3.0 * s, header_h_px],
+                            accent,
+                        ));
+                    } else {
+                        let mut group_bg = self.theme.ui.overlay_bg.as_f32();
+                        group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
+                        chrome.push(RegionDrawInstance::new(
+                            [
+                                left_x + 8.0 * s,
+                                draw_y + 2.0 * s,
+                                (left_w - 16.0 * s).max(1.0),
+                                header_h_px,
+                            ],
+                            group_bg,
+                        ));
+                    }
                     let group_count = references
                         .path_counts
                         .get(&item.relative_path)
@@ -247,7 +278,6 @@ impl Renderer {
                     count_label.clear();
                     let _ = write!(count_label, "{}", group_count);
                     let count_w = estimate_monospace_width(count_label, font_size).max(16.0 * s);
-                    let is_collapsed = references.collapsed_paths.contains(&item.relative_path);
                     let indicator = if is_collapsed { "▸" } else { "▾" };
                     right_header_buffer.clear();
                     let _ = write!(right_header_buffer, "{} {}", indicator, file_name);
@@ -510,6 +540,15 @@ fn reference_row_summary<'a>(item: &'a ReferencesBufferItem, buffer: &'a mut Str
     }
 }
 
+/// Compute the first item index a grouped result list should render from so the
+/// selection stays visible and the list scrolls smoothly.
+///
+/// The calculation works in *rendered* height: a group always draws one header,
+/// an expanded member draws a row, and a **collapsed** member (per `collapsed`)
+/// draws nothing — exactly mirroring the renderer. Accounting for collapse here
+/// is what stops the list from jumping when groups toggle, and centering in
+/// rendered space (rather than raw index space) keeps navigation smooth even when
+/// moving the selection leaps over the hidden members of a collapsed group.
 pub(super) fn grouped_list_window_start(
     item_count: usize,
     selected_index: usize,
@@ -517,57 +556,121 @@ pub(super) fn grouped_list_window_start(
     row_height: f32,
     group_header_height: f32,
     same_group: impl Fn(usize, usize) -> bool,
+    collapsed: impl Fn(usize) -> bool,
 ) -> usize {
     if item_count == 0 {
         return 0;
     }
 
     let selected_index = selected_index.min(item_count - 1);
-    let visible_rows = ((content_height / row_height.max(1.0)).floor() as usize).max(1);
-    let mut start = selected_index.saturating_sub(visible_rows / 2);
-    if start + visible_rows > item_count {
-        start = item_count.saturating_sub(visible_rows);
-    }
+    let row_height = row_height.max(1.0);
 
-    while start < selected_index {
-        let mut used_height = 0.0;
-        let mut selected_is_visible = false;
+    let row_of = |i: usize| if collapsed(i) { 0.0 } else { row_height };
 
-        for item_index in start..item_count {
-            let starts_group = item_index == start || !same_group(item_index - 1, item_index);
-            let item_height = row_height
-                + if starts_group {
-                    group_header_height
-                } else {
-                    0.0
-                };
-            if used_height + item_height > content_height + 1.0 {
-                break;
-            }
-            used_height += item_height;
-            if item_index == selected_index {
-                selected_is_visible = true;
-                break;
-            }
-        }
+    // Rendered height added by prepending item `prev` to a window whose current
+    // first item is `head`. The new first item always draws a header; `head` only
+    // keeps its own header if it still begins a group (i.e. `prev` is a different
+    // group). This mirrors the renderer, which redraws the header of whichever item
+    // the window happens to start on.
+    let prepend_height = |prev: usize, head: usize| {
+        let header = if same_group(prev, head) {
+            0.0
+        } else {
+            group_header_height
+        };
+        row_of(prev) + header
+    };
 
-        if selected_is_visible {
+    // The window's first item always draws a header, so a single-item window is its
+    // row plus one header.
+    let single = |i: usize| row_of(i) + group_header_height;
+
+    // Center the selection: extend the window upward from the selection while the
+    // rendered height from the new start down to the selection stays within half the
+    // viewport. Working in rendered height keeps scrolling smooth even when the
+    // selection leaps over the hidden members of a collapsed group.
+    let half = content_height * 0.5;
+    let mut centered = selected_index;
+    let mut span = single(selected_index);
+    while centered > 0 {
+        let prev = centered - 1;
+        let next_span = span + prepend_height(prev, centered);
+        if next_span > half {
             break;
         }
-        start += 1;
+        span = next_span;
+        centered = prev;
     }
 
-    start
+    // End clamp: never scroll past the point where the last item fills the bottom of
+    // the viewport, so the final group never leaves blank space below it.
+    let last = item_count - 1;
+    let mut max_start = last;
+    let mut tail = single(last);
+    while max_start > 0 {
+        let prev = max_start - 1;
+        let next_tail = tail + prepend_height(prev, max_start);
+        if next_tail > content_height + 1.0 {
+            break;
+        }
+        tail = next_tail;
+        max_start = prev;
+    }
+
+    centered.min(max_start)
 }
 
 #[cfg(test)]
 mod tests {
     use super::grouped_list_window_start;
 
+    /// Mirror the renderer's vertical layout: each group draws one header, an
+    /// expanded member draws a row, a collapsed member draws nothing. Returns the
+    /// top-y at which the selected item becomes visible (its row, or — when the
+    /// selected item lives in a collapsed group — its group header), or `None`
+    /// when `start` scrolls the selection out of view.
+    fn simulate_selected_y(
+        start: usize,
+        groups: &[usize],
+        collapsed: &dyn Fn(usize) -> bool,
+        selected: usize,
+        content_height: f32,
+        row_height: f32,
+        group_header_height: f32,
+    ) -> Option<f32> {
+        let mut y = 0.0;
+        for i in start..groups.len() {
+            let starts_group = i == start || groups[i - 1] != groups[i];
+            if starts_group {
+                if y + group_header_height > content_height + 1.0 {
+                    return None;
+                }
+                if collapsed(i) && groups[i] == groups[selected] {
+                    // The selected item is inside this collapsed group: its header
+                    // is the visible anchor.
+                    return Some(y);
+                }
+                y += group_header_height;
+            }
+            if collapsed(i) {
+                continue;
+            }
+            if y + row_height > content_height + 1.0 {
+                return None;
+            }
+            if i == selected {
+                return Some(y);
+            }
+            y += row_height;
+        }
+        None
+    }
+
     #[test]
-    fn grouped_list_window_keeps_selected_item_visible_with_group_headers() {
+    fn keeps_selected_visible_with_group_headers() {
         let groups = [0, 0, 1, 1, 2, 2, 3, 3];
         let selected_index = groups.len() - 1;
+        let collapsed = |_: usize| false;
         let start = grouped_list_window_start(
             groups.len(),
             selected_index,
@@ -575,8 +678,138 @@ mod tests {
             1.0,
             1.0,
             |left, right| groups[left] == groups[right],
+            &collapsed,
         );
 
-        assert_eq!(start, 6);
+        let y = simulate_selected_y(
+            start,
+            &groups,
+            &collapsed,
+            selected_index,
+            3.0,
+            1.0,
+            1.0,
+        );
+        assert!(y.is_some(), "selected row must be visible, start={start}");
+    }
+
+    #[test]
+    fn collapsed_group_above_does_not_push_selection_out_of_view() {
+        // group 1 (indices 2,3,4) is collapsed; selection sits in group 2.
+        let groups = [0, 0, 1, 1, 1, 2, 2];
+        let collapsed = |i: usize| groups[i] == 1;
+        let selected_index = 6;
+        let start = grouped_list_window_start(
+            groups.len(),
+            selected_index,
+            4.0,
+            1.0,
+            1.0,
+            |left, right| groups[left] == groups[right],
+            &collapsed,
+        );
+
+        let y = simulate_selected_y(
+            start,
+            &groups,
+            &collapsed,
+            selected_index,
+            4.0,
+            1.0,
+            1.0,
+        );
+        let y = y.expect("selected row must stay visible with a collapsed group above");
+        assert!(
+            (0.0..=3.0).contains(&y),
+            "selected row should sit fully inside the viewport, got y={y} start={start}"
+        );
+    }
+
+    #[test]
+    fn selection_inside_collapsed_group_keeps_header_visible() {
+        // selection points into the collapsed group 1; its header must be shown.
+        let groups = [0, 0, 1, 1, 1, 2, 2];
+        let collapsed = |i: usize| groups[i] == 1;
+        let selected_index = 3;
+        let start = grouped_list_window_start(
+            groups.len(),
+            selected_index,
+            4.0,
+            1.0,
+            1.0,
+            |left, right| groups[left] == groups[right],
+            &collapsed,
+        );
+
+        let y = simulate_selected_y(
+            start,
+            &groups,
+            &collapsed,
+            selected_index,
+            4.0,
+            1.0,
+            1.0,
+        );
+        assert!(
+            y.is_some(),
+            "collapsed selected group's header must be visible, start={start}"
+        );
+    }
+
+    #[test]
+    fn centers_selection_in_rendered_space() {
+        // single group, no headers: selecting the middle should leave roughly half
+        // the viewport of rendered rows above the selection (stable centering).
+        let groups = [0usize; 30];
+        let collapsed = |_: usize| false;
+        let selected_index = 20;
+        let start = grouped_list_window_start(
+            groups.len(),
+            selected_index,
+            10.0,
+            1.0,
+            0.0,
+            |left, right| groups[left] == groups[right],
+            &collapsed,
+        );
+
+        // ~5 rows above the selection (content_height/2), tolerate off-by-one.
+        assert!(
+            (14..=17).contains(&start),
+            "selection should be centered, start={start}"
+        );
+    }
+
+    #[test]
+    fn collapsed_navigation_leap_does_not_jump_the_window() {
+        // group 1 (indices 2..=11, ten items) is collapsed. Navigating from the last
+        // item of group 0 (index 1) to the first visible item of group 2 (index 12)
+        // is a single visible-row move even though the raw index leaps by 11. The
+        // selected row's screen position must stay stable (no viewport-sized jump).
+        let mut groups = vec![0usize, 0];
+        groups.extend(std::iter::repeat(1usize).take(10)); // indices 2..=11
+        groups.extend([2usize, 2, 3, 3, 4, 4, 5, 5]); // indices 12..
+        let collapsed = |i: usize| groups[i] == 1;
+        let same = |l: usize, r: usize| groups[l] == groups[r];
+        let (content, row, header) = (6.0f32, 1.0f32, 1.0f32);
+
+        let start_before = grouped_list_window_start(
+            groups.len(), 1, content, row, header, &same, &collapsed,
+        );
+        let y_before =
+            simulate_selected_y(start_before, &groups, &collapsed, 1, content, row, header)
+                .expect("selection visible before leap");
+
+        let start_after = grouped_list_window_start(
+            groups.len(), 12, content, row, header, &same, &collapsed,
+        );
+        let y_after =
+            simulate_selected_y(start_after, &groups, &collapsed, 12, content, row, header)
+                .expect("selection visible after leap");
+
+        assert!(
+            (y_after - y_before).abs() <= row + header + 0.001,
+            "selection screen position jumped: before={y_before} after={y_after}"
+        );
     }
 }

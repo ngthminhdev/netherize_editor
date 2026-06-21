@@ -1646,6 +1646,251 @@ mod tests {
     }
 
     #[test]
+    fn toggle_collapse_expand_references_reports_collapse_and_expand_changes() {
+        let mut state = AppState::new(unique_temp_path("references_collapse_toggle"));
+        let first_path = PathBuf::from("/tmp/refs/a.rs");
+        let second_path = PathBuf::from("/tmp/refs/b.rs");
+        state
+            .open_references_buffer(
+                "References (2)",
+                None,
+                0,
+                vec![
+                    ReferencesBufferItem {
+                        path: first_path,
+                        relative_path: "src/a.rs".to_string(),
+                        line: 10,
+                        column: 4,
+                        summary: "first reference".to_string(),
+                    },
+                    ReferencesBufferItem {
+                        path: second_path,
+                        relative_path: "src/b.rs".to_string(),
+                        line: 20,
+                        column: 7,
+                        summary: "second reference".to_string(),
+                    },
+                ],
+            )
+            .expect("references buffer should open");
+
+        assert!(state.toggle_collapse_expand_references());
+        assert!(
+            state
+                .active_references_buffer()
+                .expect("references buffer")
+                .collapsed_paths
+                .contains("src/a.rs")
+        );
+
+        assert!(state.toggle_collapse_expand_references());
+        assert!(
+            !state
+                .active_references_buffer()
+                .expect("references buffer")
+                .collapsed_paths
+                .contains("src/a.rs")
+        );
+    }
+
+    #[test]
+    fn toggle_collapse_expand_fuzzy_reports_collapse_and_expand_changes() {
+        let mut state = AppState::new(unique_temp_path("fuzzy_collapse_toggle"));
+        let mut fuzzy = FuzzyState::new(CommandPaletteMode::FilePicker);
+        fuzzy.results = vec![
+            CommandPaletteItem::file_match(
+                "src/a.rs".to_string(),
+                PathBuf::from("/tmp/fuzzy/src/a.rs"),
+            ),
+            CommandPaletteItem::file_match(
+                "src/b.rs".to_string(),
+                PathBuf::from("/tmp/fuzzy/src/b.rs"),
+            ),
+        ];
+        state.buffers.push(BufferEntry {
+            content: BufferContent::FuzzyPicker(fuzzy),
+        });
+        state.active_buffer_index = Some(0);
+
+        assert!(state.toggle_collapse_expand_fuzzy());
+        assert!(
+            state
+                .active_fuzzy_picker_buffer()
+                .expect("fuzzy picker buffer")
+                .collapsed_paths
+                .contains("src")
+        );
+
+        assert!(state.toggle_collapse_expand_fuzzy());
+        assert!(
+            !state
+                .active_fuzzy_picker_buffer()
+                .expect("fuzzy picker buffer")
+                .collapsed_paths
+                .contains("src")
+        );
+    }
+
+    #[test]
+    fn toggle_collapse_expand_live_grep_uses_search_match_path_group() {
+        let mut state = AppState::new(unique_temp_path("live_grep_collapse_toggle"));
+        let path = PathBuf::from("/tmp/live-grep/cfl-manifest.txt");
+        let other_path = PathBuf::from("/tmp/live-grep/package-lock.json");
+        let mut fuzzy = FuzzyState::new(CommandPaletteMode::LiveGrep);
+        fuzzy.results = vec![
+            CommandPaletteItem::search_match(
+                "src/games/arcade/result/model-builder/2998/type-arcade-2998.ts".to_string(),
+                Some(
+                    "src/games/arcade/result/model-builder/2998/type-arcade-2998.ts".to_string(),
+                ),
+                path.clone(),
+                149,
+                1,
+            ),
+            CommandPaletteItem::search_match(
+                "src/games/arcade/result/types/2993/type-arcade-2993-result.ts".to_string(),
+                Some("src/games/arcade/result/types/2993/type-arcade-2993-result.ts".to_string()),
+                path.clone(),
+                150,
+                1,
+            ),
+            CommandPaletteItem::search_match(
+                "\"resolved\": \"https://registry.npmjs.org/ms/-/ms-2.1.3.tgz\",".to_string(),
+                Some("\"resolved\": \"https://registry.npmjs.org/ms/-/ms-2.1.3.tgz\",".to_string()),
+                other_path.clone(),
+                12,
+                1,
+            ),
+        ];
+        state.buffers.push(BufferEntry {
+            content: BufferContent::FuzzyPicker(fuzzy),
+        });
+        state.active_buffer_index = Some(0);
+
+        let group_key = path.display().to_string();
+        assert!(state.toggle_collapse_expand_fuzzy());
+        assert!(
+            state
+                .active_fuzzy_picker_buffer()
+                .expect("fuzzy picker buffer")
+                .collapsed_paths
+                .contains(&group_key)
+        );
+        assert!(state.command_palette_select_next());
+        assert_eq!(state.command_palette_selected_index(), 2);
+        if let Some(BufferEntry {
+            content: BufferContent::FuzzyPicker(fuzzy),
+        }) = state.buffers.get_mut(0)
+        {
+            fuzzy.selected_index = 0;
+        }
+
+        assert!(state.toggle_collapse_expand_fuzzy());
+        assert!(
+            !state
+                .active_fuzzy_picker_buffer()
+                .expect("fuzzy picker buffer")
+                .collapsed_paths
+                .contains(&group_key)
+        );
+    }
+
+    #[test]
+    fn collapsing_fuzzy_group_moves_selection_to_group_header() {
+        let mut state = AppState::new(unique_temp_path("fuzzy_collapse_selection"));
+        let path = PathBuf::from("/tmp/live-grep/main.rs");
+        let other_path = PathBuf::from("/tmp/live-grep/lib.rs");
+        let mut fuzzy = FuzzyState::new(CommandPaletteMode::LiveGrep);
+        fuzzy.results = vec![
+            CommandPaletteItem::search_match(
+                "first".to_string(),
+                Some("first".to_string()),
+                path.clone(),
+                1,
+                1,
+            ),
+            CommandPaletteItem::search_match(
+                "second".to_string(),
+                Some("second".to_string()),
+                path.clone(),
+                2,
+                1,
+            ),
+            CommandPaletteItem::search_match(
+                "other".to_string(),
+                Some("other".to_string()),
+                other_path,
+                3,
+                1,
+            ),
+        ];
+        fuzzy.selected_index = 1; // second match inside the first file group
+        state.buffers.push(BufferEntry {
+            content: BufferContent::FuzzyPicker(fuzzy),
+        });
+        state.active_buffer_index = Some(0);
+
+        assert!(state.toggle_collapse_expand_fuzzy());
+        // Collapsing the group the selection lives in anchors the selection on the
+        // group's first item so the highlight rides the (now header-only) group.
+        assert_eq!(
+            state
+                .active_fuzzy_picker_buffer()
+                .expect("fuzzy picker buffer")
+                .selected_index,
+            0
+        );
+    }
+
+    #[test]
+    fn collapsing_references_group_moves_selection_to_group_header() {
+        let mut state = AppState::new(unique_temp_path("references_collapse_selection"));
+        state
+            .open_references_buffer(
+                "References (3)",
+                None,
+                0,
+                vec![
+                    ReferencesBufferItem {
+                        path: PathBuf::from("/tmp/refs/a.rs"),
+                        relative_path: "src/a.rs".to_string(),
+                        line: 10,
+                        column: 4,
+                        summary: "first".to_string(),
+                    },
+                    ReferencesBufferItem {
+                        path: PathBuf::from("/tmp/refs/a.rs"),
+                        relative_path: "src/a.rs".to_string(),
+                        line: 22,
+                        column: 4,
+                        summary: "second".to_string(),
+                    },
+                    ReferencesBufferItem {
+                        path: PathBuf::from("/tmp/refs/b.rs"),
+                        relative_path: "src/b.rs".to_string(),
+                        line: 5,
+                        column: 7,
+                        summary: "third".to_string(),
+                    },
+                ],
+            )
+            .expect("references buffer should open");
+
+        if let Some(buffer) = state.active_references_buffer_mut() {
+            buffer.selected_index = 1; // second reference inside src/a.rs
+        }
+
+        assert!(state.toggle_collapse_expand_references());
+        assert_eq!(
+            state
+                .active_references_buffer()
+                .expect("references buffer")
+                .selected_index,
+            0
+        );
+    }
+
+    #[test]
     fn pending_references_buffer_accepts_async_results_and_preview() {
         let mut state = AppState::new(unique_temp_path("pending_references_buffer"));
         let origin_path = PathBuf::from("/tmp/origin.rs");

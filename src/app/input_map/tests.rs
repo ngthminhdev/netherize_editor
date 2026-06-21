@@ -555,6 +555,24 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::ReferencesOpenSelection),
         },
         Case {
+            name: "references normal t -> ToggleCollapseExpand",
+            context: KeybindingContext::with_focus(
+                EditorMode::Normal,
+                InputFocusContext::References,
+            ),
+            input: input_from_physical(KeyCode::KeyT, "t"),
+            expected: Some(Command::ToggleCollapseExpand),
+        },
+        Case {
+            name: "fuzzy picker normal t -> ToggleCollapseExpand",
+            context: KeybindingContext::with_focus(
+                EditorMode::Normal,
+                InputFocusContext::FuzzyPicker,
+            ),
+            input: input_from_physical(KeyCode::KeyT, "t"),
+            expected: Some(Command::ToggleCollapseExpand),
+        },
+        Case {
             name: "palette text -> FilePickerAppendQuery",
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: NormalizedInput {

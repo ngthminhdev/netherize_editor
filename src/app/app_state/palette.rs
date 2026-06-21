@@ -688,67 +688,84 @@ impl AppState {
     }
 
     pub fn toggle_collapse_expand_fuzzy(&mut self) -> bool {
-        let Some(idx) = self.active_buffer_index else { return false; };
-        let Some(buffer) = self.buffers.get_mut(idx) else { return false; };
-        let BufferContent::FuzzyPicker(ref mut state) = buffer.content else { return false; };
+        let Some(idx) = self.active_buffer_index else {
+            return false;
+        };
+        let Some(buffer) = self.buffers.get_mut(idx) else {
+            return false;
+        };
+        let BufferContent::FuzzyPicker(ref mut state) = buffer.content else {
+            return false;
+        };
 
         let selected = state.results.get(state.selected_index);
-        let Some(item) = selected else { return false; };
-
-        // Determine the group key for the selected item
-        let group_key = match state.mode {
-            CommandPaletteMode::LiveGrep => {
-                // For live grep, group by file path (from secondary_label or label)
-                item.secondary_label.as_deref().unwrap_or(&item.label).split(':').next().unwrap_or("").to_string()
-            }
-            _ => {
-                // For file picker, group by parent folder
-                std::path::Path::new(&item.label)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "".to_string())
-            }
+        let Some(item) = selected else {
+            return false;
         };
 
-        if group_key.is_empty() { return false; }
+        let group_key = state.group_key_for_item(item);
 
-        let changed = if state.collapsed_paths.contains(&group_key) {
-            state.collapsed_paths.remove(&group_key);
-            false // expanding
-        } else {
-            state.collapsed_paths.insert(group_key);
-            true // collapsing
-        };
-
-        if changed {
-            self.bump_revision();
+        if group_key.is_empty() {
+            return false;
         }
-        changed
+
+        if state.collapsed_paths.contains(&group_key) {
+            state.collapsed_paths.remove(&group_key);
+        } else {
+            // Anchor the selection on the group's first item so the highlight rides
+            // the (now header-only) group instead of vanishing with the hidden rows.
+            if let Some(first) = state
+                .results
+                .iter()
+                .position(|item| state.group_key_for_item(item) == group_key)
+            {
+                state.selected_index = first;
+            }
+            state.collapsed_paths.insert(group_key);
+        }
+
+        self.bump_revision();
+        true
     }
 
     pub fn toggle_collapse_expand_references(&mut self) -> bool {
-        let Some(idx) = self.active_buffer_index else { return false; };
-        let Some(buffer) = self.buffers.get_mut(idx) else { return false; };
-        let BufferContent::References(ref mut state) = buffer.content else { return false; };
-
-        let selected = state.items.get(state.selected_index);
-        let Some(item) = selected else { return false; };
-
-        let path = item.relative_path.clone();
-        if path.is_empty() { return false; }
-
-        let changed = if state.collapsed_paths.contains(&path) {
-            state.collapsed_paths.remove(&path);
-            false
-        } else {
-            state.collapsed_paths.insert(path);
-            true
+        let Some(idx) = self.active_buffer_index else {
+            return false;
+        };
+        let Some(buffer) = self.buffers.get_mut(idx) else {
+            return false;
+        };
+        let BufferContent::References(ref mut state) = buffer.content else {
+            return false;
         };
 
-        if changed {
-            self.bump_revision();
+        let selected = state.items.get(state.selected_index);
+        let Some(item) = selected else {
+            return false;
+        };
+
+        let path = item.relative_path.clone();
+        if path.is_empty() {
+            return false;
         }
-        changed
+
+        if state.collapsed_paths.contains(&path) {
+            state.collapsed_paths.remove(&path);
+        } else {
+            // Anchor the selection on the group's first item so the highlight rides
+            // the (now header-only) group instead of vanishing with the hidden rows.
+            if let Some(first) = state
+                .items
+                .iter()
+                .position(|item| item.relative_path == path)
+            {
+                state.selected_index = first;
+            }
+            state.collapsed_paths.insert(path);
+        }
+
+        self.bump_revision();
+        true
     }
 
     pub fn is_fuzzy_picker_active(&self) -> bool {
