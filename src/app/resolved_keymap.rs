@@ -713,7 +713,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ph(KeyCode::KeyL), MOVE_RIGHT);
     km.insert(Some("normal"), ph(KeyCode::KeyW), MOVE_WORD_FORWARD);
     km.insert(Some("normal"), ph(KeyCode::KeyB), MOVE_WORD_BACKWARD);
-    km.insert(Some("normal"), ph(KeyCode::KeyE), TOGGLE_COLLAPSE_EXPAND);
+    km.insert(Some("normal"), ph(KeyCode::KeyE), MOVE_WORD_END);
+    km.insert(Some("normal"), ph(KeyCode::KeyT), TOGGLE_COLLAPSE_EXPAND);
     km.insert(Some("normal"), ph(KeyCode::Digit0), MOVE_TO_LINE_START);
     km.insert(Some("normal"), ch('$'), MOVE_TO_LINE_END);
     km.insert(Some("normal"), ch('^'), MOVE_TO_FIRST_NON_WHITESPACE);
@@ -781,7 +782,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyL), MOVE_RIGHT);
     km.insert(Some("visual"), ph(KeyCode::KeyW), MOVE_WORD_FORWARD);
     km.insert(Some("visual"), ph(KeyCode::KeyB), MOVE_WORD_BACKWARD);
-    km.insert(Some("visual"), ph(KeyCode::KeyE), TOGGLE_COLLAPSE_EXPAND);
+    km.insert(Some("visual"), ph(KeyCode::KeyE), MOVE_WORD_END);
+    km.insert(Some("visual"), ph(KeyCode::KeyT), TOGGLE_COLLAPSE_EXPAND);
     km.insert(Some("visual"), ph(KeyCode::Digit0), MOVE_TO_LINE_START);
     km.insert(Some("visual"), ch('$'), MOVE_TO_LINE_END);
     km.insert(Some("visual"), ch('^'), MOVE_TO_FIRST_NON_WHITESPACE);
@@ -949,7 +951,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         ph(KeyCode::KeyB),
         MOVE_WORD_BACKWARD,
     );
-    km.insert(Some("terminal_normal"), ph(KeyCode::KeyE), TOGGLE_COLLAPSE_EXPAND);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyE), MOVE_WORD_END);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyT), TOGGLE_COLLAPSE_EXPAND);
     km.insert(
         Some("terminal_normal"),
         ph(KeyCode::Digit0),
