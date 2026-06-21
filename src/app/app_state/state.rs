@@ -760,32 +760,29 @@ impl AppState {
         };
 
         let old_index = state.selected_index;
-        let mut new_index = old_index;
         let len = state.items.len();
+        if len == 0 {
+            return false;
+        }
 
+        let mut new_index = old_index;
         loop {
-            if new_index + 1 < len {
-                new_index += 1;
-            } else {
-                break;
+            new_index = (new_index + 1) % len;
+            if new_index == old_index {
+                return false;
             }
-
             let item = &state.items[new_index];
             if !state.collapsed_paths.contains(&item.relative_path) {
                 break;
             }
         }
 
-        if new_index != old_index {
-            state.selected_index = new_index;
-            state.preview_lines.clear();
-            state.preview_text.clear();
-            state.preview_spans.clear();
-            self.bump_revision();
-            true
-        } else {
-            false
-        }
+        state.selected_index = new_index;
+        state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
+        self.bump_revision();
+        true
     }
 
     pub fn references_select_prev(&mut self) -> bool {
@@ -798,31 +795,33 @@ impl AppState {
         };
 
         let old_index = state.selected_index;
+        let len = state.items.len();
+        if len == 0 {
+            return false;
+        }
+
         let mut new_index = old_index;
-
         loop {
-            if new_index > 0 {
-                new_index -= 1;
+            new_index = if new_index == 0 {
+                len - 1
             } else {
-                break;
+                new_index - 1
+            };
+            if new_index == old_index {
+                return false;
             }
-
             let item = &state.items[new_index];
             if !state.collapsed_paths.contains(&item.relative_path) {
                 break;
             }
         }
 
-        if new_index != old_index {
-            state.selected_index = new_index;
-            state.preview_lines.clear();
-            state.preview_text.clear();
-            state.preview_spans.clear();
-            self.bump_revision();
-            true
-        } else {
-            false
-        }
+        state.selected_index = new_index;
+        state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
+        self.bump_revision();
+        true
     }
 
     pub fn diagnostics_select_next(&mut self) -> bool {
