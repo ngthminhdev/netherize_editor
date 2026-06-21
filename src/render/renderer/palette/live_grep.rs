@@ -106,12 +106,17 @@ impl Renderer {
 
         let footer_h = palette_footer_height(line_h);
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
+
+        let group_header_h = line_h + 8.0;
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
         let scroll_offset = model
             .scroll_offset_rows
             .min(model.result_labels.len().saturating_sub(max_visible));
 
         let empty_str = String::new();
+        let mut current_file_path: Option<String> = None;
+        let mut is_collapsed = false;
+
         for (visible_idx, header) in model
             .result_labels
             .iter()
@@ -130,6 +135,52 @@ impl Renderer {
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
 
+            let file_path = header.split(':').next().unwrap_or(header);
+            let filename = std::path::Path::new(file_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(file_path);
+
+            let mut is_new_group = false;
+            if current_file_path.as_ref() != Some(&file_path.to_string()) {
+                is_new_group = true;
+                current_file_path = Some(file_path.to_string());
+                is_collapsed = model.collapsed_paths.contains(file_path);
+            }
+
+            if is_new_group {
+                let group_header_bg = model.panel_bg;
+                let group_header_bg = [
+                    group_header_bg[0] + 0.02,
+                    group_header_bg[1] + 0.02,
+                    group_header_bg[2] + 0.02,
+                    group_header_bg[3],
+                ];
+                quads.push(RegionDrawInstance::new(
+                    [panel_x, row_top, panel_w, group_header_h],
+                    group_header_bg,
+                ));
+
+                let arrow = if is_collapsed { "▸" } else { "▾" };
+                let group_label = format!("{} {}", arrow, filename);
+                let group_label_color = model.hint_color;
+                glyphs.extend(layout_panel_text(
+                    &group_label,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    text_x,
+                    row_top + 4.0,
+                    group_label_color,
+                ));
+
+                row_top += group_header_h;
+            }
+
+            if is_collapsed {
+                continue;
+            }
+
             if absolute_idx == model.selected_index {
                 render_palette_selection(model, &mut quads, row_top, row_h);
             }
@@ -142,11 +193,6 @@ impl Renderer {
                 ));
             }
 
-            let file_path = header.split(':').next().unwrap_or(header);
-            let filename = std::path::Path::new(file_path)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or(file_path);
             let file_icon = self.theme.icon_theme_for_filename(filename, false);
             let badge = file_icon.glyph.as_str();
             let badge_color = file_icon.color.as_f32();
