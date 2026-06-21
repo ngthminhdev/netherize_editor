@@ -326,6 +326,10 @@ pub struct Renderer {
     pub(super) canvas_text_pipeline: TextPipeline,
     pub(super) canvas_glyph_instances: Vec<GlyphInstance>,
     pub(super) canvas_chrome_instances: Vec<RegionDrawInstance>,
+    /// Optional accent-colored quad drawn on top of everything else to
+    /// highlight a hovered drag handle (dock splitter / card resize edge).
+    /// Set from the event loop via [`Renderer::set_pointer_hover_highlight`].
+    pub(super) pointer_hover_highlight: Option<RegionDrawInstance>,
     pub(super) canvas_icon_pipeline: IconPipeline,
     pub(super) canvas_icon_instances: Vec<IconDrawInstance>,
     pub(super) canvas_scissor: Option<[u32; 4]>,
@@ -450,6 +454,12 @@ impl Renderer {
 
     pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
         &self.last_editor_chrome_instances
+    }
+
+    /// Set (or clear) the pointer-hover highlight quad — a thin accent-colored
+    /// band drawn over a hovered drag handle. `None` clears it.
+    pub fn set_pointer_hover_highlight(&mut self, quad: Option<RegionDrawInstance>) {
+        self.pointer_hover_highlight = quad;
     }
 
     /// Tối ưu 3: Caret Blink — chỉ flip visibility của caret pipeline mà không

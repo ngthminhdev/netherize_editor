@@ -296,6 +296,7 @@ impl Renderer {
             canvas_text_pipeline,
             canvas_glyph_instances: Vec::new(),
             canvas_chrome_instances: Vec::new(),
+            pointer_hover_highlight: None,
             canvas_icon_pipeline,
             canvas_icon_instances: Vec::new(),
             canvas_scissor: None,

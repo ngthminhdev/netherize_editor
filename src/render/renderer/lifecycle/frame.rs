@@ -90,8 +90,13 @@ impl Renderer {
         let canvas_start = diag_hover_start + diag_hover_count;
         let canvas_count = self.canvas_chrome_instances.len() as u32;
 
+        // Pointer-hover handle highlight — drawn on top of EVERYTHING (incl.
+        // the canvas) so the accent band always sits above dock edges / cards.
+        let hover_start = canvas_start + canvas_count;
+        let hover_count = if self.pointer_hover_highlight.is_some() { 1u32 } else { 0u32 };
+
         // Build the flat merged Vec (immutable borrows all end here before upload).
-        let total = (canvas_start + canvas_count) as usize;
+        let total = (hover_start + hover_count) as usize;
         let mut all_instances: Vec<RegionDrawInstance> = Vec::with_capacity(total.max(64));
         all_instances.extend_from_slice(region_instances);
         all_instances.extend_from_slice(&self.editor_overlay_chrome_instances);
@@ -113,6 +118,9 @@ impl Renderer {
         all_instances.extend_from_slice(&self.toast_chrome_instances);
         all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
         all_instances.extend_from_slice(&self.canvas_chrome_instances);
+        if let Some(quad) = self.pointer_hover_highlight {
+            all_instances.push(quad);
+        }
 
         // Single upload — all borrows above are released.
         self.region_pipeline
@@ -967,6 +975,14 @@ impl Renderer {
                         self.canvas_text_pipeline.draw(render_pass);
                     },
                 );
+            }
+
+            // 14. Pointer-hover handle highlight — always on top, full-screen
+            // scissor so it can paint over dock edges and canvas cards alike.
+            if hover_count > 0 {
+                pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
+                self.region_pipeline
+                    .draw_range(&mut pass, hover_start, hover_count);
             }
         }
 

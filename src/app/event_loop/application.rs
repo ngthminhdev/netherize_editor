@@ -451,6 +451,104 @@ impl AppShell {
         self.active_drag.take().is_some()
     }
 
+    /// While not dragging, hit-test the cursor and update the OS cursor shape +
+    /// the stored hover target (used for the highlight in the renderer). Returns
+    /// whether the hover target changed (so the caller can redraw the highlight).
+    fn update_hover_affordance(&mut self, cursor: (f32, f32)) -> bool {
+        use crate::workbench::pointer_drag::{
+            resolve_press_target, splitter_hit_test, DragTarget, HoverTarget, PanelSide,
+            SPLITTER_BAND_PX,
+        };
+        use winit::window::CursorIcon;
+
+        let card_hit = if self.app_state.canvas_is_navigating() {
+            self.app_state.canvas().and_then(|c| {
+                crate::canvas::interaction::card_pointer_hit_test(&c.blocks, &c.camera, cursor)
+            })
+        } else {
+            None
+        };
+        let left = self
+            .panel_state
+            .left
+            .visible
+            .then(|| self.current_left_sidebar_bounds())
+            .flatten();
+        let right = self
+            .panel_state
+            .right
+            .visible
+            .then(|| self.current_right_sidebar_bounds())
+            .flatten();
+        let bottom = self
+            .panel_state
+            .bottom
+            .visible
+            .then(|| self.current_bottom_panel_bounds())
+            .flatten();
+        let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
+
+        let target = resolve_press_target(
+            self.app_state.canvas_is_navigating(),
+            card_hit,
+            splitter_hit,
+        );
+        let hover = target.map(|t| match t {
+            DragTarget::PanelEdge(side) => HoverTarget::PanelEdge(side),
+            DragTarget::CardMove(_) => HoverTarget::CardBody,
+            DragTarget::CardResize(_, zone) => HoverTarget::CardResize(zone),
+        });
+
+        let icon = match hover {
+            Some(HoverTarget::PanelEdge(PanelSide::Left | PanelSide::Right)) => {
+                CursorIcon::EwResize
+            }
+            Some(HoverTarget::PanelEdge(PanelSide::Bottom)) => CursorIcon::NsResize,
+            Some(HoverTarget::CardBody) => CursorIcon::Move,
+            Some(HoverTarget::CardResize(zone)) => match zone {
+                crate::canvas::interaction::CardZone::ResizeRight => CursorIcon::EwResize,
+                crate::canvas::interaction::CardZone::ResizeBottom => CursorIcon::NsResize,
+                crate::canvas::interaction::CardZone::ResizeCorner => CursorIcon::NwseResize,
+                crate::canvas::interaction::CardZone::Body => CursorIcon::Default,
+            },
+            None => CursorIcon::Default,
+        };
+        if let Some(w) = self.window.as_ref() {
+            w.set_cursor(icon);
+        }
+
+        // A thin accent rect over the hovered handle/edge, for the renderer.
+        let band = SPLITTER_BAND_PX;
+        let highlight: Option<RegionDrawInstance> = match hover {
+            Some(HoverTarget::PanelEdge(side)) => {
+                let mut color = self.theme.ui.cyan.as_f32();
+                color[3] = 0.45; // low-alpha accent
+                match side {
+                    PanelSide::Left => left.map(|[x, y, w, h]| {
+                        RegionDrawInstance::new([x + w - band, y, band * 2.0, h], color)
+                    }),
+                    PanelSide::Right => right.map(|[x, y, _w, h]| {
+                        RegionDrawInstance::new([x - band, y, band * 2.0, h], color)
+                    }),
+                    PanelSide::Bottom => bottom.map(|[x, y, w, _h]| {
+                        RegionDrawInstance::new([x, y - band, w, band * 2.0], color)
+                    }),
+                }
+            }
+            // Card resize handle highlights are drawn by the canvas renderer from
+            // `hover_target` + the focused card rect; keep panel-only here for
+            // simplicity.
+            _ => None,
+        };
+        if let Some(r) = self.renderer.as_mut() {
+            r.set_pointer_hover_highlight(highlight);
+        }
+
+        let changed = self.hover_target != hover;
+        self.hover_target = hover;
+        changed
+    }
+
     /// Bounds of the right-dock terminal *content* area — the region the agent
     /// PTY grid is actually rendered into, i.e. the sidebar minus the outline
     /// inset and the tab strip band on top. Mirrors the geometry used in the
@@ -1134,6 +1232,8 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     if self.update_pointer_drag(cursor) {
                         self.request_redraw();
                     }
+                } else if self.update_hover_affordance(cursor) {
+                    self.request_redraw();
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
