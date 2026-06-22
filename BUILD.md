@@ -121,12 +121,12 @@ All bundle scripts create ready-to-distribute packages:
 
 ```bash
 # macOS: Creates .app bundle + .zip
-./scripts/bundle_macos.sh v1.0.9-alpha
-# Output: target/Netherize-v1.0.9-alpha-macos.zip
+./scripts/bundle_macos.sh v1.1.0-alpha
+# Output: target/Netherize-v1.1.0-alpha-macos.zip
 
 # Linux: Creates tarball with install script
-./scripts/bundle_linux.sh v1.0.9-alpha
-# Output: dist/netherize-editor-v1.0.9-alpha-linux-x86_64.tar.gz
+./scripts/bundle_linux.sh v1.1.0-alpha
+# Output: dist/netherize-editor-v1.1.0-alpha-linux-x86_64.tar.gz
 
 # Windows: Creates folder with .exe + launcher
 ./scripts/bundle_windows.sh

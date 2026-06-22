@@ -82,6 +82,36 @@ impl Renderer {
         glyphs.extend(badge_glyphs);
         let header_text_y = row_top + ((badge_h - line_h) * 0.5).max(0.0);
 
+        // Search query input next to the title badge — the picker opens in Insert
+        // mode so typing filters immediately. Shows the dimmed placeholder hint
+        // until the user types (mirrors the file picker / live grep header).
+        let query_x = text_x + badge_w + 12.0;
+        let prefix_w = model.prompt_prefix.chars().count() as f32 * font_size * 0.60;
+        glyphs.extend(layout_panel_text(
+            &model.prompt_prefix,
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            query_x,
+            header_text_y,
+            model.hint_color,
+        ));
+        let query_typed = model.result_match_ranges.iter().any(|r| !r.is_empty());
+        let query_col = if query_typed {
+            model.text_color
+        } else {
+            model.hint_color
+        };
+        glyphs.extend(layout_panel_text(
+            &model.prompt_query,
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            query_x + prefix_w,
+            header_text_y,
+            query_col,
+        ));
+
         let count_text = if is_theme_selector && !model.result_labels.is_empty() {
             format!(
                 "{}/{}",
@@ -137,12 +167,17 @@ impl Renderer {
         } else {
             let mut col_header_color = model.hint_color;
             col_header_color[3] *= 0.7;
+            // Start the column header at the same x as the row names (after the
+            // project-icon slot) so the header lines up with the column below it,
+            // mirroring the right-aligned "LAST OPENED" header.
+            let header_badge_w = (row_h * 0.58).clamp(30.0, 42.0);
+            let name_col_x = text_x + header_badge_w + 14.0;
             glyphs.extend(layout_panel_text(
                 "RECENT PROJECTS",
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
-                text_x,
+                name_col_x,
                 row_top,
                 col_header_color,
             ));

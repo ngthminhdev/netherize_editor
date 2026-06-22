@@ -7,9 +7,11 @@ use crate::{
     },
 };
 
+use crate::{config::theme_config::linear_rgba_to_srgb_u8, text::text_system::StyledTextSpan};
+
 use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_text,
-    layout_panel_text_bold, rect_to_scissor,
+    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text,
+    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
 };
 
 impl Renderer {
@@ -22,53 +24,45 @@ impl Renderer {
         ranges: &[(usize, usize)],
         start_x: f32,
         y: f32,
-        font_size: f32,
+        _font_size: f32,
         model: &CommandPaletteRenderModel,
         text_system: &mut crate::text::text_system::TextSystem,
         atlas: &mut crate::text::atlas::GlyphAtlas,
         queue: &wgpu::Queue,
         glyphs: &mut Vec<GlyphInstance>,
     ) {
-        let mut seg_x = start_x;
-        let mut cursor = 0usize;
-        let mut segs: Vec<(&str, [f32; 4])> = Vec::new();
+        if label.is_empty() {
+            return;
+        }
 
+        // Highlight the fuzzy-match ranges by rendering the WHOLE label in one
+        // shaped pass (styled spans) rather than advancing x per-segment with a
+        // monospace width estimate. That estimate drifts for any font whose
+        // advance isn't exactly `font_size * 0.60` and drops kerning across
+        // segment boundaries — both of which made filtered palette results look
+        // jittery / misaligned. Shaping once keeps every glyph in its true
+        // position and the highlight colors land on the right characters.
+        let match_rgba = linear_rgba_to_srgb_u8(model.match_color);
+        let mut spans: Vec<StyledTextSpan> = Vec::new();
         for &(raw_start, raw_end) in ranges {
-            let Some((mut start, end)) = Self::sanitize_label_range(label, raw_start, raw_end)
-            else {
-                continue;
-            };
-            if end <= cursor {
-                continue;
+            if let Some((start, end)) = Self::sanitize_label_range(label, raw_start, raw_end) {
+                spans.push(StyledTextSpan::new(start, end, match_rgba));
             }
-            start = start.max(cursor);
-            if start > cursor {
-                segs.push((&label[cursor..start], model.label_color));
-            }
-            if end > start {
-                segs.push((&label[start..end], model.match_color));
-            }
-            cursor = end;
-        }
-        if cursor < label.len() {
-            segs.push((&label[cursor..], model.label_color));
-        }
-        if segs.is_empty() {
-            segs.push((label, model.label_color));
         }
 
-        for (seg_text, seg_color) in &segs {
-            glyphs.extend(layout_panel_text(
-                seg_text,
-                text_system,
-                atlas,
-                queue,
-                seg_x,
-                y,
-                *seg_color,
-            ));
-            seg_x += seg_text.chars().count() as f32 * font_size * 0.60;
-        }
+        // Single line: drop the wrap width so a long label never folds onto the
+        // next row (horizontal overflow is clipped by the palette scissor).
+        text_system.set_size(None, None);
+        glyphs.extend(layout_panel_rich_text(
+            label,
+            &spans,
+            model.label_color,
+            text_system,
+            atlas,
+            queue,
+            start_x,
+            y,
+        ));
     }
 
     pub(super) fn sanitize_label_range(

@@ -668,6 +668,7 @@ pub(super) fn handle_lsp_result(
                     } else {
                         None
                     },
+                    icon: None,
                     action: CommandPaletteAction::ApplyCodeAction(i),
                     tone: CommandPaletteItemTone::Default,
                     preview_colors: Vec::new(),

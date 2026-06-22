@@ -249,13 +249,20 @@ impl Renderer {
 
             let (label_text, label_ranges, label_x, label_y) =
                 if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols {
-                    let (badge, stripped_label) = split_symbol_badge(label);
+                    // The kind icon comes from the item's `icon` field (the label
+                    // is just the symbol name now, so every name shares a left
+                    // edge). Tint the monochrome symbol SVG with the kind tone.
+                    let badge = model
+                        .item_icons
+                        .get(absolute_idx)
+                        .and_then(|icon| icon.as_deref())
+                        .unwrap_or("built_in:identifier");
                     let badge_color = file_picker_tone_color(tone, model);
                     let badge_size = (row_h * 0.58).clamp(30.0, 42.0);
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
                     push_palette_icon_or_badge(
-                        &badge,
+                        badge,
                         badge_color,
                         model.panel_bg,
                         [badge_x, badge_y, badge_size, badge_size],
@@ -275,8 +282,8 @@ impl Renderer {
                         Some(line_h),
                     );
                     (
-                        stripped_label,
-                        shift_ranges_after_badge(label, ranges),
+                        label.clone(),
+                        ranges.clone(),
                         text_x + badge_size + 18.0,
                         row_top + (row_h - line_h) * 0.5,
                     )
@@ -334,6 +341,34 @@ impl Renderer {
                 &self.queue,
                 &mut glyphs,
             );
+
+            // Right-aligned dimmed metadata (symbol kind · line/col), drawn only
+            // when it fits clear of the name.
+            if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols
+                && let Some(secondary) = model
+                    .secondary_labels
+                    .get(absolute_idx)
+                    .filter(|s| !s.is_empty())
+            {
+                let label_w = estimate_monospace_width(&label_text, font_size);
+                let sec_w = estimate_monospace_width(secondary, font_size);
+                let sec_x = panel_x + panel_w - model.panel_padding - 8.0 - sec_w;
+                if sec_x > label_x + label_w + 16.0 {
+                    self.palette_text_system
+                        .set_size(Some(sec_w.max(1.0)), Some(line_h));
+                    glyphs.extend(layout_panel_text(
+                        secondary,
+                        &mut self.palette_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        sec_x,
+                        label_y,
+                        model.hint_color,
+                    ));
+                    self.palette_text_system
+                        .set_size(Some(inner_width), Some(line_h));
+                }
+            }
             row_top += row_h;
             rendered_rows += 1;
         }
@@ -408,37 +443,6 @@ impl Renderer {
     }
 
     // ── Name/path picker (Recent Projects + Theme Selector) ───────────────────
-}
-
-fn split_symbol_badge(label: &str) -> (String, String) {
-    let Some(rest) = label.strip_prefix('[') else {
-        return ("·".to_string(), label.to_string());
-    };
-    let Some(end) = rest.find(']') else {
-        return ("·".to_string(), label.to_string());
-    };
-
-    let badge = rest[..end].to_string();
-    let stripped = rest[end + 1..].trim_start().to_string();
-    (badge, stripped)
-}
-
-fn shift_ranges_after_badge(label: &str, ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
-    let offset = label
-        .strip_prefix('[')
-        .and_then(|rest| rest.find(']').map(|end| end + 2))
-        .unwrap_or(0);
-
-    ranges
-        .iter()
-        .filter_map(|(start, end)| {
-            if *end <= offset {
-                None
-            } else {
-                Some((start.saturating_sub(offset), end.saturating_sub(offset)))
-            }
-        })
-        .collect()
 }
 
 fn file_picker_tone_color(

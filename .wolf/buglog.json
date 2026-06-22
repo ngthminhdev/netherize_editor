@@ -4196,5 +4196,43 @@
       "follow-up",
       "regression"
     ]
+  },
+  {
+    "id": 235,
+    "timestamp": "2026-06-22T14:05:00+07:00",
+    "error_message": "Command-palette result lists (symbol picker, recent projects, etc.) render messily and not aligned in a straight column.",
+    "file": "src/app/command_palette.rs, src/render/renderer/palette/highlighted_label.rs, src/render/renderer/palette/minimal.rs, src/render/renderer/palette/recent_projects.rs, src/render/renderer/palette.rs",
+    "root_cause": "Two issues. (1) The symbol picker label was built as a single raw string format!(\"[{icon}] {name}  {kind}  Ln {n}\") where icon was a literal id like built_in:symbol-function; the renderer printed it verbatim, so the variable-length token pushed every symbol name to a different x — names never shared a left edge. (2) render_highlighted_label re-positioned each fuzzy-match segment using a monospace width estimate (chars * font_size * 0.60) instead of the real shaped advance, so highlighted/filtered results drifted and lost kerning across segment boundaries.",
+    "fix": "render_highlighted_label now renders the whole label in ONE shaped pass via styled spans (layout_panel_rich_text), so glyphs land in their true positions for any font. Added an icon: Option<String> field to CommandPaletteItem (and item_icons to the render model); document_symbol now sets label = bare name, carries the kind icon, and keeps kind/line in the right-aligned secondary. The minimalist renderer draws a tone-tinted kind SVG in a fixed-width slot and shifts the name to a shared column; the dispatcher no longer clears the minimalist icon set. Also aligned the recent-projects 'RECENT PROJECTS' column header with the name column.",
+    "tags": [
+      "command-palette",
+      "symbol-picker",
+      "recent-projects",
+      "renderer",
+      "alignment",
+      "highlighted-label",
+      "icons",
+      "ui-polish"
+    ]
+  },
+  {
+    "id": 236,
+    "timestamp": "2026-06-22T14:45:00+07:00",
+    "error_message": "After the symbol-picker label change: SVG kind icons disappeared (replaced by a tiny dot), the picker opened in Normal mode instead of Insert, and the Recent Projects picker showed no search input.",
+    "file": "src/render/renderer/palette/file_picker.rs, src/app/command_palette.rs, src/render/renderer/palette/recent_projects.rs, src/render/renderer/palette/minimal.rs, src/render/renderer/palette.rs",
+    "root_cause": "Three causes. (1) DocumentSymbols is a complex picker (is_complex_picker == true) so it is rendered by render_file_picker_complex, NOT the minimalist renderer — my earlier icon work went into the wrong file. file_picker extracted the icon by parsing the old [built_in:...] token out of the label via split_symbol_badge; after the label became the bare name, split_symbol_badge returned the fallback '·', which canonical_icon_id couldn't resolve, so push_palette_icon_or_badge drew a tiny text badge. (2) CommandPalette::open_with_items (used by symbol picker, recent projects, themes, env selectors, etc.) never reset vim_mode, so it inherited the stale mode from a previous open — open() resets to Insert but open_with_items did not. (3) render_recent_projects never rendered the prompt prefix/query, so the filter input was invisible.",
+    "fix": "file_picker DocumentSymbols branch now reads the icon from model.item_icons[idx] (tone-tinted SVG), renders the label (name) directly, and draws the kind/line secondary right-aligned; removed split_symbol_badge/shift_ranges_after_badge. open_with_items now resets vim_mode = Insert and pending_operator = None (added regression test). render_recent_projects draws prompt_prefix + query next to the title badge, and RecentProjects empty_hint changed to 'type to filter projects...'. Reverted the misdirected icon plumbing in minimal.rs and the dispatcher back to baseline (minimal palette never shows symbols).",
+    "tags": [
+      "command-palette",
+      "symbol-picker",
+      "recent-projects",
+      "file-picker",
+      "renderer",
+      "icons",
+      "vim-mode",
+      "complex-picker",
+      "follow-up",
+      "regression"
+    ]
   }
 ]

@@ -176,7 +176,7 @@ impl CommandPaletteMode {
             Self::ExplorerRenameFull | Self::ExplorerRenameBase => "enter a new file name...",
             Self::ExplorerPasteFile => "enter destination file name...",
             Self::BufferCloseConfirm => "Save changes before closing? (y/n)",
-            Self::RecentProjects => "no recent projects",
+            Self::RecentProjects => "type to filter projects...",
             Self::ThemeSelector => "type to filter themes...",
             Self::LspReferences => "no references found",
             Self::LspRename => "enter a new symbol name...",
@@ -281,6 +281,10 @@ pub enum CommandPaletteItemTone {
 pub struct CommandPaletteItem {
     pub label: String,
     pub secondary_label: Option<String>,
+    /// Optional built-in icon id (e.g. `built_in:symbol-function`) drawn in a
+    /// fixed-width slot before the label. Only the symbol picker sets this; other
+    /// pickers leave it `None` so their labels start flush at the row edge.
+    pub icon: Option<String>,
     pub action: CommandPaletteAction,
     pub tone: CommandPaletteItemTone,
     pub preview_colors: Vec<[f32; 4]>,
@@ -291,6 +295,7 @@ impl CommandPaletteItem {
         Self {
             label: relative_path,
             secondary_label: None,
+            icon: None,
             action: CommandPaletteAction::OpenFile(absolute_path),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -320,6 +325,7 @@ impl CommandPaletteItem {
         Self {
             label: name,
             secondary_label,
+            icon: None,
             action: CommandPaletteAction::OpenFile(path.to_path_buf()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -336,6 +342,7 @@ impl CommandPaletteItem {
         Self {
             label,
             secondary_label,
+            icon: None,
             action: CommandPaletteAction::OpenSearchMatch { path, line, column },
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -346,6 +353,7 @@ impl CommandPaletteItem {
         Self {
             label: label.to_string(),
             secondary_label: None,
+            icon: None,
             action: CommandPaletteAction::ExecuteCommand(id.to_string()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -359,6 +367,7 @@ impl CommandPaletteItem {
         Self {
             label: name.to_string(),
             secondary_label: Some(path.display().to_string()),
+            icon: None,
             action: CommandPaletteAction::SelectTheme(name.to_string()),
             tone: CommandPaletteItemTone::Default,
             preview_colors,
@@ -369,6 +378,7 @@ impl CommandPaletteItem {
         Self {
             label: name.to_string(),
             secondary_label: None,
+            icon: None,
             action: CommandPaletteAction::JumpToSymbol(name.to_string()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -380,8 +390,12 @@ impl CommandPaletteItem {
         let line = symbol.range.start.line + 1;
         let column = symbol.range.start.character + 1;
         Self {
-            label: format!("[{icon}] {}  {}  Ln {}", symbol.name, symbol.kind, line),
-            secondary_label: Some(format!("{}  Ln {}, Col {}", symbol.kind, line, column)),
+            // Label is JUST the name so every row shares a left edge; the kind
+            // icon is drawn in a fixed slot, and the kind/line live in the
+            // right-aligned secondary label.
+            label: symbol.name.clone(),
+            secondary_label: Some(format!("{}  ·  Ln {}, Col {}", symbol.kind, line, column)),
+            icon: Some(icon.to_string()),
             action: CommandPaletteAction::JumpToDocumentSymbol {
                 name: symbol.name.clone(),
                 line: symbol.range.start.line,
@@ -401,6 +415,7 @@ impl CommandPaletteItem {
         Self {
             label,
             secondary_label,
+            icon: None,
             action: CommandPaletteAction::SelectFileHistoryEntry(index),
             tone,
             preview_colors: Vec::new(),
@@ -411,6 +426,7 @@ impl CommandPaletteItem {
         Self {
             label: label.to_string(),
             secondary_label: Some(hint.to_string()),
+            icon: None,
             action: CommandPaletteAction::CreateLeetCodeFile(key.to_string()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -426,6 +442,7 @@ impl CommandPaletteItem {
         Self {
             label: label.to_string(),
             secondary_label: Some(hint.to_string()),
+            icon: None,
             action: CommandPaletteAction::FetchLeetCodeWithLanguage {
                 problem_input: problem_input.to_string(),
                 language_key: key.to_string(),
@@ -444,6 +461,7 @@ impl CommandPaletteItem {
                 trimmed.to_string()
             },
             secondary_label: None,
+            icon: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -501,6 +519,9 @@ pub struct CommandPaletteRenderModel {
     pub cyan_color: [f32; 4],
     pub amber_color: [f32; 4],
     pub item_tones: Vec<CommandPaletteItemTone>,
+    /// Optional built-in icon id per result (symbol picker only). `None` rows
+    /// draw no icon and keep their label flush at the row edge.
+    pub item_icons: Vec<Option<String>>,
     pub item_preview_colors: Vec<Vec<[f32; 4]>>,
     pub search_case_sensitive: bool,
     pub prompt_cursor_byte: usize,
@@ -584,6 +605,11 @@ impl CommandPalette {
         self.is_loading = false;
         self.cursor_byte = 0;
         self.selection_range = None;
+        // Every fresh open starts in Insert so the user can type to filter
+        // immediately (matches `open`). Without this the picker inherits the
+        // stale vim mode from a previous session and opens in Normal.
+        self.vim_mode = PaletteVimMode::Insert;
+        self.pending_operator = None;
         self.static_items = items.clone();
         self.results = items;
         self.results.len()
@@ -1291,6 +1317,7 @@ impl CommandPalette {
             cyan_color: theme.ui.cyan.as_f32(),
             amber_color: theme.ui.amber.as_f32(),
             item_tones: self.results.iter().map(|entry| entry.tone).collect(),
+            item_icons: self.results.iter().map(|entry| entry.icon.clone()).collect(),
             item_preview_colors: self
                 .results
                 .iter()
@@ -1463,6 +1490,7 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
         return vec![CommandPaletteItem {
             label: format!("Go to line {n}"),
             secondary_label: None,
+            icon: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -2182,9 +2210,16 @@ mod tests {
 
         palette.set_query("state", None);
         assert_eq!(palette.results.len(), 1);
+        // Label is the bare symbol name (so rows align); the kind icon and the
+        // kind/line metadata are carried separately.
+        assert_eq!(palette.results[0].label, "AppState");
         assert_eq!(
-            palette.results[0].label,
-            "[built_in:symbol-struct] AppState  Struct  Ln 21"
+            palette.results[0].icon.as_deref(),
+            Some("built_in:symbol-struct")
+        );
+        assert_eq!(
+            palette.results[0].secondary_label.as_deref(),
+            Some("Struct  ·  Ln 21, Col 1")
         );
     }
 
@@ -2207,9 +2242,11 @@ mod tests {
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);
+        assert_eq!(item.label, "build_picker");
+        assert_eq!(item.icon.as_deref(), Some("built_in:symbol-function"));
         assert_eq!(
-            item.label,
-            "[built_in:symbol-function] build_picker  Function  Ln 43"
+            item.secondary_label.as_deref(),
+            Some("Function  ·  Ln 43, Col 9")
         );
         assert_eq!(item.tone, CommandPaletteItemTone::Function);
         assert_eq!(
@@ -2220,6 +2257,19 @@ mod tests {
                 column: 8,
             }
         );
+    }
+
+    #[test]
+    fn open_with_items_resets_vim_mode_to_insert() {
+        let mut palette = CommandPalette::default();
+        // A previous session left the palette parked in Normal mode.
+        palette.vim_mode = PaletteVimMode::Normal;
+
+        palette.open_with_items(CommandPaletteMode::RecentProjects, Vec::new());
+
+        // Every fresh open must start in Insert so the user can type to filter.
+        assert_eq!(palette.vim_mode, PaletteVimMode::Insert);
+        assert_eq!(palette.pending_operator, None);
     }
 
     #[test]

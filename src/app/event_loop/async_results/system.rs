@@ -70,6 +70,7 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 .map(|env| crate::app::command_palette::CommandPaletteItem {
                     label: env.display_name,
                     secondary_label: Some(env.executable.display().to_string()),
+                    icon: None,
                     action: crate::app::command_palette::CommandPaletteAction::SelectPythonEnv(
                         env.executable,
                     ),
@@ -87,6 +88,7 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 .map(|env| crate::app::command_palette::CommandPaletteItem {
                     label: env.display_name,
                     secondary_label: Some(env.executable.display().to_string()),
+                    icon: None,
                     action: crate::app::command_palette::CommandPaletteAction::SelectDartEnv(
                         env.executable,
                     ),

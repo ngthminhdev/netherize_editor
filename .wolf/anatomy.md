@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-22T06:18:30.452Z
-> Files: 464 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-22T08:11:25.287Z
+> Files: 465 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -12,6 +12,10 @@
 ## ../../.claude/
 
 - `CLAUDE.md` — Git commits — HUMAN ONLY (~815 tok)
+
+## ../../.claude/plans/
+
+- `mellow-petting-planet.md` — Plan: All canvas cards use scope-aware rendering (~1181 tok)
 
 ## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
 
@@ -399,7 +403,7 @@
 - `ai_agents.rs` — AI agent CLIs that can be launched inside the right-dock terminal. (~635 tok)
 - `async_bridge.rs` — BridgePumpStats: new, pump (~3855 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — VimLineView: prompt_prefix, empty_hint, title, is_complex_picker (~24154 tok)
+- `command_palette.rs` — VimLineView: prompt_prefix, empty_hint, title, is_complex_picker (~25085 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
@@ -452,13 +456,13 @@
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` — Declares fetch (~14342 tok)
+- `lsp.rs` — Declares fetch (~14351 tok)
 - `mod.rs` (~9380 tok)
 - `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~421 tok)
-- `system.rs` (~1894 tok)
+- `system.rs` (~1911 tok)
 - `terminal.rs` (~2964 tok)
 
 ## src/app/input/
@@ -622,12 +626,12 @@
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~3833 tok)
-- `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
+- `file_picker.rs` (~4722 tok)
+- `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~848 tok)
 - `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1951 tok)
 - `live_grep.rs` — Declares to (~2616 tok)
-- `minimal.rs` (~5379 tok)
-- `recent_projects.rs` (~5250 tok)
+- `minimal.rs` (~5586 tok)
+- `recent_projects.rs` (~5763 tok)
 
 ## src/render/renderer/ui/
 
