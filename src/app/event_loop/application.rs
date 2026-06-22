@@ -8,6 +8,10 @@ use winit::{
 
 const FOCUS_RING_THICKNESS: f32 = 1.0;
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
+/// Scroll-target moves smaller than this (in lines) snap instantly instead of
+/// animating — so single-line `j`/`k` cursor-follow never lags behind a held key.
+/// Anything larger (half-page, jumps) gets the smooth ease-out tween.
+const SCROLL_SNAP_THRESHOLD_LINES: f32 = 1.5;
 /// Delay before the which-key overlay appears for a pending chord — long
 /// enough that fast chords never flash it, short enough to help a stuck user.
 const WHICHKEY_DELAY: Duration = Duration::from_millis(300);
@@ -292,7 +296,7 @@ impl AppShell {
         visible_region_bounds(&flat_regions, RegionId::RightSidebar)
     }
 
-    fn current_bottom_panel_bounds(&self) -> Option<[f32; 4]> {
+    pub(super) fn current_bottom_panel_bounds(&self) -> Option<[f32; 4]> {
         let layout = self
             .layout_engine
             .compute(self.window_size, &self.panel_state);
@@ -703,7 +707,7 @@ impl AppShell {
     /// keyboard focus to the clicked region. A click in the center editor pane
     /// (canvas active, not on a card) returns to the main editor, leaving any
     /// in-card edit. Show/hide of the canvas stays F8's job.
-    fn handle_click_focus(&mut self) -> bool {
+    pub(super) fn handle_click_focus(&mut self) -> bool {
         use crate::workbench::region_model::RegionId;
         let Some((x, y)) = self.last_cursor_position else {
             return false;
@@ -724,7 +728,40 @@ impl AppShell {
             self.editor_needs_layout = true;
             self.sidebar_needs_layout = true;
         }
+        // Reconcile the editor mode with the focused panel: clicking onto a panel
+        // that hosts a live terminal must enter TerminalFocus so keystrokes route to
+        // the PTY. This runs even when `changed` is false — the focus may already be
+        // on the terminal while the mode has drifted back to Normal (e.g. after an
+        // overlay/palette closed), in which case the click previously did nothing and
+        // the user was stuck unable to type (recurrence of bug-008). Covers the
+        // bottom dock, a center buffer-terminal, and the right-dock agent terminal —
+        // mirrors the terminal-release guard in `redraw()`.
+        if self.focused_target_hosts_terminal()
+            && !matches!(
+                self.app_state.current_mode(),
+                EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            )
+        {
+            let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+            return true;
+        }
         changed
+    }
+
+    /// True when the currently-focused panel hosts a live terminal the keyboard
+    /// should drive. Mirrors the terminal-release guard in [`redraw`] so the click
+    /// path and the redraw path agree on what counts as "on a terminal".
+    fn focused_target_hosts_terminal(&self) -> bool {
+        match self.focus_manager.current() {
+            FocusTarget::BottomPanel => !self.terminal_tabs.is_empty(),
+            FocusTarget::RightSidebar => {
+                let tab = self.panel_state.right.active_tab_id();
+                matches!(tab, Some(PanelTabId::AiChat) | Some(PanelTabId::Terminal))
+                    && (self.right_pty_session_id.is_some() || self.pending_right_pty_spawn)
+            }
+            FocusTarget::CenterEditor => self.app_state.active_buffer_is_terminal(),
+            _ => false,
+        }
     }
 
     fn handle_right_terminal_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
@@ -1456,7 +1493,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.maybe_refresh_workspace_git_status() {
             self.request_redraw();
         }
-        if self.tick_smooth_scroll_animation() {
+        // Keep requesting frames while a scroll tween is live, or when a command
+        // just moved the scroll target (a fresh tween starts on the next redraw).
+        // The tween is sampled in `redraw()` at render time, not here.
+        if self.scroll_anim_started_at.is_some()
+            || (self.app_state.target_scroll_y - self.scroll_anim_last_target).abs() > f32::EPSILON
+        {
             self.request_redraw();
         }
         if self.tick_panel_animation() {
@@ -1604,6 +1646,14 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 None => next_frame,
             });
         }
+        // Same ~120 Hz cadence while a smooth-scroll tween is easing the viewport.
+        if self.scroll_anim_started_at.is_some() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(next_frame),
+                None => next_frame,
+            });
+        }
 
         if let Some(deadline) = next_deadline {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
@@ -1658,18 +1708,68 @@ impl AppShell {
         }
     }
 
-    fn tick_smooth_scroll_animation(&mut self) -> bool {
-        // Global kill-switch: disable smooth scroll and always snap to target.
-        self.last_scroll_animation_tick = Instant::now();
+    /// Sample the smooth-scroll tween into `current_scroll_y`, **at render time**.
+    ///
+    /// Called from `redraw()` with the same fresh `now` used to sample the panel
+    /// slide, so the presented scroll position has minimal, consistent latency
+    /// (sampling in `about_to_wait` instead made it stale by a full
+    /// `WaitUntil + vsync` cycle and irregular → judder).
+    ///
+    /// A command that changes `target_scroll_y` retargets a fresh fixed-duration
+    /// ease-out tween from the current position; tiny targets (single-line `j`/`k`
+    /// follow) snap instantly so holding a key never lags. Huge jumps are clamped
+    /// (`clamp_scroll_start`) so they animate only the last screenful. The renderer
+    /// consumes the fractional `current_scroll_y` as a sub-line pixel offset.
+    /// Returns `true` when it changed `current_scroll_y` (→ relayout the editor).
+    fn advance_scroll_anim(&mut self, now: Instant) -> bool {
+        use crate::workbench::motion::{clamp_scroll_start, ease_scroll, EaseCurve};
+
+        self.last_scroll_animation_tick = now;
+
         let target = self.app_state.target_scroll_y;
         let current = self.app_state.current_scroll_y;
-        if (target - current).abs() > f32::EPSILON {
-            self.app_state.current_scroll_y = target;
-            self.editor_needs_layout = true;
-            true
-        } else {
-            false
+        let smooth = self.ui_config.editor.smooth_scroll_enabled;
+        let duration =
+            Duration::from_millis(self.ui_config.editor.smooth_scroll_duration_ms as u64);
+
+        // A command moved the scroll target since we last looked: animate vs snap.
+        if (target - self.scroll_anim_last_target).abs() > f32::EPSILON {
+            self.scroll_anim_last_target = target;
+            let delta = target - current;
+            if !smooth || duration.is_zero() || delta.abs() < SCROLL_SNAP_THRESHOLD_LINES {
+                // Tiny cursor follow or smooth disabled → snap instantly.
+                self.scroll_anim_started_at = None;
+                if (current - target).abs() > f32::EPSILON {
+                    self.app_state.current_scroll_y = target;
+                    return true;
+                }
+                return false;
+            }
+            // Far-jump clamp: teleport everything beyond one screenful so the
+            // animation always finishes in `duration` instead of crawling.
+            let max = self.editor_viewport_lines().max(1) as f32;
+            self.scroll_anim_start = clamp_scroll_start(current, target, max);
+            self.scroll_anim_started_at = Some(now);
+            // Fall through to sample this same frame at t=0 (== start).
         }
+
+        let Some(started_at) = self.scroll_anim_started_at else {
+            return false;
+        };
+        let (value, done) = ease_scroll(
+            self.scroll_anim_start,
+            target,
+            started_at,
+            now,
+            duration,
+            EaseCurve::EaseOutCubic,
+        );
+        if done {
+            self.scroll_anim_started_at = None;
+        }
+        let changed = (self.app_state.current_scroll_y - value).abs() > f32::EPSILON;
+        self.app_state.current_scroll_y = value;
+        changed
     }
 
     /// Advance the workbench layout slide (dock toggle / zen). While active,
@@ -1904,6 +2004,12 @@ impl AppShell {
         let got_new_data = self.pump_bridge();
         self.update_frame_metrics_snapshot(Instant::now());
         let now = Instant::now();
+        // Sample the smooth-scroll tween here (render time) — same `now` the panel
+        // slide uses — so the presented scroll position is fresh, not stale from
+        // an earlier `about_to_wait` tick.
+        if self.advance_scroll_anim(now) {
+            self.editor_needs_layout = true;
+        }
         let layout = self.current_render_layout(now);
         if self.panel_transition.is_none() {
             self.last_committed_layout = Some(layout.clone());

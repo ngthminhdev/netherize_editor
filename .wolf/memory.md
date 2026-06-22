@@ -3455,3 +3455,82 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+| 15:14 | Edited src/app/event_loop/async_results/canvas_scope.rs | expanded (+9 lines) | ~52 |
+| 15:14 | Edited src/app/event_loop/async_results/canvas_scope.rs | modified no_definition_kind_enclosing_returns_none() | ~214 |
+| 15:15 | Session end: 2 writes across 1 files (canvas_scope.rs) | 1 reads | ~1245 tok |
+| 15:15 | Edited src/app/app_state/canvas.rs | modified instead() | ~255 |
+| 15:16 | Edited src/app/event_loop/commands_canvas.rs | modified scope() | ~142 |
+| 15:17 | Edited src/app/event_loop/commands_canvas.rs | modified apply_focal_scope_if_cached() | ~441 |
+| 15:17 | Edited src/app/event_loop/async_results/lsp.rs | modified take() | ~500 |
+| 15:18 | Edited src/app/app_state/canvas.rs | modified canvas_add_relations_with_parent() | ~54 |
+| 15:19 | Edited src/app/app_state/canvas.rs | inline fix | ~19 |
+| 15:20 | Edited src/app/app_state/canvas.rs | 11→11 lines | ~85 |
+| 15:20 | Edited src/app/app_state/canvas.rs | modified is_some() | ~143 |
+| 15:20 | Edited src/app/app_state/canvas.rs | modified canvas_add_relations() | ~87 |
+| 15:21 | Edited src/app/app_state/canvas.rs | 4→4 lines | ~46 |
+| 15:21 | Edited src/app/event_loop/async_results/lsp.rs | expanded (+6 lines) | ~313 |
+| 15:22 | Edited src/app/event_loop/async_results/lsp.rs | 26→27 lines | ~311 |
+| 15:23 | Edited src/app/event_loop/async_results/mod.rs | 2→3 lines | ~38 |
+| 15:23 | Edited src/app/event_loop/commands_canvas.rs | inline fix | ~19 |
+| 15:23 | Session end: 16 writes across 5 files (canvas_scope.rs, canvas.rs, commands_canvas.rs, lsp.rs, mod.rs) | 9 reads | ~126129 tok |
+| 15:24 | Edited src/app/app_state/canvas.rs | 4→4 lines | ~48 |
+| 15:28 | Session end: 17 writes across 5 files (canvas_scope.rs, canvas.rs, commands_canvas.rs, lsp.rs, mod.rs) | 9 reads | ~126181 tok |
+| 15:33 | Created docs/superpowers/specs/2026-06-22-smooth-scroll-design.md | — | ~1496 |
+| 15:34 | Edited src/workbench/motion.rs | modified lerp() | ~378 |
+| 15:34 | Edited src/workbench/motion.rs | modified ease_scroll_endpoints_and_done() | ~583 |
+| 15:35 | Edited src/config/ui_config.rs | 4→6 lines | ~63 |
+| 15:35 | Edited src/config/ui_config.rs | 4→5 lines | ~55 |
+| 15:35 | Edited src/config/ui_config.rs | 8→12 lines | ~144 |
+| 15:35 | Edited src/config/ui_config.rs | 4→5 lines | ~47 |
+| 15:35 | Edited src/app/event_loop/mod.rs | expanded (+9 lines) | ~175 |
+| 15:35 | Edited src/app/event_loop/setup.rs | 2→5 lines | ~56 |
+| 15:36 | Edited src/app/event_loop/application.rs | added 1 condition(s) | ~796 |
+| 15:37 | Edited src/app/event_loop/application.rs | 2→6 lines | ~96 |
+| 15:37 | Edited src/app/app_state/editor.rs | modified scroll_half_page_up() | ~97 |
+| 15:37 | Edited src/app/app_state/editor.rs | 5→5 lines | ~88 |
+| 15:37 | Edited src/app/event_loop/application.rs | modified is_some() | ~199 |
+| 15:43 | Session end: 31 writes across 11 files (canvas_scope.rs, canvas.rs, commands_canvas.rs, lsp.rs, mod.rs) | 16 reads | ~256737 tok |
+
+## Session: 2026-06-22 20:07
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 20:10 | Edited src/app/event_loop/application.rs | modified is_empty() | ~171 |
+| 20:10 | Edited src/app/event_loop/application.rs | inline fix | ~19 |
+| 20:12 | Edited src/app/event_loop/application.rs | modified advance_scroll_anim() | ~811 |
+| 20:12 | Edited src/app/event_loop/application.rs | modified advance_scroll_anim() | ~134 |
+| 20:12 | Edited src/app/event_loop/application.rs | 3→8 lines | ~118 |
+| 20:13 | Edited src/render/renderer/lifecycle/frame.rs | modified render() | ~306 |
+| 20:13 | Edited src/render/renderer/lifecycle/frame.rs | "[Renderer] slow frame: {:" → "[Renderer] slow frame: {:" | ~36 |
+| 20:14 | Session end: 7 writes across 2 files (application.rs, frame.rs) | 3 reads | ~56879 tok |
+| 20:16 | Session end: 7 writes across 2 files (application.rs, frame.rs) | 4 reads | ~56879 tok |
+| 20:36 | Edited src/app/event_loop/async_results/canvas_scope.rs | modified line_outside_all_symbols_returns_none() | ~384 |
+| 20:36 | Edited src/app/event_loop/async_results/lsp.rs | 11→14 lines | ~246 |
+| 20:39 | Session end: 9 writes across 4 files (application.rs, frame.rs, canvas_scope.rs, lsp.rs) | 6 reads | ~73458 tok |
+| 20:46 | Edited src/app/event_loop/application.rs | modified focused_target_hosts_terminal() | ~557 |
+| 20:46 | Edited src/app/event_loop/commands_tests.rs | modified clicking_focused_bottom_terminal_restores_terminal_mode_after_drift() | ~513 |
+| 20:47 | Edited src/app/event_loop/application.rs | modified handle_click_focus() | ~30 |
+| 20:47 | Edited src/app/event_loop/application.rs | inline fix | ~20 |
+| 20:47 | Edited src/app/event_loop/commands_tests.rs | 3→3 lines | ~58 |
+| 20:49 | Edited src/app/event_loop/commands_tests.rs | modified is_empty() | ~295 |
+| 20:52 | Session end: 15 writes across 5 files (application.rs, frame.rs, canvas_scope.rs, lsp.rs, commands_tests.rs) | 9 reads | ~134793 tok |
+
+## Session: 2026-06-22 21:05
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:16 | Created docs/superpowers/specs/2026-06-22-explorer-halfpage-and-dim-hidden-design.md | — | ~1759 |
+| 21:16 | Session end: 1 writes across 1 files (2026-06-22-explorer-halfpage-and-dim-hidden-design.md) | 6 reads | ~104847 tok |
+| 21:19 | Created docs/superpowers/plans/2026-06-22-explorer-halfpage-and-dim-hidden.md | — | ~2168 |
+| 21:20 | Edited src/render/renderer.rs | 4→6 lines | ~53 |
+| 21:20 | Edited src/app/event_loop/helpers.rs | 5→6 lines | ~36 |
+| 21:20 | Edited src/app/event_loop/helpers.rs | 4→5 lines | ~36 |
+| 21:21 | Edited src/render/renderer/ui/sidebar.rs | 1→2 lines | ~42 |
+| 21:21 | Edited src/core/commands.rs | 3→5 lines | ~33 |
+| 21:21 | Edited src/core/command_ids.rs | 2→4 lines | ~71 |
+| 21:21 | Edited src/core/command_ids.rs | 2→4 lines | ~75 |
+| 21:21 | Edited src/core/command_dispatch/mod.rs | 3→5 lines | ~52 |
+| 21:23 | Edited src/app/resolved_keymap.rs | expanded (+10 lines) | ~104 |
+| 21:23 | Edited src/app/event_loop/commands_explorer.rs | modified explorer_page_rows() | ~436 |
+| 21:23 | Edited src/app/event_loop/commands_explorer.rs | expanded (+8 lines) | ~150 |
+| 21:27 | Session end: 13 writes across 10 files (2026-06-22-explorer-halfpage-and-dim-hidden-design.md, 2026-06-22-explorer-halfpage-and-dim-hidden.md, renderer.rs, helpers.rs, sidebar.rs) | 12 reads | ~167683 tok |

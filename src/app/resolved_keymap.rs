@@ -1070,6 +1070,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("explorer"), ph(KeyCode::KeyK), EXPLORER_MOVE_UP);
     km.insert(
         Some("explorer"),
+        KeySpec::CtrlPlus(KeyCode::KeyD),
+        EXPLORER_HALF_PAGE_DOWN,
+    );
+    km.insert(
+        Some("explorer"),
+        KeySpec::CtrlPlus(KeyCode::KeyU),
+        EXPLORER_HALF_PAGE_UP,
+    );
+    km.insert(
+        Some("explorer"),
         nk(NamedKey::ArrowLeft),
         EXPLORER_COLLAPSE_NODE,
     );

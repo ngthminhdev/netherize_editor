@@ -10,7 +10,10 @@ const FRAME_TIME_WARN_THRESHOLD: Duration = Duration::from_millis(8);
 
 impl Renderer {
     pub fn render(&mut self, region_instances: &[RegionDrawInstance]) -> Result<(), RenderError> {
-        let frame_started_at = Instant::now();
+        // NOTE: `get_current_texture()` BLOCKS on the Fifo (vsync) swapchain until a
+        // backbuffer is free, so timing the frame from before it conflates the
+        // vsync wait with real work (the warning then fires every frame at 120 Hz).
+        // Start the clock AFTER acquisition so the warning measures CPU encode cost.
         let frame = match self.surface_state.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture) => texture,
             wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
@@ -20,6 +23,7 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::Lost),
             wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::Validation),
         };
+        let frame_started_at = Instant::now();
 
         // ── Tối ưu 1: Instance Batching ─────────────────────────────────────────
         // Gom TẤT CẢ region quads (base panels + mọi overlay layer) vào 1 Vec
@@ -997,7 +1001,7 @@ impl Renderer {
         let frame_time = frame_started_at.elapsed();
         if frame_time > FRAME_TIME_WARN_THRESHOLD {
             eprintln!(
-                "[Renderer] slow frame: {:.2}ms before present (target <= 8.00ms for 120FPS, regions={}, size={}x{})",
+                "[Renderer] slow frame: {:.2}ms CPU encode (excl. vsync wait; target <= 8.00ms for 120FPS, regions={}, size={}x{})",
                 frame_time.as_secs_f64() * 1_000.0,
                 region_instances.len(),
                 self.surface_state.config.width,

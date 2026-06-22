@@ -107,6 +107,8 @@ pub struct EditorUiConfig {
     pub smooth_scroll_enabled: bool,
     pub smooth_scroll_lerp_rate: f32,
     pub smooth_scroll_snap_epsilon: f32,
+    /// Duration of the fixed-length ease-out scroll tween, in milliseconds.
+    pub smooth_scroll_duration_ms: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -279,6 +281,7 @@ impl UiConfig {
                 smooth_scroll_enabled: true,
                 smooth_scroll_lerp_rate: 18.0,
                 smooth_scroll_snap_epsilon: 0.01,
+                smooth_scroll_duration_ms: 200,
             },
             welcome: WelcomeUiConfig {
                 version: crate::APP_VERSION.to_string(),
@@ -567,6 +570,10 @@ impl UiConfig {
                         .smooth_scroll_snap_epsilon
                         .unwrap_or(fallback.editor.smooth_scroll_snap_epsilon),
                 )?,
+                smooth_scroll_duration_ms: raw
+                    .editor
+                    .smooth_scroll_duration_ms
+                    .unwrap_or(fallback.editor.smooth_scroll_duration_ms),
             },
             welcome: WelcomeUiConfig {
                 version: raw
@@ -905,6 +912,7 @@ struct RawEditorSection {
     smooth_scroll_enabled: Option<bool>,
     smooth_scroll_lerp_rate: Option<f32>,
     smooth_scroll_snap_epsilon: Option<f32>,
+    smooth_scroll_duration_ms: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]

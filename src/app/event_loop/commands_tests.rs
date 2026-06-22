@@ -987,6 +987,51 @@ fn focus_terminal_focuses_open_panel_from_editor_without_closing_it() {
 }
 
 #[test]
+fn clicking_focused_bottom_terminal_restores_terminal_mode_after_drift() {
+    // Regression for bug-008 recurrence: the terminal already HAS focus
+    // (BottomPanel) but the editor mode has drifted back to Normal (e.g. after an
+    // overlay/palette closed). Clicking the terminal body must restore
+    // TerminalFocus so the user can type. Previously the mode-set was gated behind
+    // a focus *change*, so a click that didn't move focus left the mode stuck at
+    // Normal and keystrokes never reached the PTY.
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // Open the bottom dock with a terminal tab, but stay in the editor (Normal).
+    assert!(shell.handle_command(Command::ToggleBottomDock));
+    assert!(shell.panel_state.bottom.visible);
+    if shell.terminal_tabs.is_empty() {
+        shell.handle_command(Command::TerminalTabNew);
+    }
+    assert!(!shell.terminal_tabs.is_empty());
+
+    // Focus lands on the bottom terminal WITHOUT entering terminal mode — the stuck
+    // state the user hits (e.g. Tab-cycling focus onto the panel): BottomPanel +
+    // Normal. The state machine has no TerminalFocus←EnterNormal edge, so this is
+    // how the drift is reached, not by EnterNormal from TerminalFocus.
+    shell.focus_manager.set(FocusTarget::BottomPanel);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    // Click inside the bottom terminal body (focus does NOT change).
+    let bounds = shell
+        .current_bottom_panel_bounds()
+        .expect("bottom panel bounds");
+    shell.last_cursor_position =
+        Some((bounds[0] + bounds[2] * 0.5, bounds[1] + bounds[3] * 0.75));
+    shell.handle_click_focus();
+
+    assert_eq!(
+        shell.focus_manager.current(),
+        FocusTarget::BottomPanel,
+        "focus stays on the terminal"
+    );
+    assert_eq!(
+        shell.app_state.current_mode(),
+        EditorMode::TerminalFocus,
+        "clicking the focused terminal restores TerminalFocus even without a focus change"
+    );
+}
+
+#[test]
 fn focus_terminal_closes_panel_when_terminal_already_has_focus() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     assert!(shell.handle_command(Command::FocusTerminal));

@@ -325,6 +325,15 @@ pub struct AppShell {
     git_status_revision: u64,
     git_baseline_revision: u64,
     last_scroll_animation_tick: Instant,
+    /// Smooth-scroll tween bookkeeping. `scroll_anim_started_at` is `Some` while a
+    /// scroll animation is running; `scroll_anim_start` is the position it began
+    /// from (after the far-jump clamp); `scroll_anim_last_target` is the target the
+    /// tick last reacted to, so a command changing `target_scroll_y` retargets a
+    /// fresh tween. Kept on `AppShell` (not `AppState`) so buffer snapshots and the
+    /// canvas edit-session swap are untouched.
+    scroll_anim_started_at: Option<Instant>,
+    scroll_anim_start: f32,
+    scroll_anim_last_target: f32,
     last_git_branch_refresh_at: Instant,
     last_workspace_git_status_refresh_at: Instant,
     last_lsp_loading_animation_tick: Instant,

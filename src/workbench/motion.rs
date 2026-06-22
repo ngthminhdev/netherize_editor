@@ -40,6 +40,43 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
+/// Clamp the *start* of a scroll tween so a very large jump never crawls: the
+/// animation begins at most `max` units away from `target`, teleporting the far
+/// part instantly and easing only the last `max` units (Neovide "far-lines").
+/// `max <= 0` disables the clamp (the full distance animates).
+#[inline]
+pub fn clamp_scroll_start(current: f32, target: f32, max: f32) -> f32 {
+    if max <= 0.0 {
+        return current;
+    }
+    target + (current - target).clamp(-max, max)
+}
+
+/// Sample a fixed-duration ease-out scroll tween. Returns `(value, done)` where
+/// `value` is the eased position between `start` and `target` and `done` is true
+/// once the duration has fully elapsed (then `value == target`). Time-based, so
+/// the motion is identical regardless of frame cadence. A zero `duration` snaps
+/// to `target` immediately.
+pub fn ease_scroll(
+    start: f32,
+    target: f32,
+    started_at: Instant,
+    now: Instant,
+    duration: Duration,
+    curve: EaseCurve,
+) -> (f32, bool) {
+    if duration.is_zero() {
+        return (target, true);
+    }
+    let elapsed = now.saturating_duration_since(started_at).as_secs_f32();
+    let t = (elapsed / duration.as_secs_f32()).clamp(0.0, 1.0);
+    if t >= 1.0 {
+        return (target, true);
+    }
+    let eased = curve.apply(t);
+    (start + (target - start) * eased, false)
+}
+
 pub fn lerp_bounds(a: RegionBounds, b: RegionBounds, t: f32) -> RegionBounds {
     RegionBounds::new(
         lerp(a.x, b.x, t),
@@ -311,6 +348,60 @@ mod tests {
         assert!((end.height_factor - 1.0).abs() < 1e-6);
         assert!((end.content_alpha - 1.0).abs() < 1e-6);
         assert!((end.scrim_alpha - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ease_scroll_endpoints_and_done() {
+        let t0 = Instant::now();
+        let dur = Duration::from_millis(140);
+        // t=0 → exactly start, not done.
+        let (v0, d0) = ease_scroll(10.0, 50.0, t0, t0, dur, EaseCurve::EaseOutCubic);
+        assert!((v0 - 10.0).abs() < 1e-4);
+        assert!(!d0);
+        // t≥duration → snapped to target, done.
+        let (v1, d1) = ease_scroll(10.0, 50.0, t0, t0 + dur, dur, EaseCurve::EaseOutCubic);
+        assert!((v1 - 50.0).abs() < 1e-4);
+        assert!(d1);
+        // Past the end stays done at target.
+        let (v2, d2) =
+            ease_scroll(10.0, 50.0, t0, t0 + dur * 2, dur, EaseCurve::EaseOutCubic);
+        assert!((v2 - 50.0).abs() < 1e-4);
+        assert!(d2);
+    }
+
+    #[test]
+    fn ease_scroll_is_monotonic_ease_out() {
+        let t0 = Instant::now();
+        let dur = Duration::from_millis(100);
+        let sample = |ms: u64| ease_scroll(0.0, 100.0, t0, t0 + Duration::from_millis(ms), dur, EaseCurve::EaseOutCubic).0;
+        let a = sample(10);
+        let b = sample(50);
+        let c = sample(90);
+        // Strictly increasing toward target…
+        assert!(a < b && b < c && c < 100.0);
+        // …and front-loaded (ease-out): more than half the distance covered by the
+        // midpoint.
+        assert!(b > 50.0);
+    }
+
+    #[test]
+    fn ease_scroll_zero_duration_snaps() {
+        let t0 = Instant::now();
+        let (v, done) = ease_scroll(0.0, 99.0, t0, t0, Duration::ZERO, EaseCurve::EaseOutCubic);
+        assert_eq!(v, 99.0);
+        assert!(done);
+    }
+
+    #[test]
+    fn clamp_scroll_start_far_jump_and_passthrough() {
+        // Huge downward jump: start is pulled to within `max` above the target.
+        assert_eq!(clamp_scroll_start(0.0, 1000.0, 50.0), 950.0);
+        // Huge upward jump: within `max` below the target.
+        assert_eq!(clamp_scroll_start(1000.0, 0.0, 50.0), 50.0);
+        // Small jump within `max` is untouched.
+        assert_eq!(clamp_scroll_start(40.0, 50.0, 50.0), 40.0);
+        // max <= 0 disables the clamp.
+        assert_eq!(clamp_scroll_start(0.0, 1000.0, 0.0), 0.0);
     }
 
     #[test]

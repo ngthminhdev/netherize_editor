@@ -413,6 +413,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExplorerToggleGitChangesOnly
         | Command::ExplorerMoveToTop
         | Command::ExplorerMoveToBottom
+        | Command::ExplorerHalfPageDown
+        | Command::ExplorerHalfPageUp
         | Command::ExplorerRenameFull
         | Command::ExplorerRenameBase
         | Command::ExplorerCopyFile

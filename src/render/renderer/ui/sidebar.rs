@@ -151,7 +151,8 @@ impl Renderer {
                 + self.sidebar_base_padding
                 + row.depth as f32 * self.sidebar_indent_per_depth;
 
-            let label_base_color = row.git_color.unwrap_or(fg_dim);
+            let base_label_color = if row.is_dim { fg_ghost } else { fg_dim };
+            let label_base_color = row.git_color.unwrap_or(base_label_color);
             let label_color = if row.is_selected {
                 selection_quads.push(
                     RegionDrawInstance::new(
@@ -430,7 +431,8 @@ impl Renderer {
                     + self.sidebar_base_padding
                     + row.depth as f32 * self.sidebar_indent_per_depth;
 
-                let label_base_color = row.git_color.unwrap_or(fg_dim);
+                let base_label_color = if row.is_dim { fg_ghost } else { fg_dim };
+            let label_base_color = row.git_color.unwrap_or(base_label_color);
                 let label_color = if row.is_selected {
                     chrome.push(
                         RegionDrawInstance::new(

@@ -255,6 +255,8 @@ pub const EXPLORER_TOGGLE_IGNORED: &str = "explorer.toggle_ignored";
 pub const EXPLORER_TOGGLE_GIT_CHANGES_ONLY: &str = "explorer.toggle_git_changes_only";
 pub const EXPLORER_MOVE_TO_TOP: &str = "explorer.move_to_top";
 pub const EXPLORER_MOVE_TO_BOTTOM: &str = "explorer.move_to_bottom";
+pub const EXPLORER_HALF_PAGE_DOWN: &str = "explorer.half_page_down";
+pub const EXPLORER_HALF_PAGE_UP: &str = "explorer.half_page_up";
 pub const EXPLORER_RENAME_FULL: &str = "explorer.rename_full";
 pub const EXPLORER_RENAME_BASE: &str = "explorer.rename_base";
 pub const EXPLORER_COPY_FILE: &str = "explorer.copy_file";
@@ -735,6 +737,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_TOGGLE_GIT_CHANGES_ONLY => Some(Command::ExplorerToggleGitChangesOnly),
         EXPLORER_MOVE_TO_TOP => Some(Command::ExplorerMoveToTop),
         EXPLORER_MOVE_TO_BOTTOM => Some(Command::ExplorerMoveToBottom),
+        EXPLORER_HALF_PAGE_DOWN => Some(Command::ExplorerHalfPageDown),
+        EXPLORER_HALF_PAGE_UP => Some(Command::ExplorerHalfPageUp),
         EXPLORER_RENAME_FULL => Some(Command::ExplorerRenameFull),
         EXPLORER_RENAME_BASE => Some(Command::ExplorerRenameBase),
         EXPLORER_COPY_FILE => Some(Command::ExplorerCopyFile),

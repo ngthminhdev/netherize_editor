@@ -16,7 +16,16 @@ pub(crate) fn enclosing_definition(
     symbols: &[LspDocumentSymbol],
     line: u32,
 ) -> Option<&LspDocumentSymbol> {
-    const DEF_KINDS: [&str; 4] = ["Function", "Method", "Constant", "Constructor"];
+    const DEF_KINDS: [&str; 8] = [
+        "Function",
+        "Method",
+        "Constant",
+        "Constructor",
+        "Class",
+        "Interface",
+        "Struct",
+        "Enum",
+    ];
     symbols
         .iter()
         .filter(|s| DEF_KINDS.contains(&s.kind.as_str()))
@@ -76,14 +85,51 @@ mod tests {
 
     #[test]
     fn no_definition_kind_enclosing_returns_none() {
-        // Line is inside a class body but not inside any function/method/const.
-        let symbols = vec![sym("Class", 0, 50)];
+        // Line is inside a non-definition symbol (e.g. Variable, Namespace).
+        let symbols = vec![sym("Variable", 0, 50)];
         assert!(enclosing_definition(&symbols, 3).is_none());
+    }
+
+    #[test]
+    fn class_is_now_a_definition_kind() {
+        let symbols = vec![sym("Class", 0, 50), sym("Method", 10, 20)];
+        // Line 3 is inside Class but not Method → returns Class.
+        let r = enclosing_definition(&symbols, 3).expect("class");
+        assert_eq!((r.range.start.line, r.range.end.line), (0, 50));
+        // Line 15 is inside Method → returns Method (smaller).
+        let r = enclosing_definition(&symbols, 15).expect("method");
+        assert_eq!((r.range.start.line, r.range.end.line), (10, 20));
     }
 
     #[test]
     fn line_outside_all_symbols_returns_none() {
         let symbols = vec![sym("Function", 10, 20)];
         assert!(enclosing_definition(&symbols, 99).is_none());
+    }
+
+    #[test]
+    fn empty_symbols_returns_none_keep_window() {
+        // The worker returns an EMPTY symbol list on any LSP failure (server not
+        // ready / file not open / timeout). That MUST resolve to `None` so the
+        // refine handler keeps the card's ±N window — applying a `(0, 0)` fallback
+        // instead showed only the file's first import line (bug-239). Constructors
+        // in not-yet-warmed target files hit this most.
+        let symbols: Vec<LspDocumentSymbol> = Vec::new();
+        assert!(enclosing_definition(&symbols, 0).is_none());
+        assert!(enclosing_definition(&symbols, 42).is_none());
+    }
+
+    #[test]
+    fn finds_constructor_scope_when_symbols_present() {
+        // A class with a constructor: a card landing on the constructor's body
+        // scopes to the CONSTRUCTOR, never collapsing to the file top.
+        let symbols = vec![
+            named_sym("Service", "Class", 3, 40),
+            named_sym("constructor", "Constructor", 8, 16),
+            named_sym("run", "Method", 18, 30),
+        ];
+        let s = enclosing_definition(&symbols, 10).expect("constructor scope");
+        assert_eq!(s.name, "constructor");
+        assert_eq!((s.range.start.line, s.range.end.line), (8, 16));
     }
 }

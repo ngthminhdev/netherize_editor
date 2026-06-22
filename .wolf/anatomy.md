@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-22T08:11:25.287Z
-> Files: 465 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-22T14:23:54.589Z
+> Files: 468 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -364,6 +364,7 @@
 - `2026-06-19-workbench-motion-panel-slide.md` — Workbench Motion — Panel Slide Animation — Implementation Plan (~7161 tok)
 - `2026-06-20-spatial-canvas-scope-and-focus-polish.md` — NetherCanvas Scope-aware Cards & Focus Polish (T3–T6) — Implementation Plan (~7608 tok)
 - `2026-06-21-mouse-spatial-interactions.md` — Mouse Spatial Interactions Implementation Plan (~12998 tok)
+- `2026-06-22-explorer-halfpage-and-dim-hidden.md` — Explorer half-page scroll + dimmed hidden filenames — Implementation Plan (~2033 tok)
 
 ## docs/superpowers/specs/
 
@@ -381,6 +382,8 @@
 - `2026-06-20-spatial-canvas-phaseB-design.md` — NetherCanvas — Spatial Canvas Phase B: Edit-in-Card (~3421 tok)
 - `2026-06-20-spatial-canvas-scope-and-focus-polish-design.md` — NetherCanvas — Scope-aware Cards & Focus Polish (T3–T6) (~2844 tok)
 - `2026-06-21-mouse-spatial-interactions-design.md` — Mouse Spatial Interactions — Design (~3130 tok)
+- `2026-06-22-explorer-halfpage-and-dim-hidden-design.md` — Explorer half-page scroll + dimmed hidden filenames — design (~1649 tok)
+- `2026-06-22-smooth-scroll-design.md` — Smooth Scroll (editor + canvas card) — Design (~1403 tok)
 
 ## scripts/
 
@@ -408,15 +411,15 @@
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1823 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16671 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16798 tok)
 
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
-- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~26412 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~26672 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
-- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
+- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~11354 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
@@ -428,36 +431,36 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~42899 tok)
+- `application.rs` — Scroll-target moves smaller than this (in lines) snap instantly instead of (~44413 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
-- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~9608 tok)
+- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~10074 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5604 tok)
-- `commands_explorer.rs` (~7483 tok)
+- `commands_explorer.rs` — Declares FALLBACK_PAGE_ROWS (~8014 tok)
 - `commands_lsp.rs` (~13258 tok)
 - `commands_palette.rs` (~9170 tok)
 - `commands_prompts.rs` (~6720 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
-- `commands_tests.rs` — [derive(Default)] (~41925 tok)
+- `commands_tests.rs` — [derive(Default)] (~42485 tok)
 - `commands.rs` — [path = "commands_ai_agent.rs"] (~12436 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
-- `mod.rs` — Struct: AppShell (~7906 tok)
-- `setup.rs` — new, new_for_tests (~23898 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~18734 tok)
+- `mod.rs` — Struct: AppShell (~8059 tok)
+- `setup.rs` — new, new_for_tests (~23930 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
 - `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2325 tok)
-- `canvas_scope.rs` — Scope-aware card snapshot selection (T4). (~931 tok)
+- `canvas_scope.rs` — Scope-aware card snapshot selection (T4). (~1438 tok)
 - `failure.rs` — Consecutive inline-completion failures before the user is told once and (~1604 tok)
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` — Declares fetch (~14351 tok)
-- `mod.rs` (~9380 tok)
+- `lsp.rs` — Declares fetch (~14862 tok)
+- `mod.rs` (~9396 tok)
 - `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
 - `shell.rs` (~112 tok)
@@ -533,7 +536,7 @@
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
 - `theme_config.rs` — Theme configuration entrypoint. (~176 tok)
-- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9374 tok)
+- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9482 tok)
 
 ## src/config/theme_config/
 
@@ -544,8 +547,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10421 tok)
-- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~8283 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10543 tok)
+- `commands.rs` — A keystroke forwarded into the palette's single-line Vim state machine. (~8321 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -555,7 +558,7 @@
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~9958 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~5018 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~5048 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
 - `palette.rs` (~7803 tok)
 - `session.rs` (~5148 tok)
@@ -579,7 +582,7 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~5459 tok)
+- `renderer.rs` — Core renderer types and module layout. (~5639 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
@@ -622,7 +625,7 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~10540 tok)
+- `frame.rs` — render (~10847 tok)
 
 ## src/render/renderer/palette/
 
@@ -638,7 +641,7 @@
 - `ai_chat.rs` — Right-sidebar AI chat and markdown preview text rendering. (~19536 tok)
 - `markdown_preview.rs` — Right-sidebar markdown preview text rendering. (~6778 tok)
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
-- `sidebar.rs` — update_sidebar_content, clear_sidebar, update_left_dock_panel (~8559 tok)
+- `sidebar.rs` — update_sidebar_content, clear_sidebar, update_left_dock_panel (~8712 tok)
 - `statusbar.rs` — Render the three-zone status bar. (~5944 tok)
 - `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~10622 tok)
 - `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~11022 tok)
@@ -773,7 +776,7 @@
 - `inspector_panel.rs` — InspectorNode: title, leaf, branch, sync_from_debug_state + 6 more (~3078 tok)
 - `layout_engine.rs` — Height (logical px) of the clickable tab strip reserved at the top of the (~10632 tok)
 - `mod.rs` (~55 tok)
-- `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~3008 tok)
+- `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~3935 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
 - `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1943 tok)
 - `pointer_drag.rs` — Pure pointer-drag types and panel/splitter geometry. No GPU/winit. (~2145 tok)

@@ -216,6 +216,45 @@ impl AppShell {
             .cloned()
     }
 
+    /// Number of fully-visible explorer rows in the current sidebar viewport.
+    /// Falls back to a constant when the sidebar has not been laid out yet.
+    fn explorer_page_rows(&self) -> usize {
+        const FALLBACK_PAGE_ROWS: usize = 20;
+        let Some(bounds) = self.last_sidebar_bounds else {
+            return FALLBACK_PAGE_ROWS;
+        };
+        let line_height = self.theme.ui.sidebar_line_height.max(1.0);
+        let viewport = self.sidebar_tree_viewport_height(bounds);
+        ((viewport / line_height).floor() as usize).max(1)
+    }
+
+    /// Move the explorer cursor by `delta` rows (down if `down`, else up),
+    /// clamping to the entry list. Returns whether the cursor moved.
+    fn move_explorer_cursor_by(&mut self, delta: usize, down: bool) -> bool {
+        self.ensure_explorer_snapshot();
+        let entries_len = self.explorer_snapshot.entries.len();
+        if entries_len == 0 {
+            self.explorer_cursor = 0;
+            return false;
+        }
+        let last = entries_len - 1;
+        let current = self.explorer_cursor.min(last);
+        let target = if down {
+            (current + delta).min(last)
+        } else {
+            current.saturating_sub(delta)
+        };
+        if target == current {
+            return false;
+        }
+        self.explorer_cursor = target;
+        let _ = self
+            .app_state
+            .workspace_select_path(&self.explorer_snapshot.entries[target].path);
+        self.sidebar_needs_layout = true;
+        true
+    }
+
     pub(super) fn explorer_rename_base_selection(name: &str) -> (usize, usize) {
         match name.rfind('.') {
             Some(0) | None => (0, name.len()),
@@ -380,6 +419,14 @@ impl AppShell {
                 );
                 self.sidebar_needs_layout = true;
                 Some(true)
+            }
+            Command::ExplorerHalfPageDown => {
+                let step = (self.explorer_page_rows() / 2).max(1);
+                Some(self.move_explorer_cursor_by(step, true))
+            }
+            Command::ExplorerHalfPageUp => {
+                let step = (self.explorer_page_rows() / 2).max(1);
+                Some(self.move_explorer_cursor_by(step, false))
             }
             Command::ExplorerRenameFull => Some(self.open_explorer_rename_prompt(false)),
             Command::ExplorerRenameBase => Some(self.open_explorer_rename_prompt(true)),

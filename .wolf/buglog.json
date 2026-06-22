@@ -1,5 +1,26 @@
 [
   {
+    "id": "bug-023",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "Clicking on the terminal panel to focus it changes focus_manager to BottomPanel but mode stays NORMAL instead of TERMINAL, so keyboard input is not routed to the PTY and user cannot type.",
+    "file": "src/app/event_loop/application.rs",
+    "root_cause": "handle_click_focus() calls focus_manager.set_from_click() which sets FocusTarget::BottomPanel when clicking the terminal area, but unlike the keyboard path (F12/ToggleTerminal/ToggleBottomDock which call apply_mode_event(ModeEvent::FocusTerminal)), the mouse click path never transitions the editor mode. The mode stays at Normal so input routing ignores the terminal. Same root cause pattern as bug-008 but for the mouse click code path instead of the keyboard command path.",
+    "fix": "Added apply_mode_event(ModeEvent::FocusTerminal) in handle_click_focus after focus changes to BottomPanel and terminal_tabs is non-empty, matching the right-dock AiChat click pattern at line 892-894. The tab strip click path (handle_bottom_tab_mouse_click → SwitchTerminalTab) does not need this fix because it only switches between already-focused terminal tabs.",
+    "tags": [
+      "terminal",
+      "mode-transition",
+      "mouse",
+      "click-focus",
+      "keyboard-input",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-008"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
     "id": "bug-022",
     "timestamp": "2026-06-22T00:00:00+00:00",
     "error_message": "While editing canvas card 1, clicking card 2 does not focus card 2 — it focuses the main editor first, and only a SECOND click on card 2 actually switches to it.",
@@ -4232,6 +4253,86 @@
       "vim-mode",
       "complex-picker",
       "follow-up",
+      "regression"
+    ]
+  },
+  {
+    "id": 237,
+    "timestamp": "2026-06-22T16:30:00+07:00",
+    "error_message": "Smooth scroll (Ctrl-D/Ctrl-U + jumps) was implemented earlier but felt janky, so it was disabled via a kill-switch in tick_smooth_scroll_animation that snapped current_scroll_y = target_scroll_y every frame.",
+    "file": "src/app/event_loop/application.rs, src/workbench/motion.rs, src/config/ui_config.rs, src/app/app_state/editor.rs, src/app/event_loop/mod.rs, src/app/event_loop/setup.rs",
+    "root_cause": "Two causes. (1) No frame-pacing deadline: every other animation (panel slide, palette, canvas spawn) pushes a ControlFlow::WaitUntil(now+8ms) ~120Hz tick in about_to_wait, but smooth scroll never did, so the event loop only woke on unrelated deadlines (git poll 3s, etc.) -> the lerp advanced in irregular bursts = stutter. (2) The lerp was frame-count based rather than time based, so uneven tick spacing produced uneven motion. The renderer already supported fractional current_scroll_y (visual_y_for_logical_scroll_with_folds), so sub-line smoothness was never the blocker.",
+    "fix": "Replaced the kill-switch with a fixed-duration ease-out tween: pure helpers ease_scroll() + clamp_scroll_start() in workbench::motion (time-based, frame-rate independent, EaseCurve::EaseOutCubic). tick_smooth_scroll_animation now retargets a fresh tween when a command moves target_scroll_y, snaps tiny moves (<1.5 lines, e.g. j/k follow) so held keys never lag, far-jump clamps huge jumps to ~1 screenful, and eases current_scroll_y otherwise. Added an 8ms WaitUntil pacing block while scroll_anim_started_at.is_some(). Removed the inline current=target snaps in scroll_half_page_up/down; kept the snap in center_cursor_line (go-to-def is often cross-file). All anim state lives on AppShell (scroll_anim_started_at/start/last_target) so AppState snapshots and the canvas edit-session swap are untouched. Config: added editor.smooth_scroll_duration_ms (default 140). NOTE: canvas-card vertical smooth scroll is deferred — the card body loop (renderer/canvas.rs) has no per-card vertical clip (shared scissor), so a fractional row offset would bleed glyphs past the card border; needs a per-card vertical scissor first.",
+    "tags": [
+      "smooth-scroll",
+      "animation",
+      "frame-pacing",
+      "editor",
+      "viewport",
+      "motion",
+      "ease-out",
+      "canvas-deferred",
+      "re-enable"
+    ]
+  },
+  {
+    "id": 238,
+    "timestamp": "2026-06-22T17:30:00+07:00",
+    "error_message": "Smooth scroll felt janky/stuttery on a 120Hz retina display (4080x2544), with '[Renderer] slow frame: 8-15ms before present' warnings firing constantly.",
+    "file": "src/app/event_loop/application.rs, src/render/renderer/lifecycle/frame.rs",
+    "root_cause": "Two findings. (1) The 'slow frame' warning was MISLEADING: frame_started_at was sampled BEFORE get_current_texture(), which BLOCKS on the Fifo/vsync swapchain until a backbuffer frees. So the 8-15ms was mostly the vsync wait, not CPU work, and the warning fired every frame at 120Hz. (2) The real judder: the smooth-scroll tween sampled current_scroll_y in about_to_wait (BEFORE the WaitUntil(8ms) + vsync-blocking render), so the presented scroll position was stale by a full wait+present cycle (~16ms) and irregular. The proven-smooth panel-slide samples its animation at REDRAW time via current_render_layout(now) (line 1971), giving low, consistent latency. Differential diagnosis (panel-slide smooth vs scroll janky, both doing continuous redraw + editor relayout) pinned it to sample timing, NOT render/relayout cost.",
+    "fix": "Moved scroll-tween sampling from about_to_wait into redraw(): new advance_scroll_anim(now) is called with the SAME fresh now used for the panel slide, just before the editor layout, so the presented position matches render time (matches the smooth panel-slide pattern). about_to_wait now only keeps requesting frames while a tween is live or a fresh target is pending (request_redraw + the existing 8ms pacing). Also moved frame_started_at to AFTER get_current_texture so the 'slow frame' warning measures real CPU encode cost (excl. vsync wait) and relabeled it.",
+    "tags": [
+      "smooth-scroll",
+      "judder",
+      "vsync",
+      "fifo",
+      "frame-pacing",
+      "sample-timing",
+      "redraw",
+      "diagnostics",
+      "misleading-warning",
+      "follow-up"
+    ]
+  },
+  {
+    "id": 239,
+    "timestamp": "2026-06-22T18:15:00+07:00",
+    "error_message": "Canvas scope card loading is flaky, especially for a class constructor: sometimes the scope loads correctly, sometimes the card shows only the first import line at the top of the file.",
+    "file": "src/app/event_loop/async_results/lsp.rs, src/app/event_loop/async_results/canvas_scope.rs",
+    "root_cause": "The CanvasCardScopeResult (progressive scope refine) handler violated its own documented contract ('an empty result keeps the ±N window — no regression'). The worker returns symbols: Vec::new() on ANY LSP failure (no server / file not open / timeout), which is common when the card's TARGET file (e.g. a constructor reached via gd into another file) has a cold/not-yet-ready LSP. With empty symbols, enclosing_definition() returns None, and the handler's else-branch applied scope (0, total) where total = symbols.iter().map(end.line).max().unwrap_or(0) = 0 → scope (0,0) → build_canvas_relation_snapshot_range produced a 1-line snapshot of the file's first line (the first import), OVERWRITING the good ±N window the card already showed from spawn. 'Sometimes works' = active/cached file with a warm LSP resolves the scope; 'only 1 import line' = target file's LSP was cold so symbols came back empty. parse_document_symbols DOES flatten nested children with ancestors, so constructors ARE found when symbols are non-empty — the failure is purely the empty-symbols regression.",
+    "fix": "In the CanvasCardScopeResult handler, replaced the harmful (0, total) else-branch with an early return when enclosing_definition() is None: keep the card's spawn-time ±N window (scope_lines stays None, which the snapshot_window renderer already handles as the unscoped ±N fallback). This honors the documented best-effort contract and covers BOTH empty symbols (cold LSP) and non-empty-but-no-enclosing-definition (top-level line). Added unit tests in canvas_scope.rs: empty_symbols_returns_none_keep_window (locks empty→None) and finds_constructor_scope_when_symbols_present (constructor resolves to its own range, never the file top). No scope-loading flag exists, so the early return leaves no stuck state.",
+    "tags": [
+      "canvas",
+      "spatial-canvas",
+      "scope-card",
+      "constructor",
+      "lsp",
+      "document-symbol",
+      "cold-lsp",
+      "empty-result",
+      "regression",
+      "fallback",
+      "nethercanvas"
+    ]
+  },
+  {
+    "id": 240,
+    "timestamp": "2026-06-22T19:30:00+07:00",
+    "error_message": "Clicking to focus the terminal: focus moves to the terminal but the editor mode stays NORMAL instead of TERMINAL, so keystrokes are not routed to the PTY and the user cannot type. Recurrence of bug-008.",
+    "file": "src/app/event_loop/application.rs, src/app/event_loop/commands_tests.rs",
+    "root_cause": "handle_click_focus()'s terminal mode-set had TWO defects. (1) It was gated behind `if changed` (set_from_click() returns false when the click does not move the focus target). So when focus is ALREADY on a terminal panel but the mode has drifted to Normal (e.g. focus Tab-cycled onto the bottom panel via focus_manager without going through the FocusTerminal command, which is the only path that also sets the mode — the mode state machine has NO TerminalFocus<-EnterNormal edge so the panel can hold focus while mode is Normal), clicking the terminal body did nothing: changed=false skipped the whole block, mode stayed Normal. (2) It only handled FocusTarget::BottomPanel — a center buffer-terminal (active_buffer_is_terminal) and the right-dock agent terminal were never put into TerminalFocus on a body click. The redraw() guard releases terminal mode when focus leaves a terminal, but nothing performed the symmetric reconcile (focus on terminal -> enter terminal mode) on click.",
+    "fix": "Moved the terminal mode reconcile OUT of the `if changed` block so it runs on every click regardless of whether focus moved, and based it on a new focused_target_hosts_terminal() helper that mirrors the redraw() terminal-release guard exactly (BottomPanel with a terminal tab, RightSidebar AiChat/Terminal with a live pty, or CenterEditor buffer-terminal). When the focused target hosts a terminal and the mode is not already TerminalFocus/TerminalNormal, apply ModeEvent::FocusTerminal and return true. Made handle_click_focus + current_bottom_panel_bounds pub(super) for the test. Added regression test clicking_focused_bottom_terminal_restores_terminal_mode_after_drift: BottomPanel focus + Normal mode + in-bounds click -> TerminalFocus (fails on old code: changed=false skipped the mode-set).",
+    "tags": [
+      "terminal",
+      "focus",
+      "mouse-click",
+      "mode",
+      "TerminalFocus",
+      "input-routing",
+      "bug-008-recurrence",
+      "focus-cycle",
+      "reconcile",
       "regression"
     ]
   }

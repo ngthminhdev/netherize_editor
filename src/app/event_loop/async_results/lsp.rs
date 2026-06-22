@@ -591,15 +591,19 @@ pub(super) fn handle_lsp_result(
                 return;
             };
             let Some(scope) = super::canvas_scope::enclosing_definition(&symbols, line) else {
-                return; // no enclosing definition → keep the ±N window
+                // No enclosing definition — either the LSP returned an EMPTY list
+                // (server not ready / file not open / timeout) or the line sits in
+                // no function/class. Either way KEEP the card's spawn-time ±N window
+                // (the documented best-effort contract). The old `(0, total)`
+                // fallback collapsed to `(0, 0)` on empty symbols and showed only the
+                // file's first import line — flaky for constructors in cold-LSP files
+                // (bug-239).
+                return;
             };
             // Title the card by the TARGET symbol it lands in, not the canvas's
             // focal symbol (see bug-021).
-            let (s_start, s_end, s_name) = (
-                scope.range.start.line,
-                scope.range.end.line,
-                scope.name.clone(),
-            );
+            let (s_start, s_end, s_name) =
+                (scope.range.start.line, scope.range.end.line, scope.name.clone());
             let Some((_o, snap)) = build_canvas_relation_snapshot_range(
                 &app.theme,
                 &path,
@@ -1053,14 +1057,42 @@ fn attach_canvas_relations(
         .canvas()
         .map(|c| c.blocks.iter().map(|b| b.id).collect())
         .unwrap_or_default();
+    let cached_path = app.cached_document_symbols_path.clone();
+    let cached_symbols = app.cached_document_symbols.clone();
     let mut rels = Vec::new();
     for loc in locations.into_iter().take(cap) {
         let Some(path) = lsp_uri_to_path(&loc.uri) else {
             continue;
         };
-        // Seed with no title: the card's real name is filled in by progressive
-        // scope resolution below (sync for the active file, async otherwise) from
-        // the TARGET's enclosing definition — never the canvas's focal symbol.
+        // Eager scope: if the target file's symbols are cached, resolve the
+        // enclosing definition NOW and build a scope-aware snapshot from the
+        // start — no ±N flash, no second reflow.
+        let is_cached = cached_path.as_ref().is_some_and(|p| path == *p);
+        if is_cached {
+            if let Some(scope) =
+                super::canvas_scope::enclosing_definition(&cached_symbols, loc.line)
+            {
+                let (s_start, s_end, s_name) = (
+                    scope.range.start.line,
+                    scope.range.end.line,
+                    scope.name.clone(),
+                );
+                if let Some((origin, snapshot)) = build_canvas_relation_snapshot_range(
+                    &app.theme,
+                    &path,
+                    s_start,
+                    s_end,
+                    loc.character,
+                    &s_name,
+                ) {
+                    // Store scope_lines on the origin so canvas_apply_card_scope
+                    // can set it on the block after spawn.
+                    rels.push((relation, origin, snapshot, Some((s_start, s_end))));
+                    continue;
+                }
+            }
+        }
+        // Fallback: ±N window (will be refined async for uncached files).
         if let Some((origin, snapshot)) = build_canvas_relation_snapshot(
             &app.theme,
             &path,
@@ -1069,7 +1101,7 @@ fn attach_canvas_relations(
             "",
             context,
         ) {
-            rels.push((relation, origin, snapshot));
+            rels.push((relation, origin, snapshot, None));
         }
     }
     if rels.is_empty() {
@@ -1101,7 +1133,13 @@ fn attach_canvas_relations(
             .map(|c| {
                 c.blocks
                     .iter()
-                    .filter(|b| !pre_ids.contains(&b.id) && b.relation != BlockRelation::Focal)
+                    // Skip cards that already have scope_lines (resolved eagerly
+                    // above) — only process uncached cards that need async resolve.
+                    .filter(|b| {
+                        !pre_ids.contains(&b.id)
+                            && b.relation != BlockRelation::Focal
+                            && b.scope_lines.is_none()
+                    })
                     .map(|b| {
                         (
                             b.id,

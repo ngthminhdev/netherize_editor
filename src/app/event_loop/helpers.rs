@@ -1740,6 +1740,7 @@ pub(super) fn build_sidebar_rows(
             git_marker: None,
             git_color: None,
             is_selected: false,
+            is_dim: false,
         }];
     }
 
@@ -1792,6 +1793,7 @@ pub(super) fn build_sidebar_rows(
                     None => None,
                 },
                 is_selected: idx == selected,
+                is_dim: is_hidden_or_ignored,
             }
         })
         .collect()

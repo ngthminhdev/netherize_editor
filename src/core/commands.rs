@@ -339,6 +339,8 @@ pub enum Command {
     ExplorerToggleGitChangesOnly,
     ExplorerMoveToTop,
     ExplorerMoveToBottom,
+    ExplorerHalfPageDown,
+    ExplorerHalfPageUp,
     ExplorerRenameFull,
     ExplorerRenameBase,
     ExplorerCopyFile,

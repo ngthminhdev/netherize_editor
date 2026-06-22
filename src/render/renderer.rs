@@ -57,6 +57,8 @@ pub struct SidebarRow {
     pub git_marker: Option<char>,
     pub git_color: Option<[f32; 4]>,
     pub is_selected: bool,
+    /// Hidden/ignored entry — label rendered in the dim `fg_ghost` color.
+    pub is_dim: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

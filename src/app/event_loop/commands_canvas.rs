@@ -356,6 +356,10 @@ impl AppShell {
         if !self.app_state.open_canvas(bw, bh, lh) {
             return false;
         }
+        // Scope-aware focal: if document symbols are cached for the active file,
+        // resolve the enclosing definition and replace the ±N window snapshot
+        // with the function scope.
+        self.apply_focal_scope_if_cached();
         let w = self.window_size.width as f32;
         let h = self.window_size.height as f32;
         self.app_state.canvas_center_on_focus(w, h);
@@ -365,6 +369,48 @@ impl AppShell {
         // arrive async and are routed in via the request-id redirect.
         self.canvas_submit_definition();
         true
+    }
+
+    /// If document symbols are cached for the active file, resolve the enclosing
+    /// definition at the cursor and replace the focal block's ±N snapshot with
+    /// the scope-aware range. No-op when symbols aren't cached or no enclosing
+    /// definition is found.
+    fn apply_focal_scope_if_cached(&mut self) {
+        let Some(active_path) = self.app_state.active_file().map(std::path::PathBuf::from) else {
+            return;
+        };
+        let is_cached = self
+            .cached_document_symbols_path
+            .as_ref()
+            .is_some_and(|p| *p == active_path);
+        if !is_cached || self.cached_document_symbols.is_empty() {
+            return;
+        }
+        let (line, col) = self.app_state.cursor_line_col();
+        let Some(scope) = super::async_results::canvas_scope::enclosing_definition(
+            &self.cached_document_symbols,
+            line as u32,
+        ) else {
+            return;
+        };
+        let (s_start, s_end, s_name) = (
+            scope.range.start.line,
+            scope.range.end.line,
+            scope.name.clone(),
+        );
+        if let Some((_o, snap)) =
+            super::async_results::build_canvas_relation_snapshot_range(
+                &self.theme,
+                &active_path,
+                s_start,
+                s_end,
+                col as u32,
+                &s_name,
+            )
+        {
+            self.app_state
+                .canvas_apply_focal_scope(snap, Some((s_start, s_end)));
+        }
     }
 
     /// `o`: open the focused relation card's file as a real buffer tab at the

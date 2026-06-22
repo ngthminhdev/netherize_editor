@@ -587,6 +587,25 @@ impl AppState {
         true
     }
 
+    /// Apply scope-aware snapshot to the focal anchor block. Called after
+    /// `open_canvas()` when cached document symbols are available so the focal
+    /// card shows the enclosing function instead of a ±N window.
+    pub fn canvas_apply_focal_scope(
+        &mut self,
+        snapshot: BlockSnapshot,
+        scope_lines: Option<(u32, u32)>,
+    ) -> bool {
+        let Some(state) = self.canvas.as_mut() else {
+            return false;
+        };
+        let Some(b) = state.blocks.iter_mut().find(|b| b.relation == BlockRelation::Focal) else {
+            return false;
+        };
+        b.snapshot = snapshot;
+        b.scope_lines = scope_lines;
+        true
+    }
+
     /// Everything `CanvasCardScopeResult` needs to re-source a card to its
     /// enclosing-definition scope: `(lsp_line, lsp_character, symbol_name)`.
     /// `None` when the card is gone / focal / canvas closed (stale result dropped).
@@ -748,7 +767,11 @@ impl AppState {
         &mut self,
         relations: Vec<(BlockRelation, BlockOrigin, BlockSnapshot)>,
     ) -> bool {
-        self.canvas_add_relations_with_parent(relations, None)
+        let rels = relations
+            .into_iter()
+            .map(|(r, o, s)| (r, o, s, None))
+            .collect();
+        self.canvas_add_relations_with_parent(rels, None)
     }
 
     /// As [`canvas_add_relations`], but each new card records `parent` (the card
@@ -757,7 +780,7 @@ impl AppState {
     /// connector is drawn from the parent card rather than the editor caret.
     pub fn canvas_add_relations_with_parent(
         &mut self,
-        relations: Vec<(BlockRelation, BlockOrigin, BlockSnapshot)>,
+        relations: Vec<(BlockRelation, BlockOrigin, BlockSnapshot, Option<(u32, u32)>)>,
         parent: Option<BlockId>,
     ) -> bool {
         if relations.is_empty() {
@@ -811,7 +834,7 @@ impl AppState {
 
         let mut added = false;
         let mut first_new_id: Option<BlockId> = None;
-        for (relation, origin, snapshot) in relations {
+        for (relation, origin, snapshot, scope_lines) in relations {
             if relation == BlockRelation::Focal {
                 continue;
             }
@@ -835,6 +858,9 @@ impl AppState {
                     state.blocks[pos].relation = BlockRelation::Definition;
                     state.blocks[pos].origin = origin;
                     state.blocks[pos].snapshot = snapshot;
+                    if scope_lines.is_some() {
+                        state.blocks[pos].scope_lines = scope_lines;
+                    }
                     added = true;
                 }
                 continue;
@@ -858,7 +884,7 @@ impl AppState {
                 pinned: false,
                 context_lines: default_ctx,
                 parent,
-                scope_lines: None,
+                scope_lines,
                 height_rows: None,
                 // Stamp the spawn time so the renderer plays the height 0→full
                 // reveal; the event loop clears it once the animation settles.
@@ -1642,7 +1668,7 @@ mod tests {
         // A card spawned FROM that card (in-card gd/gr) records its parent and
         // steals focus to the new card.
         app.canvas_add_relations_with_parent(
-            vec![(BlockRelation::Definition, origin_at("/p/b.rs", 20), snap("b"))],
+            vec![(BlockRelation::Definition, origin_at("/p/b.rs", 20), snap("b"), None)],
             Some(parent),
         );
         let c = app.canvas().unwrap();
@@ -1756,7 +1782,7 @@ mod tests {
 
         // In-card gd/gr spawns a child card (focus jumps to it in canvas state).
         app.canvas_add_relations_with_parent(
-            vec![(BlockRelation::Definition, origin_at("/p/child.rs", 20), snap("child"))],
+            vec![(BlockRelation::Definition, origin_at("/p/child.rs", 20), snap("child"), None)],
             Some(parent),
         );
         let child = app.canvas().unwrap().focused.unwrap();
