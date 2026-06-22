@@ -168,6 +168,19 @@ impl AppShell {
         }
     }
 
+    /// Re-run the cursor-dependent reactions a normal motion triggers (LSP symbol
+    /// highlight + document-symbol breadcrumb refresh) for a *jump* that bypasses
+    /// the per-motion `is_cursor_move` path — Leap, the Ctrl-O/Ctrl-I jump list,
+    /// etc. Without this, the symbol highlight / breadcrumb / canvas context stay
+    /// stale after a jump until the next `hjkl` nudge re-triggers them.
+    /// `ensure_document_symbol_breadcrumbs(false)` refetches automatically when the
+    /// jump crossed into a different file (cache-path mismatch) and is a cheap
+    /// no-op within the same file.
+    pub(crate) fn react_to_cursor_jump(&mut self) {
+        self.submit_lsp_document_highlight();
+        self.ensure_document_symbol_breadcrumbs(false);
+    }
+
     pub(super) fn handle_leap_command(&mut self, command: &Command) -> Option<bool> {
         match command {
             Command::LeapStart => {
@@ -226,7 +239,10 @@ impl AppShell {
                     if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                         self.submit_parse_for_active_buffer(true);
                     }
-                    self.submit_lsp_document_highlight();
+                    // A leap is a jump, so re-run the same cursor-dependent
+                    // reactions a normal motion does (highlight + breadcrumb),
+                    // not just the document highlight.
+                    self.react_to_cursor_jump();
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                     Some(

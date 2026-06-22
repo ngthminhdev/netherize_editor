@@ -1,5 +1,138 @@
 [
   {
+    "id": "bug-022",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "While editing canvas card 1, clicking card 2 does not focus card 2 — it focuses the main editor first, and only a SECOND click on card 2 actually switches to it.",
+    "file": "src/app/app_state/canvas.rs",
+    "root_cause": "canvas_cards_interactive() returned true only for Navigate|Background, excluding EditCard. So while editing card 1 (interaction == EditCard), begin_pointer_drag's `interactive` was false → card_pointer_hit_test was skipped → clicking card 2 was not recognized as a card hit. The press then fell through to handle_click_focus, whose center-region branch (canvas active, click in center, not a card) called focus_main_editor_from_canvas → left the edit and focused the editor. That click dropped the canvas to Background; the SECOND click (now Background → interactive) finally hit-tested card 2.",
+    "fix": "canvas_cards_interactive() now also returns true in EditCard (so cards stay mouse-targetable while editing one). begin_pointer_drag then hit-tests card 2; on the release-click, focus_canvas_card_for_click already closes card 1's edit (didClose) and begins edit on card 2, switching directly. Updated unit test cards_interactive_in_every_live_state_including_editcard + added integration test clicking_card_2_while_editing_card_1_switches_edit_directly.",
+    "tags": [
+      "canvas",
+      "nethercanvas",
+      "mouse",
+      "click-focus",
+      "editcard",
+      "interactive-gate",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-017"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
+    "id": "bug-021",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "A child card spawned from a parent card via gd shows the SAME title symbol as the parent/focal (e.g. 'server.ts · start') instead of the target symbol's own name (e.g. 'gracefulShutdown').",
+    "file": "src/app/event_loop/async_results/lsp.rs",
+    "root_cause": "attach_canvas_relations seeded EVERY spawned relation card's title with `focal_symbol` (= the canvas's focal-block symbol_name, e.g. 'start') via build_canvas_relation_snapshot(..., &focal_symbol, ...). The renderer's card header reads block.snapshot.symbol for the '· symbol' crumb, so all spawned cards inherited the focal name. Progressive scope resolution (both the sync cached-symbols path at the bottom of attach_canvas_relations and the async CanvasCardScopeResult handler) DID compute the enclosing-definition RANGE but rebuilt the snapshot reusing the card's existing symbol_name (still focal_symbol) for the title — so the wrong name was never corrected.",
+    "fix": "enclosing_definition() now returns Option<&LspDocumentSymbol> (range + name) instead of just the range. Both scope-resolution paths (sync + async CanvasCardScopeResult) now title the card with scope.name (the TARGET's enclosing definition name) rather than the focal/stored symbol. Initial seed title changed from focal_symbol to \"\" (empty) so a card never briefly borrows the focal name — the renderer already hides an empty symbol crumb (canvas.rs: `if !sym.is_empty()`), and scope resolution fills the real name (same frame for the active file, async otherwise). Focal card title is unaffected. Tests: enclosing_definition returns_the_targets_own_name_for_the_card_title + updated range asserts (.range.start.line).",
+    "tags": [
+      "canvas",
+      "nethercanvas",
+      "card-title",
+      "lsp",
+      "document-symbols",
+      "scope-resolution",
+      "gd",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-020"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
+    "id": "bug-020",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "After switching to a different source file, pressing F8 opens/teleports back to the OLD source file to show the previous canvas instead of opening a canvas for the file you're now looking at.",
+    "file": "src/app/event_loop/commands_canvas.rs",
+    "root_cause": "The canvas is a singleton bound to its focal (gc-origin) file; switching buffers only HIDES it (canvas_should_render: active_file != focal → not drawn), it is not closed. open_canvas_mode had no 'you are now on a different file' branch: (1) if the canvas was stashed (via `o`) it ran open_file(focal) → switched the editor BACK to the old focal file and restored the stale canvas; (2) if merely active+hidden it toggled it off (Navigate) or re-grabbed focus but stayed hidden (Background). So F8 reasoned about 'the canvas's original file', not 'the file in front of you'.",
+    "fix": "Added a guard at the top of open_canvas_mode: when a canvas exists AND its focal file differs from the active buffer, tear it down (dismiss card completion, clear hover/def-deferred ids, didClose, close_canvas) and fall through to a FRESH open on the current cursor symbol. Returning to the focal file and pressing F8 still hits the existing toggle/refocus branches, so a canvas's card arrangement is preserved as long as you come back to it. UX decision confirmed with user (F8 = canvas for the current file). Test: f8_on_a_different_file_opens_fresh_canvas_here_not_old_focal.",
+    "tags": [
+      "canvas",
+      "nethercanvas",
+      "ux",
+      "f8",
+      "focal-file",
+      "buffer-switch",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-017",
+      "bug-019"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
+    "id": "bug-019",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "F8 to open NetherCanvas sometimes shows 'Loading source function…' forever and never shows cards; often have to spam F8 before it 'registers'.",
+    "file": "src/app/event_loop/commands_canvas.rs",
+    "root_cause": "canvas_submit_definition()/canvas_submit_references() submitted the textDocument/definition LSP request with NO active_lsp_server readiness guard (unlike submit_lsp_hover, which guards on active_lsp_server and toasts 'LSP is starting up'). F8 right after a file opens fires while the server is still starting; submit() always returns Some(request) (the scheduler just queues it), so canvas_def_request_id is set but the request reaches a worker with no LSP server and is never answered → the id never clears → canvas_pending stays true → permanent 'Loading source function…'. Spamming F8 only works because it eventually lands after the server is ready.",
+    "fix": "Guard canvas_submit_definition on active_lsp_server: if None, set canvas_def_deferred = pending_lsp_server.is_some() (so it only marks deferred while a server is actually starting; with no LSP at all it falls through to the 'Nothing to show' hint) and return without setting a phantom request id. Added field canvas_def_deferred (mod.rs/setup.rs), included it in canvas_pending (application.rs) so the 'Loading' overlay still shows while deferred, cleared it on CanvasClose, and added an auto-retry in the LspServerReady handler (async_results/lsp.rs) that fires canvas_submit_definition() once the server is up if the canvas is still active. Made canvas_submit_definition pub(crate) for the async handler. Test: canvas_definition_defers_until_lsp_ready_instead_of_loading_forever.",
+    "tags": [
+      "canvas",
+      "nethercanvas",
+      "lsp",
+      "loading",
+      "readiness-guard",
+      "async",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
+    "id": "bug-018",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "After jumping the cursor with Leap or Ctrl-O/Ctrl-I (jump list), the LSP symbol highlight, breadcrumb, and canvas context do not update at the new cursor position; you have to nudge with hjkl once before they register.",
+    "file": "src/app/event_loop/commands_editor.rs",
+    "root_cause": "The cursor-dependent reactions (submit_lsp_document_highlight + ensure_document_symbol_breadcrumbs) only run inside the hardcoded `is_cursor_move` block of handle_generic_editor_command. Jumps bypass that path: LeapJump ran a partial inline version (document highlight only, no breadcrumb refresh), and execute_jump_back/execute_jump_forward ran neither — so after a cross-file Ctrl-O the breadcrumb still showed the OLD file's cached symbols and the symbol highlight was stale. The cursor itself was correct (leap_jump_to_char / jump_to_line_col update cursor_char_idx live — no stale cache); only the side-effects were missing.",
+    "fix": "Extracted react_to_cursor_jump() = submit_lsp_document_highlight() + ensure_document_symbol_breadcrumbs(false) (the false variant refetches automatically on a cross-file jump because the cached path no longer matches, and is a cheap no-op within the same file). Called it from the resolved LeapJump branch (replacing the lone document-highlight call), from execute_jump_back / execute_jump_forward, AND from the async gd (LspDefinitionResult jump=true) handler in async_results/lsp.rs — user confirmed gd had the same staleness. Made the helper pub(crate) so the async handler can call it. Mirrors the bug-011/bug-014 family: state changed but the derived/reactive layer wasn't told.",
+    "tags": [
+      "lsp",
+      "breadcrumb",
+      "leap",
+      "jumplist",
+      "go-to-definition",
+      "cursor",
+      "dirty-flag",
+      "canvas",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-011",
+      "bug-014"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
+    "id": "bug-017",
+    "timestamp": "2026-06-22T00:00:00+00:00",
+    "error_message": "Clicking a canvas card while focused on the main editor (canvas in Background/S3) does not appear to focus it; it only works when already focused on a card (canvas Navigate).",
+    "file": "src/render/renderer/canvas.rs",
+    "root_cause": "The mouse click DID focus the card internally (begin_pointer_drag → canvas_focus_block sets canvas.focused), but the renderer hard-suppressed the focus ring in the background: `focused = is_edit_target || (!background && edit_block.is_none() && canvas.focused == Some(block.id))`. With background=true the focused branch is unreachable, so click-to-focus changed state with zero visible feedback.",
+    "fix": "Added bg_focused = background && edit_block.is_none() && canvas.focused == Some(block.id) and gave it a FLAT, thin dim-cyan border (ring_color = cyan @ alpha 0.55) — no halo lift, no header underline (those stay gated on `focused`). Keeps the editor primary in the background while making mouse selection visible, consistent with the user's 'focus = border only, no surface elevation' preference. Renderer-only change; verified by GUI.",
+    "tags": [
+      "canvas",
+      "nethercanvas",
+      "render",
+      "focus-ring",
+      "mouse",
+      "background",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-22T00:00:00+00:00"
+  },
+  {
     "id": "bug-016",
     "timestamp": "2026-06-22T00:00:00+00:00",
     "error_message": "Live-grep / references / fuzzy result list (left pane) jumps and jitters when moving the selection down or toggling collapse/expand (t); collapsing the selected group also made the selection highlight disappear.",

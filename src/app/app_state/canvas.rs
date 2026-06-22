@@ -443,13 +443,25 @@ impl AppState {
         true
     }
 
-    /// True when a canvas is open and in the `Navigate` interaction sub-state —
-    /// the only state where mouse drag/resize of cards is allowed.
-    pub fn canvas_is_navigating(&self) -> bool {
-        matches!(
-            self.canvas.as_ref().map(|c| c.interaction),
-            Some(CanvasInteraction::Navigate)
-        )
+    /// True when canvas cards can be grabbed/resized/clicked with the mouse: the
+    /// canvas is open and not stashed. This holds in every live interaction state —
+    /// `Navigate`, `Background` (nudge cards while coding in the editor), AND
+    /// `EditCard`: while editing one card the pointer must still be able to grab
+    /// ANOTHER card (click to switch the edit target straight to it) instead of
+    /// falling through to the editor first.
+    pub fn canvas_cards_interactive(&self) -> bool {
+        match self.canvas.as_ref() {
+            Some(c) => {
+                !c.stashed
+                    && matches!(
+                        c.interaction,
+                        CanvasInteraction::Navigate
+                            | CanvasInteraction::Background
+                            | CanvasInteraction::EditCard { .. }
+                    )
+            }
+            None => false,
+        }
     }
 
     /// Set keyboard focus to a canvas card by id (used when the pointer grabs a
@@ -2295,6 +2307,39 @@ mod tests {
         if let Some(f) = focal {
             assert!(!app.canvas_pointer_move_block(f, 10.0, 20.0));
         }
+    }
+
+    #[test]
+    fn cards_interactive_in_every_live_state_including_editcard() {
+        let mut app = app_with_text("fn focal() {}\n");
+        // Closed canvas → not interactive.
+        assert!(!app.canvas_cards_interactive());
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Caller,
+            origin_at("/p/a.rs", 10),
+            snap_lines(4),
+        )]);
+        // Navigate (default) → interactive.
+        assert!(app.canvas_cards_interactive());
+        // Background → STILL interactive (mouse-move cards while coding in editor).
+        assert!(app.canvas_mut_for_test().unwrap().enter_background());
+        assert!(app.canvas_cards_interactive());
+        // EditCard → STILL interactive: clicking ANOTHER card while editing one
+        // must hit-test as a card (to switch the edit target) — not fall through
+        // to the main editor.
+        assert!(app.canvas_mut_for_test().unwrap().focus_navigate());
+        let id = app
+            .canvas()
+            .unwrap()
+            .blocks
+            .iter()
+            .find(|b| b.relation != BlockRelation::Focal)
+            .map(|b| b.id)
+            .unwrap();
+        app.canvas_mut_for_test().unwrap().focus(id);
+        assert!(app.canvas_mut_for_test().unwrap().begin_edit().is_some());
+        assert!(app.canvas_cards_interactive());
     }
 
     #[test]

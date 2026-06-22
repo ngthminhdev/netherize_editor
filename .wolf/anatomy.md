@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-21T18:05:58.652Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-22T06:18:30.452Z
 > Files: 464 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -410,7 +410,7 @@
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
-- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~25886 tok)
+- `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~26412 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
@@ -424,35 +424,35 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~41743 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~42899 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
-- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~8485 tok)
+- `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~9608 tok)
 - `commands_completion.rs` (~15455 tok)
-- `commands_editor.rs` (~5335 tok)
+- `commands_editor.rs` (~5604 tok)
 - `commands_explorer.rs` (~7483 tok)
-- `commands_lsp.rs` (~13253 tok)
+- `commands_lsp.rs` (~13258 tok)
 - `commands_palette.rs` (~9170 tok)
 - `commands_prompts.rs` (~6720 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
-- `commands_tests.rs` — [derive(Default)] (~39218 tok)
+- `commands_tests.rs` — [derive(Default)] (~41925 tok)
 - `commands.rs` — [path = "commands_ai_agent.rs"] (~12436 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18714 tok)
-- `mod.rs` — Struct: AppShell (~7840 tok)
-- `setup.rs` — new, new_for_tests (~23887 tok)
+- `mod.rs` — Struct: AppShell (~7906 tok)
+- `setup.rs` — new, new_for_tests (~23898 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
 - `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2325 tok)
-- `canvas_scope.rs` — T4 scope-aware card selection: `enclosing_definition(symbols, line) -> Option<LspRange>` picks the deepest enclosing Function/Method/Constant/Constructor from a flat documentSymbol list. Pure, 4 unit tests. (~520 tok)
+- `canvas_scope.rs` — Scope-aware card snapshot selection (T4). (~931 tok)
 - `failure.rs` — Consecutive inline-completion failures before the user is told once and (~1604 tok)
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` (~13990 tok)
+- `lsp.rs` — Declares fetch (~14342 tok)
 - `mod.rs` (~9380 tok)
 - `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
@@ -581,7 +581,7 @@
 
 ## src/render/renderer/
 
-- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~14216 tok)
+- `canvas.rs` — Render layer for NetherCanvas v2 (overlay model). (~14337 tok)
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2139 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
@@ -772,7 +772,7 @@
 - `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~3008 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
 - `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1943 tok)
-- `pointer_drag.rs` — Pure pointer-drag types and panel/splitter geometry. No GPU/winit. (~2129 tok)
+- `pointer_drag.rs` — Pure pointer-drag types and panel/splitter geometry. No GPU/winit. (~2145 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)
 - `text_coordinate_map.rs` — [derive(Debug, Clone, PartialEq)] (~1674 tok)
 

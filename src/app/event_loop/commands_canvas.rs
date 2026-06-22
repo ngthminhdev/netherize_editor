@@ -21,6 +21,7 @@ impl AppShell {
             Command::CanvasClose => {
                 self.dismiss_canvas_card_completion();
                 self.canvas_hover_request_id = None;
+                self.canvas_def_deferred = false;
                 self.submit_canvas_card_did_close();
                 self.app_state.close_canvas()
             }
@@ -110,6 +111,61 @@ impl AppShell {
         Some(changed)
     }
 
+
+    /// Mouse click on a canvas card: focus it and enter edit (= F8 → Enter), so
+    /// keyboard typing goes straight into the card. Clicking a card while editing a
+    /// DIFFERENT one closes that one first; clicking the focal anchor (the live
+    /// editor's own symbol — not editable in-card) returns focus to the main editor.
+    pub(crate) fn focus_canvas_card_for_click(&mut self, id: crate::canvas::BlockId) -> bool {
+        if let Some(CanvasInteraction::EditCard { block, .. }) = self.app_state.canvas_interaction() {
+            if block == id {
+                return false; // already editing this exact card
+            }
+            if self.app_state.canvas_end_edit() {
+                self.dismiss_canvas_card_completion();
+                self.canvas_hover_request_id = None;
+                self.submit_canvas_card_did_close();
+            }
+        }
+        self.app_state.canvas_focus_block(id);
+        if self.app_state.canvas_begin_edit() {
+            self.canvas_sync_edit_card();
+            self.submit_canvas_card_did_open();
+            self.request_redraw();
+            true
+        } else {
+            // Focal anchor (not editable in-card) → behave like clicking the editor.
+            self.focus_main_editor_from_canvas()
+        }
+    }
+
+    /// Mouse click on the main editor: hand keyboard focus back to it, leaving any
+    /// in-card edit and dropping the canvas to the Background (still visible — show/
+    /// hide is F8's job).
+    pub(crate) fn focus_main_editor_from_canvas(&mut self) -> bool {
+        let mut changed = false;
+        if matches!(
+            self.app_state.canvas_interaction(),
+            Some(CanvasInteraction::EditCard { .. })
+        ) && self.app_state.canvas_end_edit()
+        {
+            self.dismiss_canvas_card_completion();
+            self.canvas_hover_request_id = None;
+            self.submit_canvas_card_did_close();
+            changed = true;
+        }
+        if self.app_state.canvas_enter_background() {
+            changed = true;
+        }
+        if self.focus_manager.set(FocusTarget::CenterEditor) {
+            changed = true;
+        }
+        if changed {
+            self.editor_needs_layout = true;
+            self.request_redraw();
+        }
+        changed
+    }
 
     /// While editing a card (S2), refresh that card's snapshot + caret from the
     /// **`CanvasEditSession`** (the card's own text/cursor — NOT the active
@@ -247,6 +303,26 @@ impl AppShell {
     }
 
     fn open_canvas_mode(&mut self) -> bool {
+        // F8 targets the file in front of you. If a canvas already exists but is
+        // bound to a DIFFERENT file than the active buffer (you navigated away),
+        // discard it and open a fresh canvas on the current cursor symbol rather
+        // than teleporting back to the old focal file. Returning to the focal file
+        // and pressing F8 still refocuses the existing canvas (the branches below),
+        // so its card arrangement is preserved as long as you come back to it.
+        if self.app_state.is_canvas_active() {
+            let different_file = matches!(
+                (self.app_state.canvas_focal_file(), self.app_state.active_file()),
+                (Some(focal), Some(active)) if active != focal.as_path()
+            );
+            if different_file {
+                self.dismiss_canvas_card_completion();
+                self.canvas_hover_request_id = None;
+                self.canvas_def_deferred = false;
+                self.submit_canvas_card_did_close();
+                self.app_state.close_canvas();
+                // Fall through to a fresh open on the current file below.
+            }
+        }
         // A STASHED canvas (a card was opened as a tab via `o`) → restore it:
         // un-stash, switch the editor back to the focal (gc-origin) file so the
         // connectors line up, and grab navigation focus.
@@ -375,10 +451,22 @@ impl AppShell {
 
     /// Submit `textDocument/definition` for the cursor symbol (still on the focal
     /// symbol while the canvas is open); the result is routed into the canvas.
-    fn canvas_submit_definition(&mut self) -> bool {
+    pub(crate) fn canvas_submit_definition(&mut self) -> bool {
         if !self.app_state.is_canvas_active() {
             return false;
         }
+        // The LSP server is often still starting right after a file opens.
+        // Submitting now would queue a request no server can answer, leaving the
+        // canvas stuck on "Loading source function…" forever (the request id is
+        // set but never cleared). Defer instead — the `LspServerReady` handler
+        // fires it the moment the server is up. Only mark deferred while a server
+        // is actually starting; with no LSP at all we fall through to the
+        // "Nothing to show" hint rather than spinning.
+        if self.active_lsp_server.is_none() {
+            self.canvas_def_deferred = self.pending_lsp_server.is_some();
+            return false;
+        }
+        self.canvas_def_deferred = false;
         self.force_flush_lsp_did_change_for_active_file();
         let Some((_lang, uri, line, character)) = self.lsp_cursor_context() else {
             return false;

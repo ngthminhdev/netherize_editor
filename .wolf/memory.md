@@ -3307,3 +3307,80 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 | 01:05 | Edited src/app/event_loop/application.rs | modified end_pointer_drag() | ~129 |
 | 01:05 | Edited src/app/app_state/canvas.rs | modified pointer_focus_block_sets_focus() | ~253 |
 | 01:08 | Session end: 24 writes across 11 files (buffers.rs, fuzzy.rs, diagnostics.rs, tests.rs, state.rs) | 14 reads | ~215128 tok |
+
+## Session: 2026-06-21 01:19
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 01:28 | Edited src/app/app_state/canvas.rs | modified canvas_cards_interactive() | ~238 |
+| 01:28 | Edited src/app/event_loop/application.rs | canvas_is_navigating() → canvas_cards_interactive() | ~124 |
+| 01:28 | Edited src/app/event_loop/application.rs | inline fix | ~25 |
+| 01:28 | Edited src/app/event_loop/application.rs | canvas_is_navigating() → canvas_cards_interactive() | ~168 |
+| 01:28 | Edited src/workbench/pointer_drag.rs | modified resolve_press_target() | ~102 |
+| 01:29 | Edited src/app/app_state/canvas.rs | modified cards_interactive_in_navigate_and_background_not_editcard() | ~355 |
+| 01:32 | Session end: 6 writes across 3 files (canvas.rs, application.rs, pointer_drag.rs) | 1 reads | ~42826 tok |
+
+## Session: 2026-06-22 09:53
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-22 09:54
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:19 | Edited src/render/renderer/canvas.rs | ring() → only() | ~439 |
+| 10:19 | Edited src/app/event_loop/commands_editor.rs | modified react_to_cursor_jump() | ~227 |
+| 10:19 | Edited src/app/event_loop/commands_editor.rs | 7→10 lines | ~148 |
+| 10:19 | Edited src/app/event_loop/commands_lsp.rs | modified execute_jump_forward() | ~125 |
+| 10:20 | Edited src/app/event_loop/commands_lsp.rs | 11→12 lines | ~124 |
+| 10:20 | Edited src/app/event_loop/mod.rs | modified fetch() | ~88 |
+| 10:20 | Edited src/app/event_loop/setup.rs | 2→3 lines | ~33 |
+| 10:20 | Edited src/app/event_loop/commands_canvas.rs | modified canvas_submit_definition() | ~250 |
+| 10:20 | Edited src/app/event_loop/commands_canvas.rs | 6→7 lines | ~83 |
+| 10:20 | Edited src/app/event_loop/application.rs | 2→3 lines | ~43 |
+| 10:20 | Edited src/app/event_loop/async_results/lsp.rs | modified fetch() | ~180 |
+| 10:21 | Edited src/app/event_loop/commands_canvas.rs | inline fix | ~17 |
+| 10:22 | Edited src/app/event_loop/commands_tests.rs | modified canvas_definition_defers_until_lsp_ready_instead_of_loading_forever() | ~537 |
+| 10:25 | Session end: 13 writes across 9 files (canvas.rs, commands_editor.rs, commands_lsp.rs, mod.rs, setup.rs) | 11 reads | ~193384 tok |
+| 10:32 | Edited src/app/event_loop/commands_editor.rs | inline fix | ~14 |
+| 10:32 | Edited src/app/event_loop/async_results/lsp.rs | 6→10 lines | ~151 |
+| 10:33 | Session end: 15 writes across 9 files (canvas.rs, commands_editor.rs, commands_lsp.rs, mod.rs, setup.rs) | 11 reads | ~193680 tok |
+
+## Session: 2026-06-22 11:07
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-22 11:07
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-22 11:07
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:05 | Edited src/app/event_loop/commands_canvas.rs | modified open_canvas_mode() | ~339 |
+| 12:05 | Edited src/app/event_loop/commands_tests.rs | modified f8_on_a_different_file_opens_fresh_canvas_here_not_old_focal() | ~504 |
+| 12:08 | Session end: 2 writes across 2 files (commands_canvas.rs, commands_tests.rs) | 1 reads | ~16442 tok |
+| 12:31 | Edited src/app/event_loop/async_results/canvas_scope.rs | modified enclosing_definition() | ~246 |
+| 12:31 | Edited src/app/event_loop/async_results/canvas_scope.rs | modified sym() | ~465 |
+| 12:31 | Edited src/app/event_loop/async_results/lsp.rs | expanded (+6 lines) | ~301 |
+| 12:32 | Edited src/app/event_loop/async_results/lsp.rs | modified enclosing_definition() | ~331 |
+| 12:32 | Edited src/app/event_loop/async_results/lsp.rs | 8→3 lines | ~44 |
+| 12:32 | Edited src/app/event_loop/async_results/lsp.rs | modified build_canvas_relation_snapshot() | ~139 |
+| 12:35 | Session end: 8 writes across 4 files (commands_canvas.rs, commands_tests.rs, canvas_scope.rs, lsp.rs) | 4 reads | ~47184 tok |
+| 12:51 | Session end: 8 writes across 4 files (commands_canvas.rs, commands_tests.rs, canvas_scope.rs, lsp.rs) | 5 reads | ~88942 tok |
+| 12:54 | Session end: 8 writes across 4 files (commands_canvas.rs, commands_tests.rs, canvas_scope.rs, lsp.rs) | 5 reads | ~88942 tok |
+| 13:02 | Edited src/app/event_loop/commands_canvas.rs | modified focus_canvas_card_for_click() | ~628 |
+| 13:02 | Edited src/app/event_loop/application.rs | modified handle_bottom_terminal_mouse_wheel() | ~836 |
+| 13:02 | Edited src/app/event_loop/application.rs | modified handle_right_terminal_mouse_wheel() | ~143 |
+| 13:02 | Edited src/app/event_loop/application.rs | modified end_pointer_drag() | ~516 |
+| 13:02 | Edited src/app/event_loop/application.rs | modified handle_bottom_tab_mouse_click() | ~144 |
+| 13:03 | Edited src/app/event_loop/commands_tests.rs | modified shell_with_background_canvas_card() | ~983 |
+| 13:06 | Session end: 14 writes across 5 files (commands_canvas.rs, commands_tests.rs, canvas_scope.rs, lsp.rs, application.rs) | 8 reads | ~142101 tok |
+| 13:17 | Edited src/app/app_state/canvas.rs | modified canvas_cards_interactive() | ~247 |
+| 13:18 | Edited src/app/app_state/canvas.rs | modified cards_interactive_in_every_live_state_including_editcard() | ~369 |
+| 13:18 | Edited src/app/event_loop/commands_tests.rs | modified clicking_card_2_while_editing_card_1_switches_edit_directly() | ~786 |
+| 13:21 | Session end: 17 writes across 6 files (commands_canvas.rs, commands_tests.rs, canvas_scope.rs, lsp.rs, application.rs) | 9 reads | ~169985 tok |

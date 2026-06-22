@@ -240,6 +240,10 @@ pub struct AppShell {
     /// normal peek/references-buffer flow.
     canvas_def_request_id: Option<u64>,
     canvas_refs_request_id: Option<u64>,
+    /// Set when F8 opened the canvas before the LSP server was ready: the
+    /// source-function fetch is deferred and fired by the `LspServerReady`
+    /// handler so the canvas never spins on "Loading…" forever.
+    canvas_def_deferred: bool,
     /// The card a pending canvas def/refs request was spawned FROM (in-card
     /// `gd`/`gr`), so the resulting cards record their parent + the connector is
     /// drawn from that card. `None` when spawned from the focal symbol.

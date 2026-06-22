@@ -103,6 +103,91 @@ fn canvas_open_toggles_off_when_canvas_has_navigation_focus() {
     let _ = std::fs::remove_file(path);
 }
 
+/// Regression (bug-020): once you've navigated to a different source file,
+/// pressing F8 must open a FRESH canvas on the file in front of you — NOT
+/// teleport the editor back to the old focal file to restore the stale canvas.
+#[test]
+fn f8_on_a_different_file_opens_fresh_canvas_here_not_old_focal() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let nanos = std::process::id();
+    let dir = std::env::temp_dir().join(format!("netherize_canvas_switch_{nanos}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let a = dir.join("a.rs");
+    let b = dir.join("b.rs");
+    std::fs::write(&a, "fn alpha() {}\n").unwrap();
+    std::fs::write(&b, "fn beta() {}\n").unwrap();
+
+    shell.app_state = AppState::new(a.clone());
+    shell.app_state.open_file(a.clone()).expect("open a");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+    let a_active = shell.app_state.active_file().map(|p| p.to_path_buf());
+    assert_eq!(shell.app_state.canvas_focal_file(), a_active);
+
+    // Navigate to file B, then F8.
+    shell.app_state.open_file(b.clone()).expect("open b");
+    let b_active = shell.app_state.active_file().map(|p| p.to_path_buf());
+    assert_ne!(a_active, b_active);
+    assert!(shell.handle_command(Command::CanvasOpen));
+
+    // Editor stays on B (no teleport back to A) and the canvas is now bound to B.
+    assert_eq!(
+        shell.app_state.active_file().map(|p| p.to_path_buf()),
+        b_active,
+        "F8 must not switch the editor back to the old focal file"
+    );
+    assert_eq!(
+        shell.app_state.canvas_focal_file(),
+        b_active,
+        "a fresh canvas for the current file, not the stale one for A"
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Regression (bug-019): F8 before the LSP server is ready must NOT leave the
+/// canvas spinning on "Loading source function…" forever. The source-function
+/// fetch is deferred (no phantom request id that never clears) and flagged so
+/// the `LspServerReady` handler can fire it automatically — no F8 spamming.
+#[test]
+fn canvas_definition_defers_until_lsp_ready_instead_of_loading_forever() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let path = std::env::temp_dir().join(format!(
+        "netherize_canvas_defer_{}.rs",
+        std::process::id()
+    ));
+    std::fs::write(&path, "fn main() {}\n").expect("write canvas fixture");
+    shell.app_state = AppState::new(path.clone());
+    shell.app_state.open_file(path.clone()).expect("open canvas fixture");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+
+    // Server still starting → defer, and crucially leave no stuck request id.
+    shell.active_lsp_server = None;
+    shell.pending_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: std::env::temp_dir(),
+    });
+    assert!(!shell.canvas_submit_definition());
+    assert!(
+        shell.canvas_def_deferred,
+        "fetch must be deferred while the LSP is starting"
+    );
+    assert!(
+        shell.canvas_def_request_id.is_none(),
+        "no phantom request id that would spin Loading forever"
+    );
+
+    // No LSP at all (nothing starting) → don't defer; fall through to the
+    // 'Nothing to show' hint instead of a permanent spinner.
+    shell.pending_lsp_server = None;
+    shell.canvas_def_deferred = false;
+    assert!(!shell.canvas_submit_definition());
+    assert!(!shell.canvas_def_deferred);
+
+    let _ = std::fs::remove_file(path);
+}
+
 /// Regression: the in-card edit session is KEPT stashed after leaving edit mode
 /// (to resume unsaved edits), so once you back the canvas to the Background — or
 /// open a card as a real buffer with `o` — the main editor must regain full vim
@@ -158,6 +243,165 @@ fn background_canvas_with_stashed_session_lets_main_editor_move() {
     let (line_after, _) = shell.app_state.cursor_line_col();
     assert_eq!(line_after, 1, "main editor cursor must advance — not the card");
 
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Helper: an open canvas (focal = foo.rs) with one relation card, sitting in the
+/// Background (so the user is "coding in the main editor" with cards floating).
+fn shell_with_background_canvas_card() -> (AppShell, std::path::PathBuf, crate::canvas::BlockId) {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let nanos = std::process::id();
+    let dir = std::env::temp_dir().join(format!("netherize_canvas_click_{nanos}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let foo = dir.join("foo.rs");
+    let bar = dir.join("bar.rs");
+    std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
+    std::fs::write(&bar, "fn helper() {\n    let x = 1;\n}\n").unwrap();
+    shell.app_state = AppState::new(foo.clone());
+    shell.app_state.open_file(foo.clone()).expect("open foo");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+    shell.app_state.canvas_add_relations(vec![(
+        crate::canvas::BlockRelation::Definition,
+        crate::canvas::BlockOrigin {
+            path: bar.canonicalize().unwrap(),
+            start_byte: 0,
+            end_byte: 1,
+            symbol_name: "helper".into(),
+            lsp_line: 0,
+            lsp_character: 0,
+        },
+        {
+            let mut s = crate::canvas::BlockSnapshot::default();
+            s.text = "fn helper() {".into();
+            s
+        },
+    )]);
+    let card_id = shell
+        .app_state
+        .canvas()
+        .unwrap()
+        .blocks
+        .iter()
+        .find(|b| b.relation != crate::canvas::BlockRelation::Focal)
+        .map(|b| b.id)
+        .unwrap();
+    assert!(shell.app_state.canvas_enter_background());
+    (shell, dir, card_id)
+}
+
+/// Mouse click on a floating canvas card while coding in the main editor focuses
+/// that card AND enters edit (= F8 → Enter), so typing goes into the card.
+#[test]
+fn clicking_a_canvas_card_focuses_it_and_enters_edit() {
+    let (mut shell, dir, card_id) = shell_with_background_canvas_card();
+    assert_eq!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::Background)
+    );
+
+    assert!(shell.focus_canvas_card_for_click(card_id));
+
+    match shell.app_state.canvas_interaction() {
+        Some(crate::canvas::CanvasInteraction::EditCard { block, .. }) => {
+            assert_eq!(block, card_id, "the clicked card is the edit target")
+        }
+        other => panic!("expected EditCard, got {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Mouse click on the main editor while editing a card hands keyboard focus back
+/// to the editor (leaves the card edit, canvas drops to Background, focus = center).
+#[test]
+fn clicking_main_editor_while_editing_card_returns_focus_to_editor() {
+    let (mut shell, dir, card_id) = shell_with_background_canvas_card();
+    shell.app_state.canvas_focus_block(card_id);
+    assert!(shell.app_state.canvas_begin_edit());
+    assert!(matches!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::EditCard { .. })
+    ));
+    // Pretend focus had drifted elsewhere; clicking main must pull it back.
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    assert!(shell.focus_main_editor_from_canvas());
+
+    assert_eq!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::Background),
+        "card edit left, canvas floats in the background"
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Regression (bug-022): while editing card 1, clicking card 2 must switch the
+/// edit target straight to card 2 — NOT focus the main editor first (which forced
+/// a second click). The fix keeps cards mouse-interactive in the EditCard state.
+#[test]
+fn clicking_card_2_while_editing_card_1_switches_edit_directly() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let nanos = std::process::id();
+    let dir = std::env::temp_dir().join(format!("netherize_canvas_switch2_{nanos}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let foo = dir.join("foo.rs");
+    let bar = dir.join("bar.rs");
+    let baz = dir.join("baz.rs");
+    std::fs::write(&foo, "fn main() {\n    a();\n    b();\n}\n").unwrap();
+    std::fs::write(&bar, "fn a() {}\n").unwrap();
+    std::fs::write(&baz, "fn b() {}\n").unwrap();
+    shell.app_state = AppState::new(foo.clone());
+    shell.app_state.open_file(foo.clone()).expect("open foo");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+    for (p, sym) in [(&bar, "a"), (&baz, "b")] {
+        shell.app_state.canvas_add_relations(vec![(
+            crate::canvas::BlockRelation::Caller,
+            crate::canvas::BlockOrigin {
+                path: p.canonicalize().unwrap(),
+                start_byte: 0,
+                end_byte: 1,
+                symbol_name: sym.into(),
+                lsp_line: 0,
+                lsp_character: 0,
+            },
+            {
+                let mut s = crate::canvas::BlockSnapshot::default();
+                s.text = format!("fn {sym}() {{}}");
+                s
+            },
+        )]);
+    }
+    let cards: Vec<crate::canvas::BlockId> = shell
+        .app_state
+        .canvas()
+        .unwrap()
+        .blocks
+        .iter()
+        .filter(|b| b.relation != crate::canvas::BlockRelation::Focal)
+        .map(|b| b.id)
+        .collect();
+    let (card1, card2) = (cards[0], cards[1]);
+
+    // Editing card 1.
+    shell.app_state.canvas_focus_block(card1);
+    assert!(shell.app_state.canvas_begin_edit());
+    assert!(matches!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::EditCard { block, .. }) if block == card1
+    ));
+    // Cards must still be mouse-interactive while editing (so card 2 is hit-tested).
+    assert!(shell.app_state.canvas_cards_interactive());
+
+    // "Click" card 2 → edit target jumps straight to card 2 (no editor detour).
+    assert!(shell.focus_canvas_card_for_click(card2));
+    match shell.app_state.canvas_interaction() {
+        Some(crate::canvas::CanvasInteraction::EditCard { block, .. }) => {
+            assert_eq!(block, card2, "edit switched directly to card 2")
+        }
+        other => panic!("expected EditCard(card2), got {other:?}"),
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 

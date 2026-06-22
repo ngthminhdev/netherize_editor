@@ -240,6 +240,7 @@ impl AppShell {
             latest_definition_request_id: None,
             canvas_def_request_id: None,
             canvas_refs_request_id: None,
+            canvas_def_deferred: false,
             canvas_def_parent: None,
             canvas_refs_parent: None,
             canvas_card_lsp_open: None,

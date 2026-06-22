@@ -124,14 +124,15 @@ pub fn apply_panel_drag(
     clamp_panel_size(side, raw, viewport)
 }
 
-/// Press hit-test priority: a canvas card (only while navigating) beats a
-/// splitter; otherwise the splitter; otherwise nothing.
+/// Press hit-test priority: a canvas card (only while cards are interactive —
+/// navigating OR floating in the background) beats a splitter; otherwise the
+/// splitter; otherwise nothing.
 pub fn resolve_press_target(
-    canvas_navigating: bool,
+    cards_interactive: bool,
     card_hit: Option<(BlockId, CardZone)>,
     splitter_hit: Option<PanelSide>,
 ) -> Option<DragTarget> {
-    if canvas_navigating {
+    if cards_interactive {
         if let Some((id, zone)) = card_hit {
             return Some(match zone {
                 CardZone::Body => DragTarget::CardMove(id),

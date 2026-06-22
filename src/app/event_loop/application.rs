@@ -355,18 +355,18 @@ impl AppShell {
             return false;
         };
 
-        let navigating = self.app_state.canvas_is_navigating();
+        let interactive = self.app_state.canvas_cards_interactive();
         let (left, right, bottom) = self.current_dock_bounds();
         let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
 
-        let card_hit = if navigating {
+        let card_hit = if interactive {
             self.app_state.canvas().and_then(|c| {
                 crate::canvas::interaction::card_pointer_hit_test(&c.blocks, &c.camera, cursor)
             })
         } else {
             None
         };
-        let Some(target) = resolve_press_target(navigating, card_hit, splitter_hit) else {
+        let Some(target) = resolve_press_target(interactive, card_hit, splitter_hit) else {
             return false;
         };
 
@@ -498,8 +498,8 @@ impl AppShell {
         };
         use winit::window::CursorIcon;
 
-        let navigating = self.app_state.canvas_is_navigating();
-        let card_hit = if navigating {
+        let interactive = self.app_state.canvas_cards_interactive();
+        let card_hit = if interactive {
             self.app_state.canvas().and_then(|c| {
                 crate::canvas::interaction::card_pointer_hit_test(&c.blocks, &c.camera, cursor)
             })
@@ -510,7 +510,7 @@ impl AppShell {
         let (left, right, bottom) = self.current_dock_bounds();
         let splitter_hit = splitter_hit_test(left, right, bottom, SPLITTER_BAND_PX, cursor);
 
-        let target = resolve_press_target(navigating, card_hit, splitter_hit);
+        let target = resolve_press_target(interactive, card_hit, splitter_hit);
         let hover = target.map(|t| match t {
             DragTarget::PanelEdge(side) => HoverTarget::PanelEdge(side),
             DragTarget::CardMove(_) => HoverTarget::CardBody,
@@ -650,6 +650,81 @@ impl AppShell {
 
     fn focus_right_terminal_for_mouse(&mut self) {
         let _ = self.handle_command(Command::AiChatFocus);
+    }
+
+    /// Mouse wheel over the bottom-dock terminal scrolls ITS scrollback view
+    /// (not the editor / not via focus): the pointer just has to be over a visible
+    /// bottom terminal. Mirrors the right-terminal wheel handler.
+    fn handle_bottom_terminal_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
+        use crate::workbench::panel_state::PanelTabId;
+        if !self.panel_state.bottom.visible
+            || self.panel_state.bottom.active_tab_id() != Some(PanelTabId::Terminal)
+        {
+            return false;
+        }
+        let Some(cursor) = self.last_cursor_position else {
+            return false;
+        };
+        let (_left, _right, bottom) = self.current_dock_bounds();
+        let Some(bounds) = bottom else {
+            return false;
+        };
+        if !point_in_bounds(cursor, bounds) {
+            return false;
+        }
+        let line_height = self.theme.ui.panel_line_height.max(1.0) as f64;
+        let Some((scroll_up, steps)) = (match delta {
+            MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => {
+                Some((y > 0.0, y.abs().ceil() as usize))
+            }
+            MouseScrollDelta::PixelDelta(position) if position.y.abs() > f64::EPSILON => Some((
+                position.y > 0.0,
+                (position.y.abs() / line_height).ceil() as usize,
+            )),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let idx = self.active_terminal_tab;
+        let Some(tab) = self.terminal_tabs.get_mut(idx) else {
+            return false;
+        };
+        let lines = (3 * steps.clamp(1, 24)).max(1);
+        if scroll_up {
+            tab.grid.view_scroll_up(lines);
+        } else {
+            tab.grid.view_scroll_down(lines);
+        }
+        self.terminal_needs_layout = true;
+        true
+    }
+
+    /// A left click that no card / splitter / dock-tab handler consumed: route
+    /// keyboard focus to the clicked region. A click in the center editor pane
+    /// (canvas active, not on a card) returns to the main editor, leaving any
+    /// in-card edit. Show/hide of the canvas stays F8's job.
+    fn handle_click_focus(&mut self) -> bool {
+        use crate::workbench::region_model::RegionId;
+        let Some((x, y)) = self.last_cursor_position else {
+            return false;
+        };
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let in_center = layout.model.find(RegionId::Center).is_some_and(|b| {
+            x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
+        });
+        if in_center && self.app_state.is_canvas_active() && !self.panel_state.overlay_visible {
+            return self.focus_main_editor_from_canvas();
+        }
+        let changed = self
+            .focus_manager
+            .set_from_click(x, y, &layout.model, &self.panel_state);
+        if changed {
+            self.editor_needs_layout = true;
+            self.sidebar_needs_layout = true;
+        }
+        changed
     }
 
     fn handle_right_terminal_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
@@ -1276,6 +1351,8 @@ impl ApplicationHandler<AppEvent> for AppShell {
             WindowEvent::MouseWheel { delta, .. } => {
                 if self.handle_right_terminal_mouse_wheel(delta) {
                     self.request_redraw();
+                } else if self.handle_bottom_terminal_mouse_wheel(delta) {
+                    self.request_redraw();
                 } else if self.handle_test_runner_mouse_wheel(delta) {
                     self.request_redraw();
                 } else if self.invalidate_editor_overlays() {
@@ -1290,7 +1367,25 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     // don't forward it to click/terminal handlers. If no drag
                     // was active, fall through so e.g. the right-terminal SGR
                     // release event still reaches the PTY.
+                    //
+                    // A press that grabbed a card body but never left the dead-zone
+                    // is a CLICK, not a drag → focus that card and enter edit
+                    // (= F8 → Enter). A real drag (armed) just moved the card.
+                    let card_click = match self.active_drag {
+                        Some(drag) => match drag.target {
+                            crate::workbench::pointer_drag::DragTarget::CardMove(id)
+                                if !drag.armed =>
+                            {
+                                Some(id)
+                            }
+                            _ => None,
+                        },
+                        None => None,
+                    };
                     if self.end_pointer_drag() {
+                        if let Some(id) = card_click {
+                            self.focus_canvas_card_for_click(id);
+                        }
                         // Refresh the cursor shape + handle highlight for wherever
                         // the pointer ended up (it may have left the drag zone).
                         if let Some(cursor) = self.last_cursor_position {
@@ -1330,6 +1425,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed
                     && self.handle_bottom_tab_mouse_click()
+                {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_click_focus()
                 {
                     self.request_redraw();
                 }
@@ -2957,8 +3057,9 @@ impl AppShell {
         // Loading state: a `gc` (definition/references) request is still in flight,
         // so the canvas may have no relation cards YET — the renderer shows a
         // spinner/“searching” line instead of a bare hint bar.
-        let canvas_pending =
-            self.canvas_def_request_id.is_some() || self.canvas_refs_request_id.is_some();
+        let canvas_pending = self.canvas_def_request_id.is_some()
+            || self.canvas_refs_request_id.is_some()
+            || self.canvas_def_deferred;
         if let Some(renderer) = self.renderer.as_mut() {
             // The canvas is bound to its focal (gc-origin) file: it renders only
             // while that file is the active buffer. Switching away (file picker,

@@ -287,8 +287,7 @@ impl Renderer {
             {
                 continue;
             }
-            // The edit-target card is always emphasized; in the background no
-            // card shows a focus ring (the editor is primary).
+            // The edit-target card is always emphasized.
             let is_edit_target = edit_block == Some(block.id);
             // While editing, ONLY the edit-target card shows a focus ring — the
             // freshly-spawned child card (`canvas.focused`) shouldn't also ring
@@ -296,14 +295,22 @@ impl Renderer {
             // navigation-focused card rings.
             let focused = is_edit_target
                 || (!background && edit_block.is_none() && canvas.focused == Some(block.id));
+            // S3 (background): the editor is primary, so the focused card gets a
+            // FLAT, thin dim-cyan border only (no halo lift, no header underline)
+            // — just enough to make mouse click-to-focus visible while coding.
+            let bg_focused =
+                background && edit_block.is_none() && canvas.focused == Some(block.id);
             // The card being edited rings in the ACTIVE MODE's color (NORMAL/
-            // INSERT/VISUAL); a merely navigation-focused card rings cyan; the
-            // rest are dim. App-global modes (palette/terminal/…) fall back to
-            // cyan focus because the card isn't really being edited in those.
+            // INSERT/VISUAL); a merely navigation-focused card rings cyan; a
+            // background-focused card gets a dim cyan border; the rest are dim.
+            // App-global modes (palette/terminal/…) fall back to cyan focus
+            // because the card isn't really being edited in those.
             let ring_color = if is_edit_target {
                 if card_mode.is_some() { mode_color } else { border_focus }
             } else if focused {
                 border_focus
+            } else if bg_focused {
+                [border_focus[0], border_focus[1], border_focus[2], 0.55]
             } else {
                 border_dim
             };

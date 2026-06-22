@@ -1024,6 +1024,7 @@ impl AppShell {
         self.invalidate_highlights_and_parse_active_buffer();
         self.submit_lsp_check_for_path(path);
         self.submit_lsp_did_open_for_active_file();
+        self.react_to_cursor_jump();
         self.editor_needs_layout = true;
         true
     }
@@ -1042,6 +1043,7 @@ impl AppShell {
         self.invalidate_highlights_and_parse_active_buffer();
         self.submit_lsp_check_for_path(path);
         self.submit_lsp_did_open_for_active_file();
+        self.react_to_cursor_jump();
         self.editor_needs_layout = true;
         true
     }

@@ -47,6 +47,15 @@ pub(super) fn handle_lsp_result(
                 app.submit_lsp_did_open_for_active_file();
             }
 
+            // A canvas opened (F8) before the server was ready deferred its
+            // source-function fetch; fire it now so the "Loading…" state resolves
+            // automatically without the user re-pressing F8.
+            if app.canvas_def_deferred && app.app_state.is_canvas_active() {
+                app.canvas_def_deferred = false;
+                app.canvas_submit_definition();
+                app.request_redraw();
+            }
+
             if app.panel_state.left.visible
                 && app.panel_state.left.active_tab_id() == Some(PanelTabId::Outline)
             {
@@ -310,6 +319,10 @@ pub(super) fn handle_lsp_result(
                 app.invalidate_highlights_and_parse_active_buffer();
                 app.submit_lsp_check_for_path(path);
                 app.submit_lsp_did_open_for_active_file();
+                // gd is a jump too: re-run the cursor-dependent reactions so the
+                // symbol highlight + breadcrumb (and canvas context) land at the
+                // new location without an hjkl nudge. See bug-018.
+                app.react_to_cursor_jump();
                 app.editor_needs_layout = true;
                 app.request_redraw();
             } else {
@@ -572,29 +585,35 @@ pub(super) fn handle_lsp_result(
             let Some(path) = lsp_uri_to_path(&uri) else {
                 return;
             };
-            let Some((line, character, symbol)) =
+            let Some((line, character, _symbol)) =
                 app.app_state.canvas_card_scope_target(card_id)
             else {
                 return;
             };
-            let Some(range) = super::canvas_scope::enclosing_definition(&symbols, line) else {
+            let Some(scope) = super::canvas_scope::enclosing_definition(&symbols, line) else {
                 return; // no enclosing definition → keep the ±N window
             };
+            // Title the card by the TARGET symbol it lands in, not the canvas's
+            // focal symbol (see bug-021).
+            let (s_start, s_end, s_name) = (
+                scope.range.start.line,
+                scope.range.end.line,
+                scope.name.clone(),
+            );
             let Some((_o, snap)) = build_canvas_relation_snapshot_range(
                 &app.theme,
                 &path,
-                range.start.line,
-                range.end.line,
+                s_start,
+                s_end,
                 character,
-                &symbol,
+                &s_name,
             ) else {
                 return;
             };
-            if app.app_state.canvas_apply_card_scope(
-                card_id,
-                snap,
-                Some((range.start.line, range.end.line)),
-            ) {
+            if app
+                .app_state
+                .canvas_apply_card_scope(card_id, snap, Some((s_start, s_end)))
+            {
                 app.request_redraw();
             }
         }
@@ -1025,11 +1044,6 @@ fn attach_canvas_relations(
 ) {
     use crate::canvas::BlockRelation;
     let cap = if relation == BlockRelation::Caller { 6 } else { 1 };
-    let focal_symbol = app
-        .app_state
-        .canvas_focal_origin()
-        .map(|o| o.symbol_name)
-        .unwrap_or_default();
     let context = app.app_state.canvas_context_lines();
     // Snapshot the ids present before the spawn so we can identify the newly-added
     // cards (for progressive scope resolution) without poking the private next_id.
@@ -1043,12 +1057,15 @@ fn attach_canvas_relations(
         let Some(path) = lsp_uri_to_path(&loc.uri) else {
             continue;
         };
+        // Seed with no title: the card's real name is filled in by progressive
+        // scope resolution below (sync for the active file, async otherwise) from
+        // the TARGET's enclosing definition — never the canvas's focal symbol.
         if let Some((origin, snapshot)) = build_canvas_relation_snapshot(
             &app.theme,
             &path,
             loc.line,
             loc.character,
-            &focal_symbol,
+            "",
             context,
         ) {
             rels.push((relation, origin, snapshot));
@@ -1096,25 +1113,30 @@ fn attach_canvas_relations(
                     .collect()
             })
             .unwrap_or_default();
-        for (id, path, line, character, symbol) in new_cards {
+        for (id, path, line, character, _symbol) in new_cards {
             let is_cached = cached_path.as_ref().is_some_and(|p| path == *p);
             if is_cached {
                 // Sync resolve: symbols already in memory → one reflow, no request.
-                if let Some(range) = super::canvas_scope::enclosing_definition(&cached_symbols, line)
+                if let Some(scope) =
+                    super::canvas_scope::enclosing_definition(&cached_symbols, line)
                 {
+                    // Title the card by the TARGET symbol it lands in, not the
+                    // canvas's focal symbol (see bug-021).
+                    let (s_start, s_end, s_name) = (
+                        scope.range.start.line,
+                        scope.range.end.line,
+                        scope.name.clone(),
+                    );
                     if let Some((_o, snap)) = build_canvas_relation_snapshot_range(
                         &app.theme,
                         &path,
-                        range.start.line,
-                        range.end.line,
+                        s_start,
+                        s_end,
                         character,
-                        &symbol,
+                        &s_name,
                     ) {
-                        app.app_state.canvas_apply_card_scope(
-                            id,
-                            snap,
-                            Some((range.start.line, range.end.line)),
-                        );
+                        app.app_state
+                            .canvas_apply_card_scope(id, snap, Some((s_start, s_end)));
                     }
                 }
             } else {
