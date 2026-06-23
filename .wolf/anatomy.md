@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-22T14:23:54.589Z
-> Files: 468 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-23T04:40:16.339Z
+> Files: 472 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -346,7 +346,7 @@
 
 ## config/ui/
 
-- `default.toml` (~411 tok)
+- `default.toml` (~634 tok)
 
 ## docs/
 
@@ -365,6 +365,8 @@
 - `2026-06-20-spatial-canvas-scope-and-focus-polish.md` — NetherCanvas Scope-aware Cards & Focus Polish (T3–T6) — Implementation Plan (~7608 tok)
 - `2026-06-21-mouse-spatial-interactions.md` — Mouse Spatial Interactions Implementation Plan (~12998 tok)
 - `2026-06-22-explorer-halfpage-and-dim-hidden.md` — Explorer half-page scroll + dimmed hidden filenames — Implementation Plan (~2033 tok)
+- `2026-06-22-neovide-pixel-smooth-editor-scroll.md` — Neovide-style pixel-smooth editor viewport scrolling — Implementation Plan (~5189 tok)
+- `2026-06-23-coupled-cursor-viewport-smooth-scroll.md` — Coupled Cursor + Viewport Smooth Scroll (v2) Implementation Plan (~6520 tok)
 
 ## docs/superpowers/specs/
 
@@ -383,7 +385,9 @@
 - `2026-06-20-spatial-canvas-scope-and-focus-polish-design.md` — NetherCanvas — Scope-aware Cards & Focus Polish (T3–T6) (~2844 tok)
 - `2026-06-21-mouse-spatial-interactions-design.md` — Mouse Spatial Interactions — Design (~3130 tok)
 - `2026-06-22-explorer-halfpage-and-dim-hidden-design.md` — Explorer half-page scroll + dimmed hidden filenames — design (~1649 tok)
+- `2026-06-22-neovide-pixel-smooth-editor-scroll-design.md` — Neovide-style pixel-smooth editor viewport scrolling — Design (~3186 tok)
 - `2026-06-22-smooth-scroll-design.md` — Smooth Scroll (editor + canvas card) — Design (~1403 tok)
+- `2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md` — Coupled Cursor + Viewport Smooth Scroll (v2) — Design (~3145 tok)
 
 ## scripts/
 
@@ -419,23 +423,23 @@
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
 - `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~26672 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
-- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~11354 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~26383 tok)
+- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~11960 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~27489 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~20558 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12572 tok)
-- `tests.rs` — [cfg(test)] (~24580 tok)
+- `tests.rs` — [cfg(test)] (~26545 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — Scroll-target moves smaller than this (in lines) snap instantly instead of (~44413 tok)
+- `application.rs` — Scroll-target moves smaller than this (in lines) snap instantly instead of (~45837 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~10074 tok)
 - `commands_completion.rs` (~15455 tok)
-- `commands_editor.rs` (~5604 tok)
+- `commands_editor.rs` (~5666 tok)
 - `commands_explorer.rs` — Declares FALLBACK_PAGE_ROWS (~8014 tok)
 - `commands_lsp.rs` (~13258 tok)
 - `commands_palette.rs` (~9170 tok)
@@ -443,11 +447,11 @@
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
-- `commands_tests.rs` — [derive(Default)] (~42485 tok)
+- `commands_tests.rs` — [derive(Default)] (~44179 tok)
 - `commands.rs` — [path = "commands_ai_agent.rs"] (~12436 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18734 tok)
-- `mod.rs` — Struct: AppShell (~8059 tok)
-- `setup.rs` — new, new_for_tests (~23930 tok)
+- `mod.rs` — Struct: AppShell (~8389 tok)
+- `setup.rs` — new, new_for_tests (~24206 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -536,7 +540,7 @@
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
 - `theme_config.rs` — Theme configuration entrypoint. (~176 tok)
-- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9482 tok)
+- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~12077 tok)
 
 ## src/config/theme_config/
 
@@ -613,7 +617,7 @@
 - `overlays.rs` — update_editor_overlays (~19503 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~8244 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~8414 tok)
 
 ## src/render/renderer/editor/buffers/
 
@@ -776,7 +780,7 @@
 - `inspector_panel.rs` — InspectorNode: title, leaf, branch, sync_from_debug_state + 6 more (~3078 tok)
 - `layout_engine.rs` — Height (logical px) of the clickable tab strip reserved at the top of the (~10632 tok)
 - `mod.rs` (~55 tok)
-- `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~3935 tok)
+- `motion.rs` — Pure animation primitives for workbench transitions (panel slide, zen, (~5836 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
 - `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1943 tok)
 - `pointer_drag.rs` — Pure pointer-drag types and panel/splitter geometry. No GPU/winit. (~2145 tok)

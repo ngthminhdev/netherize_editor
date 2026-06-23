@@ -135,11 +135,11 @@ impl AppShell {
                             .scroll_half_page_down((viewport_lines / 2).max(1));
                     }
                     Command::CenterCursorLine => {
-                        self.app_state.center_cursor_line(viewport_lines);
+                        self.app_state.center_cursor_line_animated(viewport_lines);
                     }
                     Command::MoveToFirstLine => {
                         self.app_state.move_to_first_line();
-                        self.app_state.center_cursor_line(viewport_lines);
+                        self.app_state.center_cursor_line_animated(viewport_lines);
                     }
                     Command::MoveToLastLine => {
                         self.app_state.move_to_last_line();
@@ -154,6 +154,9 @@ impl AppShell {
                     }
                     _ => {}
                 }
+                // Explicit scroll command: animate even when the delta is below the
+                // snap threshold (consumed one-shot in `advance_scroll_anim`).
+                self.scroll_anim_force = true;
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
                 // Large buffers use viewport-scoped tree-sitter highlights, so viewport jumps

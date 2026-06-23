@@ -140,6 +140,67 @@ impl AnimationConfig {
     }
 }
 
+/// Neovide-style motion settings. `[motion]` is the home for editor smooth
+/// scrolling; `enabled` is the master gate. The legacy `[editor].smooth_scroll_*`
+/// keys are mapped in as fallbacks (see `from_raw`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MotionConfig {
+    pub enabled: bool,
+    pub duration_ms: u32,
+    pub ease: crate::workbench::motion::EaseCurve,
+    pub editor_smooth_scroll_enabled: bool,
+    /// Master on/off + legacy fallback for the per-distance durations. `0` disables
+    /// editor smooth scroll entirely (see `editor_smooth_scroll_active`).
+    pub editor_smooth_scroll_animation_ms: u32,
+    pub editor_smooth_scroll_far_lines: u32,
+    /// Distance-scaled tween durations (ms). Short = j/k edge follow (≤3 lines),
+    /// halfpage = Ctrl-D/U (≤24 lines), center = zz/gg/G recenter (further).
+    pub editor_scroll_step_ms: u32,
+    pub editor_scroll_halfpage_ms: u32,
+    pub editor_scroll_center_ms: u32,
+}
+
+impl Default for MotionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            duration_ms: 250,
+            ease: crate::workbench::motion::EaseCurve::EaseOutCubic,
+            editor_smooth_scroll_enabled: true,
+            editor_smooth_scroll_animation_ms: 300,
+            editor_smooth_scroll_far_lines: 1,
+            editor_scroll_step_ms: 80,
+            editor_scroll_halfpage_ms: 120,
+            editor_scroll_center_ms: 130,
+        }
+    }
+}
+
+impl MotionConfig {
+    /// Editor smooth scroll runs only when the master gate, the editor toggle,
+    /// and a non-zero animation length all agree. Any one being off → snap.
+    pub fn editor_smooth_scroll_active(&self) -> bool {
+        self.enabled
+            && self.editor_smooth_scroll_enabled
+            && self.editor_smooth_scroll_animation_ms > 0
+    }
+
+    pub fn editor_scroll_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.editor_smooth_scroll_animation_ms as u64)
+    }
+
+    /// Distance-scaled tween duration for the editor viewport, picking the
+    /// step/halfpage/center bucket by the (post-clamp) visual line distance.
+    pub fn scroll_duration_for(&self, animated_lines: f32) -> std::time::Duration {
+        crate::workbench::motion::scroll_duration_for_distance(
+            animated_lines,
+            self.editor_scroll_step_ms,
+            self.editor_scroll_halfpage_ms,
+            self.editor_scroll_center_ms,
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct IndentConfig {
     pub tab_width: u8,
@@ -177,6 +238,7 @@ pub struct UiConfig {
     pub welcome: WelcomeUiConfig,
     pub indent: IndentConfig,
     pub animation: AnimationConfig,
+    pub motion: MotionConfig,
     pub border_radius_px: f32,
     pub enable_outline: bool,
 }
@@ -293,6 +355,7 @@ impl UiConfig {
             },
             indent: IndentConfig::default(),
             animation: AnimationConfig::default(),
+            motion: MotionConfig::default(),
             border_radius_px: 10.0,
             enable_outline: true,
         }
@@ -641,6 +704,55 @@ impl UiConfig {
                         .unwrap_or(fb.curve),
                 }
             },
+            motion: {
+                let fb = MotionConfig::default();
+                MotionConfig {
+                    enabled: raw.motion.enabled.unwrap_or(fb.enabled),
+                    duration_ms: raw.motion.duration_ms.unwrap_or(fb.duration_ms),
+                    ease: raw
+                        .motion
+                        .ease
+                        .map(|s| crate::workbench::motion::EaseCurve::from_str_or_default(&s))
+                        .unwrap_or(fb.ease),
+                    // Fall back to the legacy `[editor].smooth_scroll_*` keys when the
+                    // new `[motion]` keys are absent, so existing configs keep working.
+                    editor_smooth_scroll_enabled: raw
+                        .motion
+                        .editor_smooth_scroll_enabled
+                        .or(raw.editor.smooth_scroll_enabled)
+                        .unwrap_or(fb.editor_smooth_scroll_enabled),
+                    editor_smooth_scroll_animation_ms: raw
+                        .motion
+                        .editor_smooth_scroll_animation_ms
+                        .or(raw.editor.smooth_scroll_duration_ms)
+                        .unwrap_or(fb.editor_smooth_scroll_animation_ms),
+                    editor_smooth_scroll_far_lines: raw
+                        .motion
+                        .editor_smooth_scroll_far_lines
+                        .unwrap_or(fb.editor_smooth_scroll_far_lines),
+                    // Per-distance durations fall back to the single legacy
+                    // `editor_smooth_scroll_animation_ms` when unset, so old configs
+                    // (and the `[editor]` legacy key) still drive every bucket.
+                    editor_scroll_step_ms: raw
+                        .motion
+                        .editor_scroll_step_ms
+                        .or(raw.motion.editor_smooth_scroll_animation_ms)
+                        .or(raw.editor.smooth_scroll_duration_ms)
+                        .unwrap_or(fb.editor_scroll_step_ms),
+                    editor_scroll_halfpage_ms: raw
+                        .motion
+                        .editor_scroll_halfpage_ms
+                        .or(raw.motion.editor_smooth_scroll_animation_ms)
+                        .or(raw.editor.smooth_scroll_duration_ms)
+                        .unwrap_or(fb.editor_scroll_halfpage_ms),
+                    editor_scroll_center_ms: raw
+                        .motion
+                        .editor_scroll_center_ms
+                        .or(raw.motion.editor_smooth_scroll_animation_ms)
+                        .or(raw.editor.smooth_scroll_duration_ms)
+                        .unwrap_or(fb.editor_scroll_center_ms),
+                }
+            },
             border_radius_px: raw
                 .border_radius_px
                 .unwrap_or(if fallback.layout.round_ui {
@@ -830,6 +942,8 @@ struct RawUiFile {
     indent: RawIndent,
     #[serde(default)]
     animation: RawAnimation,
+    #[serde(default)]
+    motion: RawMotion,
     border_radius_px: Option<f32>,
     enable_outline: Option<bool>,
 }
@@ -840,6 +954,19 @@ struct RawAnimation {
     dock_duration_ms: Option<u32>,
     overlay_duration_ms: Option<u32>,
     curve: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawMotion {
+    enabled: Option<bool>,
+    duration_ms: Option<u32>,
+    ease: Option<String>,
+    editor_smooth_scroll_enabled: Option<bool>,
+    editor_smooth_scroll_animation_ms: Option<u32>,
+    editor_smooth_scroll_far_lines: Option<u32>,
+    editor_scroll_step_ms: Option<u32>,
+    editor_scroll_halfpage_ms: Option<u32>,
+    editor_scroll_center_ms: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -1054,5 +1181,110 @@ mod animation_config_tests {
         let cfg = UiConfig::from_raw(raw).unwrap();
         assert!(cfg.animation.enabled);
         assert_eq!(cfg.animation.curve, EaseCurve::EaseOutCubic);
+    }
+
+    #[test]
+    fn motion_config_defaults() {
+        let cfg = UiConfig::builtin();
+        assert!(cfg.motion.enabled);
+        assert_eq!(cfg.motion.editor_smooth_scroll_animation_ms, 300);
+        assert_eq!(cfg.motion.editor_smooth_scroll_far_lines, 1);
+        assert_eq!(cfg.motion.ease, EaseCurve::EaseOutCubic);
+        assert!(cfg.motion.editor_smooth_scroll_active());
+    }
+
+    #[test]
+    fn motion_disable_paths_each_turn_off_active() {
+        let mut m = UiConfig::builtin().motion;
+        m.enabled = false;
+        assert!(!m.editor_smooth_scroll_active());
+        let mut m = UiConfig::builtin().motion;
+        m.editor_smooth_scroll_enabled = false;
+        assert!(!m.editor_smooth_scroll_active());
+        let mut m = UiConfig::builtin().motion;
+        m.editor_smooth_scroll_animation_ms = 0;
+        assert!(!m.editor_smooth_scroll_active());
+    }
+
+    #[test]
+    fn motion_parses_overrides_and_bad_ease_falls_back() {
+        let toml_src = r#"
+            [motion]
+            enabled = true
+            ease = "garbage"
+            editor_smooth_scroll_animation_ms = 120
+            editor_smooth_scroll_far_lines = 4
+        "#;
+        let raw: RawUiFile = toml::from_str(toml_src).unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert_eq!(cfg.motion.ease, EaseCurve::EaseOutCubic);
+        assert_eq!(cfg.motion.editor_smooth_scroll_animation_ms, 120);
+        assert_eq!(cfg.motion.editor_smooth_scroll_far_lines, 4);
+    }
+
+    #[test]
+    fn motion_distance_durations_default() {
+        let m = UiConfig::builtin().motion;
+        assert_eq!(m.editor_scroll_step_ms, 80);
+        assert_eq!(m.editor_scroll_halfpage_ms, 120);
+        assert_eq!(m.editor_scroll_center_ms, 130);
+    }
+
+    #[test]
+    fn motion_distance_durations_parse_override() {
+        let toml_src = r#"
+            [motion]
+            editor_scroll_step_ms = 60
+            editor_scroll_halfpage_ms = 100
+            editor_scroll_center_ms = 110
+        "#;
+        let raw: RawUiFile = toml::from_str(toml_src).unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert_eq!(cfg.motion.editor_scroll_step_ms, 60);
+        assert_eq!(cfg.motion.editor_scroll_halfpage_ms, 100);
+        assert_eq!(cfg.motion.editor_scroll_center_ms, 110);
+    }
+
+    #[test]
+    fn motion_distance_durations_fall_back_to_legacy_animation_ms() {
+        // A config that only sets the single legacy duration drives every bucket.
+        let toml_src = r#"
+            [motion]
+            editor_smooth_scroll_animation_ms = 90
+        "#;
+        let raw: RawUiFile = toml::from_str(toml_src).unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert_eq!(cfg.motion.editor_scroll_step_ms, 90);
+        assert_eq!(cfg.motion.editor_scroll_halfpage_ms, 90);
+        assert_eq!(cfg.motion.editor_scroll_center_ms, 90);
+    }
+
+    #[test]
+    fn motion_scroll_duration_for_buckets() {
+        let m = UiConfig::builtin().motion;
+        assert_eq!(m.scroll_duration_for(1.0), std::time::Duration::from_millis(80));
+        assert_eq!(m.scroll_duration_for(15.0), std::time::Duration::from_millis(120));
+        assert_eq!(m.scroll_duration_for(120.0), std::time::Duration::from_millis(130));
+    }
+
+    #[test]
+    fn motion_back_compat_maps_legacy_editor_keys() {
+        let toml_src = r#"
+            [editor]
+            smooth_scroll_enabled = false
+            smooth_scroll_duration_ms = 90
+        "#;
+        let raw: RawUiFile = toml::from_str(toml_src).unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert!(!cfg.motion.editor_smooth_scroll_enabled);
+        assert_eq!(cfg.motion.editor_smooth_scroll_animation_ms, 90);
+    }
+
+    #[test]
+    fn motion_missing_block_uses_defaults() {
+        let raw: RawUiFile = toml::from_str("").unwrap();
+        let cfg = UiConfig::from_raw(raw).unwrap();
+        assert_eq!(cfg.motion.editor_smooth_scroll_animation_ms, 300);
+        assert!(cfg.motion.editor_smooth_scroll_active());
     }
 }

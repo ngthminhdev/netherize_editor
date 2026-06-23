@@ -1081,6 +1081,15 @@ impl AppState {
         self.current_scroll_y = self.target_scroll_y;
     }
 
+    /// Like `center_cursor_line` but sets only `target_scroll_y`; the smooth-scroll
+    /// tick eases `current_scroll_y` toward it (Neovide-style `zz`). Used by the
+    /// editor `zz`/`gg` commands. LSP/palette/go-to-def keep the snapping
+    /// `center_cursor_line` so cross-file jumps stay instant.
+    pub fn center_cursor_line_animated(&mut self, viewport_lines: usize) {
+        let (cursor_line, _) = self.cursor_line_col();
+        self.target_scroll_y = cursor_line.saturating_sub(viewport_lines / 2) as f32;
+    }
+
     pub fn scroll_half_page_up(&mut self, half: usize) {
         // Move only the target; `current_scroll_y` is eased toward it by the
         // smooth-scroll tick (or snapped there when smooth scroll is disabled).
@@ -1105,21 +1114,33 @@ impl AppState {
     }
 
     /// Adjust target_scroll_y so the cursor is within the viewport.
+    ///
+    /// Worked entirely in **visual-line space** so folds (zero-height hidden spans)
+    /// never desync the follow math. A fold above the cursor compresses on-screen
+    /// distance, so comparing a logical cursor line against the visual viewport
+    /// height used to scroll prematurely — the fold-crossing jitter. `viewport_lines`
+    /// is a count of on-screen rows, hence visual.
     pub fn auto_scroll_to_cursor(&mut self, viewport_lines: usize) {
         let (raw_cursor_line, _) = self.cursor_line_col();
-
-        // If the cursor is on a hidden line, use the visible marker line instead.
-        // This prevents viewport jitter when navigating through folded regions.
-        let cursor_line = self
+        // Map a cursor parked on a hidden line to its visible fold marker first,
+        // then convert to a visual row.
+        let cursor_logical = self
             .fold_marker_line_for_hidden_line(raw_cursor_line)
             .unwrap_or(raw_cursor_line);
+        let cursor_visual = self.logical_scroll_to_visual(cursor_logical as f32);
+        let top_visual = self.logical_scroll_to_visual(self.target_scroll_y);
 
-        let margin = 3usize;
-        let target_line = self.target_scroll_y.floor().max(0.0) as usize;
-        if cursor_line < target_line + margin {
-            self.target_scroll_y = cursor_line.saturating_sub(margin) as f32;
-        } else if viewport_lines > margin && cursor_line + margin >= target_line + viewport_lines {
-            self.target_scroll_y = (cursor_line + margin + 1 - viewport_lines) as f32;
+        let margin = 3.0_f32;
+        let vp = viewport_lines as f32;
+        let new_top_visual = if cursor_visual < top_visual + margin {
+            (cursor_visual - margin).max(0.0)
+        } else if vp > margin && cursor_visual + margin >= top_visual + vp {
+            cursor_visual + margin + 1.0 - vp
+        } else {
+            top_visual
+        };
+        if (new_top_visual - top_visual).abs() > f32::EPSILON {
+            self.target_scroll_y = self.visual_scroll_to_logical(new_top_visual.max(0.0));
         }
     }
 
@@ -1220,4 +1241,38 @@ fn find_matching_open_bracket(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod centering_tests {
+    use super::AppState;
+    use std::path::PathBuf;
+
+    fn state_100_lines() -> AppState {
+        let text: String = (0..100).map(|i| format!("line {i}\n")).collect();
+        AppState::from_text(PathBuf::from("center_test.rs"), &text)
+    }
+
+    #[test]
+    fn center_cursor_line_animated_sets_target_not_current() {
+        let mut st = state_100_lines();
+        st.jump_to_line_and_column(50, 0);
+        st.current_scroll_y = 7.0;
+        st.target_scroll_y = 7.0;
+        st.center_cursor_line_animated(20);
+        // Cursor at line 50, viewport 20 → target centers to 50 - 10 = 40.
+        assert_eq!(st.target_scroll_y, 40.0);
+        assert_eq!(st.current_scroll_y, 7.0); // current NOT snapped
+    }
+
+    #[test]
+    fn center_cursor_line_snaps_current_to_target() {
+        let mut st = state_100_lines();
+        st.jump_to_line_and_column(50, 0);
+        st.current_scroll_y = 7.0;
+        st.target_scroll_y = 7.0;
+        st.center_cursor_line(20);
+        assert_eq!(st.target_scroll_y, 40.0);
+        assert_eq!(st.current_scroll_y, st.target_scroll_y); // snapped
+    }
 }

@@ -77,6 +77,90 @@ pub fn ease_scroll(
     (start + (target - start) * eased, false)
 }
 
+/// Shared eased progress for phase-locking two tweens (scroll + caret) on one
+/// clock. Returns `(eased_fraction, done)` where `eased_fraction` is in `0..=1`
+/// after the curve, and `done` is true once the duration has elapsed. A zero
+/// duration yields `(1.0, true)` so callers snap instantly.
+pub fn ease_fraction(
+    started_at: Instant,
+    now: Instant,
+    duration: Duration,
+    curve: EaseCurve,
+) -> (f32, bool) {
+    if duration.is_zero() {
+        return (1.0, true);
+    }
+    let elapsed = now.saturating_duration_since(started_at).as_secs_f32();
+    let t = (elapsed / duration.as_secs_f32()).clamp(0.0, 1.0);
+    (curve.apply(t), t >= 1.0)
+}
+
+/// Pick a short, distance-scaled tween duration. `animated_lines` is the
+/// post-clamp visual distance, so a far jump that clamped to a screenful uses the
+/// short bucket, not a long cinematic one. Buckets: ≤3 lines → `step_ms`
+/// (j/k edge follow), ≤24 lines → `halfpage_ms` (Ctrl-D/U), else `center_ms`.
+#[inline]
+pub fn scroll_duration_for_distance(
+    animated_lines: f32,
+    step_ms: u32,
+    halfpage_ms: u32,
+    center_ms: u32,
+) -> Duration {
+    let d = animated_lines.abs();
+    let ms = if d <= 3.0 {
+        step_ms
+    } else if d <= 24.0 {
+        halfpage_ms
+    } else {
+        center_ms
+    };
+    Duration::from_millis(ms as u64)
+}
+
+/// Far-jump clamp width in lines: one screenful plus `far_lines` extra. Adapts
+/// Neovide's `scroll_animation_far_lines` so a large jump still shows a visible
+/// settle of ~one screenful (rather than near-snapping at the default). Never
+/// zero, so `clamp_scroll_start` always leaves a finite span to animate.
+#[inline]
+pub fn scroll_far_clamp_lines(viewport_lines: usize, far_lines: u32) -> f32 {
+    (viewport_lines as f32 + far_lines as f32).max(1.0)
+}
+
+/// How a scroll-target change should be applied to the tween.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScrollRetarget {
+    /// Jump instantly to target (cursor follow below threshold, or smooth off).
+    Snap,
+    /// Begin a tween from `start` (already far-clamped) toward target.
+    Animate { start: f32 },
+}
+
+/// Decide snap vs animate for a scroll-target change. Pure so it is unit-testable
+/// without an `AppShell`. `smooth_enabled` already folds in the global motion
+/// gate, the editor toggle, and `animation_ms > 0`. `force` lets an explicit
+/// command (zz/gg/G/Ctrl-D/Ctrl-U) animate even when `|delta| < snap_threshold`,
+/// while ordinary cursor follow (`j`/`k`, `force = false`) snaps. `current` is the
+/// live animated position, so a retarget mid-tween recomputes from where the
+/// buffer is *now* — no one-frame jump.
+pub fn plan_scroll_retarget(
+    current: f32,
+    target: f32,
+    smooth_enabled: bool,
+    force: bool,
+    snap_threshold: f32,
+    viewport_lines: usize,
+    far_lines: u32,
+) -> ScrollRetarget {
+    let delta = target - current;
+    if !smooth_enabled || (!force && delta.abs() < snap_threshold) {
+        return ScrollRetarget::Snap;
+    }
+    let max = scroll_far_clamp_lines(viewport_lines, far_lines);
+    ScrollRetarget::Animate {
+        start: clamp_scroll_start(current, target, max),
+    }
+}
+
 pub fn lerp_bounds(a: RegionBounds, b: RegionBounds, t: f32) -> RegionBounds {
     RegionBounds::new(
         lerp(a.x, b.x, t),
@@ -290,6 +374,48 @@ mod tests {
     }
 
     #[test]
+    fn ease_fraction_zero_duration_is_done_at_one() {
+        let t0 = Instant::now();
+        let (f, done) = ease_fraction(t0, t0, Duration::ZERO, EaseCurve::EaseOutCubic);
+        assert_eq!(f, 1.0);
+        assert!(done);
+    }
+
+    #[test]
+    fn ease_fraction_matches_ease_scroll_value() {
+        // The shared fraction, lerped between the same endpoints, must reproduce
+        // ease_scroll's value — so scroll and caret can phase-lock on one clock.
+        let t0 = Instant::now();
+        let now = t0 + Duration::from_millis(40);
+        let dur = Duration::from_millis(120);
+        let (frac, done) = ease_fraction(t0, now, dur, EaseCurve::EaseOutCubic);
+        assert!(!done);
+        let (val, _) = ease_scroll(10.0, 30.0, t0, now, dur, EaseCurve::EaseOutCubic);
+        assert!((10.0 + (30.0 - 10.0) * frac - val).abs() < 1e-4);
+    }
+
+    #[test]
+    fn duration_scales_with_distance() {
+        assert_eq!(
+            scroll_duration_for_distance(2.0, 80, 120, 130),
+            Duration::from_millis(80)
+        );
+        assert_eq!(
+            scroll_duration_for_distance(20.0, 80, 120, 130),
+            Duration::from_millis(120)
+        );
+        assert_eq!(
+            scroll_duration_for_distance(200.0, 80, 120, 130),
+            Duration::from_millis(130)
+        );
+        // Sign-independent: a large upward jump uses the same bucket as downward.
+        assert_eq!(
+            scroll_duration_for_distance(-200.0, 80, 120, 130),
+            Duration::from_millis(130)
+        );
+    }
+
+    #[test]
     fn lerp_bounds_midpoint() {
         let a = RegionBounds::new(0.0, 0.0, 0.0, 10.0);
         let b = RegionBounds::new(10.0, 0.0, 20.0, 10.0);
@@ -390,6 +516,68 @@ mod tests {
         let (v, done) = ease_scroll(0.0, 99.0, t0, t0, Duration::ZERO, EaseCurve::EaseOutCubic);
         assert_eq!(v, 99.0);
         assert!(done);
+    }
+
+    #[test]
+    fn scroll_far_clamp_lines_is_screenful_plus_far() {
+        assert_eq!(scroll_far_clamp_lines(40, 1), 41.0);
+        assert_eq!(scroll_far_clamp_lines(40, 9), 49.0);
+        // Never zero, even with a zero viewport / far.
+        assert_eq!(scroll_far_clamp_lines(0, 0), 1.0);
+    }
+
+    #[test]
+    fn plan_retarget_snaps_when_smooth_disabled() {
+        // Even an explicit (forced) far command snaps when smooth scroll is off.
+        assert_eq!(
+            plan_scroll_retarget(0.0, 50.0, false, true, 1.5, 40, 1),
+            ScrollRetarget::Snap
+        );
+    }
+
+    #[test]
+    fn plan_retarget_snaps_sub_line_jitter_without_force() {
+        // Sub-line move below the 0.5 floor, no force → instant snap.
+        assert_eq!(
+            plan_scroll_retarget(10.0, 10.3, true, false, 0.5, 40, 1),
+            ScrollRetarget::Snap
+        );
+    }
+
+    #[test]
+    fn plan_retarget_animates_single_line_follow_without_force() {
+        // A whole-line j/k follow at the viewport edge glides, not snaps.
+        match plan_scroll_retarget(10.0, 11.0, true, false, 0.5, 40, 1) {
+            ScrollRetarget::Animate { start } => assert!((start - 10.0).abs() < f32::EPSILON),
+            other => panic!("expected animate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plan_retarget_animates_sub_line_when_forced() {
+        // Explicit command with a tiny delta still animates (force bypasses floor).
+        match plan_scroll_retarget(10.0, 10.3, true, true, 0.5, 40, 1) {
+            ScrollRetarget::Animate { start } => assert!((start - 10.0).abs() < f32::EPSILON),
+            other => panic!("expected animate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plan_retarget_clamps_far_jump_to_screenful() {
+        // gg from line 5000 to 0, viewport 40, far 1 → start within 41 lines of target.
+        match plan_scroll_retarget(5000.0, 0.0, true, true, 1.5, 40, 1) {
+            ScrollRetarget::Animate { start } => assert_eq!(start, 41.0),
+            other => panic!("expected animate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plan_retarget_recomputes_from_current_position() {
+        // Mid-tween at line 60, new target 0 → start clamped from 60, not the old start.
+        match plan_scroll_retarget(60.0, 0.0, true, true, 1.5, 40, 1) {
+            ScrollRetarget::Animate { start } => assert_eq!(start, 41.0),
+            other => panic!("expected animate, got {other:?}"),
+        }
     }
 
     #[test]

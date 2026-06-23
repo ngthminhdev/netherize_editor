@@ -4346,3 +4346,155 @@ fn test_terminal_focus_exits_on_right_sidebar_tab_switch() {
     // 5. Mode must have transitioned back to Normal (or non-terminal mode) since TestRunner doesn't support terminal
     assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
 }
+
+// ---- Neovide-style pixel-smooth editor viewport scrolling ----
+
+/// An explicit scroll command (force flag set) animates the editor buffer rather
+/// than snapping: after one tick the tween is live and `current` sits between the
+/// start and the target.
+#[test]
+fn forced_editor_scroll_animates_not_snaps() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text: String = (0..500).map(|i| format!("line {i}\n")).collect();
+    shell.app_state = AppState::from_text(PathBuf::from("scroll_anim_test.rs"), &text);
+
+    let now = std::time::Instant::now();
+    shell.advance_scroll_anim(now); // settle baseline (target == 0)
+
+    // Simulate Ctrl-D / zz moving the target, with the explicit-command force flag.
+    shell.app_state.target_scroll_y = 30.0;
+    shell.scroll_anim_force = true;
+
+    let moved = shell.advance_scroll_anim(now + std::time::Duration::from_millis(1));
+    assert!(moved, "scroll should advance");
+    assert!(
+        shell.scroll_anim_started_at.is_some(),
+        "explicit command should animate, not snap"
+    );
+    assert!(
+        shell.app_state.current_scroll_y < 30.0,
+        "mid-tween, got {}",
+        shell.app_state.current_scroll_y
+    );
+}
+
+/// A single-line cursor follow at the viewport edge (no force) glides smoothly
+/// instead of jumping — one line is a real move, above the 0.5-line snap floor.
+#[test]
+fn unforced_single_line_follow_animates() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text: String = (0..500).map(|i| format!("line {i}\n")).collect();
+    shell.app_state = AppState::from_text(PathBuf::from("scroll_snap_test.rs"), &text);
+
+    let now = std::time::Instant::now();
+    shell.advance_scroll_anim(now); // baseline
+
+    shell.app_state.target_scroll_y = 1.0; // one line at the edge, no force
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(1)); // retarget (t=0)
+    assert!(
+        shell.scroll_anim_started_at.is_some(),
+        "single-line edge scroll should glide, not jump"
+    );
+    // Sample mid-tween: the viewport is partway between the old and new line.
+    let moved = shell.advance_scroll_anim(now + std::time::Duration::from_millis(30));
+    assert!(moved);
+    assert!(
+        shell.app_state.current_scroll_y > 0.0 && shell.app_state.current_scroll_y < 1.0,
+        "mid-tween toward the line, got {}",
+        shell.app_state.current_scroll_y
+    );
+}
+
+/// Driving the editor smooth-scroll tween must not mutate any NetherCanvas state.
+#[test]
+fn editor_smooth_scroll_leaves_canvas_untouched() {
+    let (mut shell, dir, _card) = shell_with_background_canvas_card();
+    let canvas_before = format!("{:?}", shell.app_state.canvas());
+
+    shell.app_state.target_scroll_y = 25.0;
+    shell.scroll_anim_force = true;
+    let now = std::time::Instant::now();
+    shell.advance_scroll_anim(now);
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(5));
+
+    let canvas_after = format!("{:?}", shell.app_state.canvas());
+    assert_eq!(
+        canvas_before, canvas_after,
+        "editor smooth scroll must not touch canvas camera/cards"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Ctrl-D moves cursor AND viewport, so the caret must ride the SAME tween: a
+/// non-zero `caret_scroll_lag` mid-tween proves the caret is gliding with the
+/// scroll instead of teleporting to its line and waiting for the viewport.
+#[test]
+fn halfpage_down_couples_caret_lag_to_scroll() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text: String = (0..400).map(|i| format!("line {i}\n")).collect();
+    shell.app_state = AppState::from_text(PathBuf::from("couple.rs"), &text);
+
+    let now = std::time::Instant::now();
+    shell.advance_scroll_anim(now); // settle baseline
+
+    assert!(shell.handle_command(Command::ScrollHalfPageDown));
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(1)); // retarget (t≈0)
+    assert!(
+        shell.scroll_anim_started_at.is_some(),
+        "half-page should animate, not snap"
+    );
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(30)); // mid-tween
+    assert!(
+        shell.app_state.caret_scroll_lag.abs() > 1e-4,
+        "caret must lag (couple) mid-tween, got {}",
+        shell.app_state.caret_scroll_lag
+    );
+    assert!(
+        shell.app_state.current_scroll_y > 0.0
+            && shell.app_state.current_scroll_y <= shell.app_state.target_scroll_y + 1e-3,
+        "scroll mid-tween between start and target: {} (target {})",
+        shell.app_state.current_scroll_y,
+        shell.app_state.target_scroll_y
+    );
+}
+
+/// A `j` that does NOT move the viewport keeps the caret instant — no lag, no tween.
+#[test]
+fn move_down_without_scroll_keeps_caret_unlagged() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text: String = (0..400).map(|i| format!("line {i}\n")).collect();
+    shell.app_state = AppState::from_text(PathBuf::from("nolag.rs"), &text);
+
+    let now = std::time::Instant::now();
+    shell.advance_scroll_anim(now);
+    shell.handle_command(Command::MoveDown); // cursor 0->1, cursor stays on-screen
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(1));
+    assert_eq!(
+        shell.app_state.caret_scroll_lag, 0.0,
+        "no viewport move → caret is instant (unlagged)"
+    );
+    assert!(shell.scroll_anim_started_at.is_none());
+}
+
+/// Once the tween completes the caret sits flush on its line again (lag == 0).
+#[test]
+fn caret_lag_settles_to_zero_when_tween_completes() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text: String = (0..400).map(|i| format!("line {i}\n")).collect();
+    shell.app_state = AppState::from_text(PathBuf::from("settle.rs"), &text);
+
+    let now = std::time::Instant::now();
+    shell.advance_scroll_anim(now);
+    shell.handle_command(Command::ScrollHalfPageDown);
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(1));
+    // Well past the longest bucket (≤130ms).
+    shell.advance_scroll_anim(now + std::time::Duration::from_millis(500));
+    assert!(
+        shell.scroll_anim_started_at.is_none(),
+        "tween should have completed"
+    );
+    assert_eq!(
+        shell.app_state.caret_scroll_lag, 0.0,
+        "caret settles flush to its line"
+    );
+}

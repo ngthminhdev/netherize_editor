@@ -3534,3 +3534,100 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 | 21:23 | Edited src/app/event_loop/commands_explorer.rs | modified explorer_page_rows() | ~436 |
 | 21:23 | Edited src/app/event_loop/commands_explorer.rs | expanded (+8 lines) | ~150 |
 | 21:27 | Session end: 13 writes across 10 files (2026-06-22-explorer-halfpage-and-dim-hidden-design.md, 2026-06-22-explorer-halfpage-and-dim-hidden.md, renderer.rs, helpers.rs, sidebar.rs) | 12 reads | ~167683 tok |
+
+## Session: 2026-06-22 23:09
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:45 | Created docs/superpowers/specs/2026-06-22-neovide-pixel-smooth-editor-scroll-design.md | — | ~3112 |
+| 23:47 | Created docs/superpowers/plans/2026-06-22-neovide-pixel-smooth-editor-scroll.md | — | ~5535 |
+| 23:47 | Edited src/workbench/motion.rs | modified scroll_far_clamp_lines_is_screenful_plus_far() | ~559 |
+| 23:48 | Edited src/workbench/motion.rs | modified scroll_far_clamp_lines() | ~506 |
+| 23:49 | Edited src/config/ui_config.rs | modified animation_config_missing_block_uses_fallback() | ~680 |
+| 23:49 | Edited src/config/ui_config.rs | modified default() | ~393 |
+| 23:49 | Edited src/config/ui_config.rs | 3→4 lines | ~34 |
+| 23:49 | Edited src/config/ui_config.rs | 3→4 lines | ~47 |
+| 23:49 | Edited src/config/ui_config.rs | expanded (+28 lines) | ~475 |
+| 23:49 | Edited src/config/ui_config.rs | expanded (+12 lines) | ~174 |
+| 23:49 | Edited config/ui/default.toml | expanded (+10 lines) | ~140 |
+| 23:52 | Edited src/app/app_state/editor.rs | modified center_cursor_line() | ~212 |
+| 23:52 | Edited src/app/event_loop/mod.rs | 3→8 lines | ~114 |
+| 23:52 | Edited src/app/event_loop/setup.rs | 3→4 lines | ~42 |
+| 23:52 | Edited src/app/event_loop/commands_editor.rs | center_cursor_line() → center_cursor_line_animated() | ~100 |
+| 23:53 | Edited src/app/event_loop/commands_editor.rs | 4→7 lines | ~97 |
+| 23:53 | Edited src/app/event_loop/application.rs | modified advance_scroll_anim() | ~709 |
+| 23:56 | Edited src/app/event_loop/application.rs | modified advance_scroll_anim() | ~44 |
+| 23:59 | Session end: 18 writes across 10 files (2026-06-22-neovide-pixel-smooth-editor-scroll-design.md, 2026-06-22-neovide-pixel-smooth-editor-scroll.md, motion.rs, ui_config.rs, default.toml) | 13 reads | ~182253 tok |
+| 00:16 | Edited src/app/app_state/tests.rs | modified long_line_auto_fold_only_folds_above_1000_chars() | ~657 |
+| 00:16 | Edited src/app/app_state/mod.rs | modified logical_scroll_to_visual() | ~481 |
+| 00:17 | Edited src/app/app_state/mod.rs | 1→2 lines | ~38 |
+| 00:17 | Edited src/app/event_loop/application.rs | 18→17 lines | ~243 |
+| 00:17 | Edited src/app/event_loop/application.rs | larger() → smoothly() | ~89 |
+| 00:18 | Edited src/app/event_loop/commands_tests.rs | modified unforced_single_line_follow_animates() | ~268 |
+| 00:19 | Edited src/workbench/motion.rs | modified plan_retarget_snaps_sub_line_jitter_without_force() | ~291 |
+| 00:20 | Edited src/app/event_loop/commands_tests.rs | 13→15 lines | ~181 |
+| 00:20 | Edited src/app/app_state/tests.rs | modified scroll_tween_across_fold_is_visually_monotonic() | ~305 |
+| 00:23 | Edited docs/superpowers/specs/2026-06-22-neovide-pixel-smooth-editor-scroll-design.md | modified refinements() | ~293 |
+| 00:24 | Session end: 28 writes across 12 files (2026-06-22-neovide-pixel-smooth-editor-scroll-design.md, 2026-06-22-neovide-pixel-smooth-editor-scroll.md, motion.rs, ui_config.rs, default.toml) | 15 reads | ~236505 tok |
+
+## Session: 2026-06-23 09:40
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+## Session: 2026-06-23 live grep icons
+| 10:28 | Added file-type icons to live grep group headers and verified focused test | src/render/renderer/palette/live_grep.rs | focused test passed; repo-wide fmt blocked by unrelated drift | ~5k |
+| 10:37 | Corrected icon rendering path for leader fw buffer-backed grouped headers | src/render/renderer/editor/buffers.rs, src/render/renderer/palette/live_grep.rs | focused tests and touched-file rustfmt checks passed | ~8k |
+| 10:38 | Created docs/superpowers/specs/2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md | — | ~2752 |
+| 10:38 | Session end: 1 writes across 1 files (2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md) | 2 reads | ~59412 tok |
+| 10:47 | Created docs/superpowers/plans/2026-06-23-coupled-cursor-viewport-smooth-scroll.md | — | ~6955 |
+| 10:52 | Edited src/workbench/motion.rs | modified ease_fraction_zero_duration_is_done_at_one() | ~422 |
+| 10:52 | Edited src/workbench/motion.rs | modified ease_fraction() | ~374 |
+| 10:53 | Edited src/config/ui_config.rs | modified default() | ~284 |
+| 10:53 | Edited src/config/ui_config.rs | modified editor_scroll_duration() | ~170 |
+| 10:53 | Edited src/config/ui_config.rs | expanded (+21 lines) | ~399 |
+| 10:54 | Edited src/config/ui_config.rs | 4→7 lines | ~74 |
+| 10:54 | Edited src/config/ui_config.rs | modified motion_distance_durations_default() | ~489 |
+| 10:56 | Edited src/app/app_state/tests.rs | modified auto_scroll_edge_follow_advances_exactly_one_visual_line() | ~579 |
+| 10:57 | Edited src/app/app_state/tests.rs | modified auto_scroll_does_not_scroll_when_fold_above_keeps_cursor_visible() | ~304 |
+| 10:57 | Edited src/app/app_state/editor.rs | added 1 condition(s) | ~412 |
+| 10:59 | Edited src/app/app_state/mod.rs | 3→7 lines | ~95 |
+| 10:59 | Edited src/app/app_state/mod.rs | 4→5 lines | ~43 |
+| 11:00 | Edited src/app/app_state/mod.rs | modified cursor_visual_line() | ~158 |
+| 11:00 | Edited src/app/app_state/tests.rs | modified cursor_visual_line_without_folds_equals_logical() | ~295 |
+| 11:01 | Edited src/app/event_loop/mod.rs | expanded (+8 lines) | ~163 |
+| 11:01 | Edited src/app/event_loop/setup.rs | 4→7 lines | ~75 |
+| 11:04 | Edited src/app/event_loop/application.rs | modified advance_scroll_anim() | ~1288 |
+| 11:04 | Edited src/app/event_loop/commands_tests.rs | modified halfpage_down_couples_caret_lag_to_scroll() | ~906 |
+| 11:06 | Edited src/render/renderer/editor/viewport.rs | modified tween() | ~141 |
+| 11:07 | Edited src/render/renderer/editor/viewport.rs | 12→13 lines | ~166 |
+| 11:07 | Edited src/render/renderer/editor/viewport.rs | 12→17 lines | ~219 |
+| 11:11 | Edited config/ui/default.toml | expanded (+7 lines) | ~165 |
+| 11:11 | Edited docs/superpowers/specs/2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md | modified Done() | ~590 |
+| 11:14 | Session end: 25 writes across 12 files (2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md, 2026-06-23-coupled-cursor-viewport-smooth-scroll.md, motion.rs, ui_config.rs, tests.rs) | 13 reads | ~235431 tok |
+| 11:23 | Edited src/app/event_loop/mod.rs | expanded (+6 lines) | ~124 |
+| 11:23 | Edited src/app/event_loop/setup.rs | 3→5 lines | ~54 |
+| 11:23 | Edited src/app/event_loop/application.rs | modified Some() | ~494 |
+| 11:24 | Edited src/app/event_loop/application.rs | modified Some() | ~46 |
+| 11:25 | Edited src/app/event_loop/application.rs | modified editor_text_cache_key() | ~156 |
+| 11:26 | Edited src/app/event_loop/application.rs | 6→7 lines | ~103 |
+| 11:26 | Edited src/app/event_loop/application.rs | modified editor_text_cache_key_distinguishes_files_and_is_stable() | ~315 |
+| 11:26 | Edited src/app/event_loop/application.rs | 3→2 lines | ~21 |
+| 11:28 | Edited src/app/event_loop/application.rs | modified editor_text_cache_key() | ~192 |
+| 11:28 | Edited src/app/event_loop/mod.rs | 2→2 lines | ~27 |
+| 11:29 | Edited src/app/event_loop/application.rs | modified editor_text_cache_key_distinguishes_content_and_is_stable() | ~167 |
+| 11:31 | Edited docs/superpowers/specs/2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md | modified Done() | ~201 |
+| 11:32 | Session end: 37 writes across 12 files (2026-06-23-coupled-cursor-viewport-smooth-scroll-design.md, 2026-06-23-coupled-cursor-viewport-smooth-scroll.md, motion.rs, ui_config.rs, tests.rs) | 14 reads | ~255660 tok |
+
+## Session: 2026-06-23 11:34
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:40 | Edited src/app/event_loop/setup.rs | modified dock_slide_active() | ~213 |
+| 11:40 | Edited src/app/event_loop/setup.rs | modified sync_terminal_layout() | ~62 |
+| 11:40 | Edited src/app/event_loop/setup.rs | modified dock_slide_active() | ~55 |
+
+## 2026-06-23 — Terminal cleared on bottom-dock toggle (bug-184)
+- Symptom: ẩn/hiện bottom dock làm terminal mất text / output bị đẩy ra khỏi viewport.
+- Root cause: panel slide (LayoutTransition) lerp bounds height 0→full mỗi frame; render loop gọi sync_*_layout với height trung gian → grid.resize shrink rồi grow, trim live rows vào scrollback và không khôi phục; còn spam ResizePtySession (SIGWINCH).
+- Fix: thêm `AppShell::dock_slide_active()` (= panel_transition.is_some()) và early-return false trong 3 hàm sync_terminal_layout / sync_terminal_buffer_layout / sync_right_terminal_layout (src/app/event_loop/setup.rs). Grid chỉ re-fit 1 lần ở settle frame. Body vẫn render clipped trong khi slide.
+| 11:43 | Session end: 3 writes across 1 files (setup.rs) | 5 reads | ~106199 tok |

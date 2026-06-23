@@ -381,6 +381,10 @@ impl Renderer {
         );
         let corrected_origin_y =
             geometry.viewport_text_top + geometry.line_height - visual_scroll_y;
+        // The caret rides its own tween (coupled to the scroll clock): shift only the
+        // caret visuals by the lag in pixels so it glides through the lines instead of
+        // teleporting to its post-jump line. The text/glyphs are NOT shifted.
+        let caret_y_offset = app_state.caret_scroll_lag * geometry.line_height;
 
         // Cull glyphs ngoài viewport (overscan 1 dòng mỗi đầu) — file 10k dòng
         // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
@@ -408,7 +412,7 @@ impl Renderer {
         match result {
             Ok(projection) => {
                 self.glyph_instances = projection.glyph_instances;
-                let primary_caret = caret_rect_for_mode(
+                let mut primary_caret = caret_rect_for_mode(
                     projection.caret_layout,
                     app_state.current_mode(),
                     self.theme.editor.cursor.as_f32(),
@@ -418,6 +422,7 @@ impl Renderer {
                     self.cursor_block_width,
                     self.cursor_underline_height,
                 );
+                primary_caret.y += caret_y_offset;
                 self.editor_caret_screen = Some([
                     primary_caret.x,
                     primary_caret.y,
@@ -445,13 +450,18 @@ impl Renderer {
                     self.cursor_beam_width,
                     self.cursor_block_width,
                     self.cursor_underline_height,
-                    [geometry.origin_x, corrected_origin_y],
+                    [geometry.origin_x, corrected_origin_y + caret_y_offset],
                 );
                 self.caret_pipeline.upload_carets(&self.queue, &caret_rects);
                 let overlay_instances: Vec<GlyphInstance> = projection
                     .cursor_overlay
                     .filter(|_| {
                         should_draw_block_cursor(app_state.current_mode(), self.cursor_shape)
+                    })
+                    .map(|mut inst| {
+                        // The block-cursor glyph rides the caret tween too.
+                        inst.screen_pos[1] += caret_y_offset;
+                        inst
                     })
                     .into_iter()
                     .collect();

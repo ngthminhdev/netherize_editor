@@ -4335,5 +4335,44 @@
       "reconcile",
       "regression"
     ]
+  },
+  {
+    "id": 241,
+    "timestamp": "2026-06-23T10:35:00+07:00",
+    "error_message": "User reported that the file-name prefix icon is still missing in leader fw live grep results after the first change.",
+    "file": "src/render/renderer/editor/buffers.rs, src/render/renderer/palette/live_grep.rs",
+    "root_cause": "The first change targeted the overlay live grep renderer (`render_live_grep_picker`), but leader fw opens the buffer-backed grouped picker rendered by `update_references_buffer_content`. That actual surface rendered the group header as plain text (`▾ file_name`) and never populated `editor_overlay_icon_instances` for the file header.",
+    "fix": "Added file-type icon resolution and editor overlay icon upload in the buffer-backed grouped header renderer, while reserving label space between the collapse indicator and file name. Kept the overlay live grep icon path too for consistency.",
+    "tags": [
+      "live-grep",
+      "leader-fw",
+      "renderer",
+      "file-icons",
+      "buffer-backed-picker",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-23T10:35:00+07:00"
+  },
+  {
+    "id": "bug-184",
+    "error_message": "Toggling the bottom dock (show/hide) clears the terminal text or pushes recent output up and out of the viewport.",
+    "root_cause": "The dock toggle installs a LayoutTransition that lerps every region's bounds (bottom panel height 0->full) over the slide. current_render_layout() samples this mid-tween layout each frame, and the render loop called sync_terminal_layout/sync_terminal_buffer_layout/sync_right_terminal_layout with those transient small heights. grid.resize() shrinks rows each frame, trimming live rows into scrollback; on grow it pins surviving rows to the top and appends blanks WITHOUT pulling the trimmed rows back, so when the slide settles only the last row(s) remain at the top and the rest is blank. It also spammed ResizePtySession (SIGWINCH) to the shell every frame, forcing redraws/clears.",
+    "fix": "Added AppShell::dock_slide_active() (panel_transition.is_some()) and early-return false from all three sync_*_layout fns while a dock slide is animating, so the PTY grid is never re-fitted to the in-flight animated bounds. The terminal body still re-renders (clipped) into the growing region each frame; the grid is re-fitted exactly once on the settle frame (panel_transition==None, mark_all_panels_dirty). src/app/event_loop/setup.rs.",
+    "tags": [
+      "terminal",
+      "bottom-dock",
+      "panel-slide",
+      "animation",
+      "pty-resize",
+      "grid-resize",
+      "smooth-scroll",
+      "workbench-motion",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-23T00:00:00+07:00"
   }
 ]

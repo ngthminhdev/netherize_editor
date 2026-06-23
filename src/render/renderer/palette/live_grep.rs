@@ -2,6 +2,7 @@
 
 use crate::{
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
+    config::theme_config::ThemeConfig,
     render::{
         glyph_instance::GlyphInstance, icon_pipeline::IconDrawInstance,
         region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -16,10 +17,35 @@ use super::super::{
     },
 };
 use super::{
-    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
     palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
     render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
+    PaletteFooterAction, PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
 };
+
+struct LiveGrepGroupHeaderParts {
+    label: String,
+    icon_glyph: String,
+    icon_color: [f32; 4],
+}
+
+fn live_grep_group_header_parts(
+    theme: &ThemeConfig,
+    file_path: &str,
+    is_collapsed: bool,
+) -> LiveGrepGroupHeaderParts {
+    let filename = std::path::Path::new(file_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(file_path);
+    let file_icon = theme.icon_theme_for_filename(filename, false);
+    let arrow = if is_collapsed { "▸" } else { "▾" };
+
+    LiveGrepGroupHeaderParts {
+        label: format!("{}    {}", arrow, filename),
+        icon_glyph: file_icon.glyph.clone(),
+        icon_color: file_icon.color.as_f32(),
+    }
+}
 
 impl Renderer {
     pub(super) fn render_live_grep_picker(&mut self, model: &CommandPaletteRenderModel) {
@@ -161,11 +187,32 @@ impl Renderer {
                     group_header_bg,
                 ));
 
-                let arrow = if is_collapsed { "▸" } else { "▾" };
-                let group_label = format!("{} {}", arrow, filename);
+                let group_header =
+                    live_grep_group_header_parts(&self.theme, file_path, is_collapsed);
+                let header_icon_size = (group_header_h * 0.70).clamp(14.0, 20.0);
+                let header_icon_y = row_top + (group_header_h - header_icon_size) * 0.5;
+                push_palette_icon_or_badge(
+                    &group_header.icon_glyph,
+                    group_header.icon_color,
+                    model.panel_bg,
+                    [
+                        text_x + 18.0,
+                        header_icon_y,
+                        header_icon_size,
+                        header_icon_size,
+                    ],
+                    0.90,
+                    PrefixIconBadgeChrome::None,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    &mut quads,
+                    &mut glyphs,
+                    &mut icons,
+                );
                 let group_label_color = model.hint_color;
                 glyphs.extend(layout_panel_text(
-                    &group_label,
+                    &group_header.label,
                     &mut self.palette_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -305,5 +352,31 @@ impl Renderer {
             ],
         );
         self.palette_glyph_instances = glyphs;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::theme_config::ThemeConfig;
+
+    #[test]
+    fn live_grep_group_header_uses_file_type_icon() {
+        let theme = ThemeConfig::builtin_dark();
+
+        let header = live_grep_group_header_parts(&theme, "src/app/main.rs", false);
+
+        assert_eq!(header.label, "▾    main.rs");
+        assert_eq!(
+            header.icon_glyph,
+            theme.icon_theme_for_filename("main.rs", false).glyph
+        );
+        assert_eq!(
+            header.icon_color,
+            theme
+                .icon_theme_for_filename("main.rs", false)
+                .color
+                .as_f32()
+        );
     }
 }

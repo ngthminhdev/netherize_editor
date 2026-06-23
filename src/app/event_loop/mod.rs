@@ -334,6 +334,25 @@ pub struct AppShell {
     scroll_anim_started_at: Option<Instant>,
     scroll_anim_start: f32,
     scroll_anim_last_target: f32,
+    /// Distance-scaled duration chosen when the current tween (re)started.
+    scroll_anim_duration: Duration,
+    /// Caret coupling: `caret_visual_current` is the caret's displayed visual line
+    /// (maintained every frame, like `current_scroll_y`); `caret_anim_start` is
+    /// where the caret tween began (after the far clamp). The renderer reads the
+    /// resulting `app_state.caret_scroll_lag = caret_visual_current - cursor_visual`.
+    caret_anim_start: f32,
+    caret_visual_current: f32,
+    /// Whole-buffer text cached across scroll-only frames so a smooth-scroll tween
+    /// doesn't re-clone the entire rope every frame. Keyed on `(revision, active
+    /// file)`; the viewport-scoped styled spans are still rebuilt each frame, so
+    /// async highlight refreshes after a scroll are never stale.
+    cached_editor_text: String,
+    cached_editor_text_key: Option<(u64, usize, Option<PathBuf>)>,
+    /// One-shot: set by an explicit scroll command (zz/gg/G/Ctrl-D/Ctrl-U) so the
+    /// next `advance_scroll_anim` retarget animates even when the delta is below
+    /// the snap threshold. Read via `std::mem::take`, so it cannot leak into a
+    /// later `j`/`k` cursor-follow retarget.
+    scroll_anim_force: bool,
     last_git_branch_refresh_at: Instant,
     last_workspace_git_status_refresh_at: Instant,
     last_lsp_loading_animation_tick: Instant,

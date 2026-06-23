@@ -2403,4 +2403,165 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+    // ---- Long-line auto-fold threshold (raised to 1000 chars) ----
+
+    #[test]
+    fn long_line_auto_fold_only_folds_above_1000_chars() {
+        let short_line = "x".repeat(300);
+        let long_line = "y".repeat(1001);
+        let text = format!("fn a() {{}}\n{short_line}\n{long_line}\n");
+        let mut st = AppState::from_text(PathBuf::from("fold_threshold.rs"), &text);
+        st.auto_fold_pathological_long_lines();
+        assert!(
+            !st.is_auto_folded_long_line(1),
+            "a 300-char line must NOT auto-fold"
+        );
+        assert!(
+            st.is_auto_folded_long_line(2),
+            "a 1001-char line must auto-fold"
+        );
+    }
+
+    // ---- Fold-aware scroll conversion (smooth Ctrl-D/U across folds) ----
+
+    #[test]
+    fn scroll_visual_logical_roundtrip_is_identity_without_folds() {
+        let text: String = (0..50).map(|i| format!("line {i}\n")).collect();
+        let st = AppState::from_text(PathBuf::from("conv_identity.rs"), &text);
+        for &x in &[0.0_f32, 3.0, 7.5, 12.25] {
+            assert!((st.logical_scroll_to_visual(x) - x).abs() < 1e-4, "fwd {x}");
+            assert!((st.visual_scroll_to_logical(x) - x).abs() < 1e-4, "inv {x}");
+        }
+    }
+
+    #[test]
+    fn scroll_visual_skips_hidden_folded_lines() {
+        // Fold (5,8) hides logical lines 6,7,8; visible order is 0..=5, then 9,10,...
+        let text: String = (0..30).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("conv_folds.rs"), &text);
+        st.folded_ranges = vec![(5, 8)];
+
+        // Marker line 5 stays at visual index 5; first line after the fold (9) is 6.
+        assert_eq!(st.logical_scroll_to_visual(5.0), 5.0);
+        assert_eq!(st.logical_scroll_to_visual(9.0), 6.0);
+        assert_eq!(st.logical_scroll_to_visual(10.0), 7.0);
+        // Inverse lands on visible logical lines, never inside the hidden block.
+        assert_eq!(st.visual_scroll_to_logical(5.0), 5.0);
+        assert_eq!(st.visual_scroll_to_logical(6.0), 9.0);
+        // A fractional visual position interpolates within one on-screen line.
+        assert!((st.visual_scroll_to_logical(5.5) - 5.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn cursor_visual_line_without_folds_equals_logical() {
+        let text: String = (0..50).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("cvl.rs"), &text);
+        st.jump_to_line_and_column(17, 0);
+        assert!((st.cursor_visual_line() - 17.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn caret_scroll_lag_defaults_zero() {
+        let st = AppState::from_text(PathBuf::from("lag.rs"), "a\nb\n");
+        assert_eq!(st.caret_scroll_lag, 0.0);
+    }
+
+    #[test]
+    fn cursor_visual_line_maps_hidden_to_fold_marker() {
+        let text: String = (0..50).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("cvl_fold.rs"), &text);
+        st.folded_ranges = vec![(5, 10)]; // hide logical 6..=10
+        st.jump_to_line_and_column(8, 0); // cursor parked on a hidden line
+        // Maps to marker line 5 → visual 5 (nothing hidden before it).
+        assert!((st.cursor_visual_line() - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn auto_scroll_edge_follow_advances_exactly_one_visual_line() {
+        let text: String = (0..200).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("edge.rs"), &text);
+        let viewport = 40usize;
+        // Cursor just inside the bottom margin → the viewport must NOT scroll.
+        st.jump_to_line_and_column(46, 0);
+        st.set_target_scroll_line(10);
+        st.snap_current_scroll_to_target();
+        st.auto_scroll_to_cursor(viewport);
+        assert_eq!(st.scroll_line(), 10, "cursor inside the margin must not scroll");
+        // Cursor one line past the bottom margin → advance by exactly one line.
+        st.jump_to_line_and_column(47, 0);
+        st.set_target_scroll_line(10);
+        st.snap_current_scroll_to_target();
+        st.auto_scroll_to_cursor(viewport);
+        assert_eq!(st.scroll_line(), 11, "edge crossing must advance exactly one line");
+    }
+
+    #[test]
+    fn auto_scroll_does_not_scroll_when_fold_above_keeps_cursor_visible() {
+        // A fold ABOVE the cursor compresses the on-screen distance: logical line 50
+        // sits at visual row ~10 (40 lines hidden), well inside a 40-row viewport.
+        // The old logical-space math compared logical 50 against the visual viewport
+        // height and scrolled prematurely — the fold-crossing jitter. Visual-space
+        // follow must leave the scroll alone here.
+        let text: String = (0..200).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("foldabove.rs"), &text);
+        st.folded_ranges = vec![(5, 45)]; // hide logical 6..=45
+        let viewport = 40usize;
+        st.jump_to_line_and_column(50, 0);
+        st.set_target_scroll_line(0);
+        st.snap_current_scroll_to_target();
+        st.auto_scroll_to_cursor(viewport);
+        assert_eq!(
+            st.scroll_line(),
+            0,
+            "a fold above the cursor must not trigger premature scrolling"
+        );
+    }
+
+    #[test]
+    fn auto_scroll_across_fold_keeps_visual_target_monotonic() {
+        // Sweeping the cursor downward across a fold (carrying the scroll forward,
+        // as repeated j does) must never move the on-screen scroll target backward.
+        // Logical-vs-visual mixing in the old impl was the up/down fold jitter.
+        let text: String = (0..200).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("foldsweep.rs"), &text);
+        st.folded_ranges = vec![(20, 60)]; // hide logical lines 21..=60
+        let viewport = 40usize;
+        let mut carry = 0usize;
+        let mut last_visual = -1.0_f32;
+        for line in 0..120 {
+            st.jump_to_line_and_column(line, 0);
+            st.set_target_scroll_line(carry);
+            st.auto_scroll_to_cursor(viewport);
+            carry = st.scroll_line();
+            let v = st.logical_scroll_to_visual(st.target_scroll_y);
+            assert!(
+                v + 1e-3 >= last_visual,
+                "visual scroll target went backwards at line {line}: {v} < {last_visual}"
+            );
+            last_visual = v;
+        }
+    }
+
+    #[test]
+    fn scroll_tween_across_fold_is_visually_monotonic() {
+        // Easing the scroll in visual space and round-tripping through logical must
+        // never move the on-screen position backwards (that backward jump WAS the
+        // Ctrl-D/U stutter across a fold).
+        let text: String = (0..30).map(|i| format!("line {i}\n")).collect();
+        let mut st = AppState::from_text(PathBuf::from("tween_fold.rs"), &text);
+        st.folded_ranges = vec![(5, 8)];
+
+        let mut prev_visual = -1.0_f32;
+        for step in 0..=20 {
+            let v = step as f32 * 0.5; // sweep visual scroll 0.0 .. 10.0
+            let logical = st.visual_scroll_to_logical(v);
+            let visual_back = st.logical_scroll_to_visual(logical);
+            assert!(
+                visual_back >= prev_visual - 1e-4,
+                "visual y went backwards at step {step}: {visual_back} < {prev_visual}"
+            );
+            prev_visual = visual_back;
+        }
+    }
 }

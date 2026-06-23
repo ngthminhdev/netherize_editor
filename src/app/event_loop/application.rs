@@ -9,9 +9,24 @@ use winit::{
 const FOCUS_RING_THICKNESS: f32 = 1.0;
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
 /// Scroll-target moves smaller than this (in lines) snap instantly instead of
-/// animating — so single-line `j`/`k` cursor-follow never lags behind a held key.
-/// Anything larger (half-page, jumps) gets the smooth ease-out tween.
-const SCROLL_SNAP_THRESHOLD_LINES: f32 = 1.5;
+/// animating. Kept below one line so a single-line `j`/`k` cursor-follow at the
+/// viewport edge glides smoothly (one line is a real move, not a snap), while
+/// true no-ops and sub-line jitter still snap.
+const SCROLL_SNAP_THRESHOLD_LINES: f32 = 0.5;
+
+/// Cache key for the whole-buffer editor text: `(revision, byte length, active
+/// file)`. `text_string()` depends only on the text content, so this key lets a
+/// scroll-only frame reuse the cached string. Edits bump the revision; a buffer
+/// switch or canvas edit-session swap changes the active file (`canvas_edit` swaps
+/// it) and/or the byte length — so a content change always changes the key. The
+/// byte length is the backstop for two unsaved (no-path) buffers at equal revision.
+fn editor_text_cache_key(app_state: &AppState) -> (u64, usize, Option<std::path::PathBuf>) {
+    (
+        app_state.revision(),
+        app_state.len_bytes(),
+        app_state.active_file().map(|p| p.to_path_buf()),
+    )
+}
 /// Delay before the which-key overlay appears for a pending chord — long
 /// enough that fast chords never flash it, short enough to help a stuck user.
 const WHICHKEY_DELAY: Duration = Duration::from_millis(300);
@@ -1721,53 +1736,99 @@ impl AppShell {
     /// (`clamp_scroll_start`) so they animate only the last screenful. The renderer
     /// consumes the fractional `current_scroll_y` as a sub-line pixel offset.
     /// Returns `true` when it changed `current_scroll_y` (→ relayout the editor).
-    fn advance_scroll_anim(&mut self, now: Instant) -> bool {
-        use crate::workbench::motion::{clamp_scroll_start, ease_scroll, EaseCurve};
+    pub(super) fn advance_scroll_anim(&mut self, now: Instant) -> bool {
+        use crate::workbench::motion::{
+            clamp_scroll_start, ease_fraction, plan_scroll_retarget, scroll_far_clamp_lines,
+            ScrollRetarget,
+        };
 
         self.last_scroll_animation_tick = now;
 
         let target = self.app_state.target_scroll_y;
         let current = self.app_state.current_scroll_y;
-        let smooth = self.ui_config.editor.smooth_scroll_enabled;
-        let duration =
-            Duration::from_millis(self.ui_config.editor.smooth_scroll_duration_ms as u64);
+        let motion = self.ui_config.motion;
+        let smooth = motion.editor_smooth_scroll_active();
+        let curve = motion.ease;
+        let far_lines = motion.editor_smooth_scroll_far_lines;
+
+        // The caret's live target: its current (fold-aware) visual line. The caret
+        // tween eases `caret_visual_current` toward this on the SAME clock as scroll.
+        let cursor_visual = self.app_state.cursor_visual_line();
+
+        // One-shot: consumed by exactly the tick that observes the target change,
+        // so an explicit command's force can't leak into a later j/k follow.
+        let force = std::mem::take(&mut self.scroll_anim_force);
 
         // A command moved the scroll target since we last looked: animate vs snap.
         if (target - self.scroll_anim_last_target).abs() > f32::EPSILON {
             self.scroll_anim_last_target = target;
-            let delta = target - current;
-            if !smooth || duration.is_zero() || delta.abs() < SCROLL_SNAP_THRESHOLD_LINES {
-                // Tiny cursor follow or smooth disabled → snap instantly.
-                self.scroll_anim_started_at = None;
-                if (current - target).abs() > f32::EPSILON {
-                    self.app_state.current_scroll_y = target;
-                    return true;
+            let viewport_lines = self.editor_viewport_lines();
+            match plan_scroll_retarget(
+                current,
+                target,
+                smooth,
+                force,
+                SCROLL_SNAP_THRESHOLD_LINES,
+                viewport_lines,
+                far_lines,
+            ) {
+                ScrollRetarget::Snap => {
+                    // Tiny cursor follow or smooth disabled → snap; caret glued.
+                    self.scroll_anim_started_at = None;
+                    self.caret_visual_current = cursor_visual;
+                    self.app_state.caret_scroll_lag = 0.0;
+                    if (current - target).abs() > f32::EPSILON {
+                        self.app_state.current_scroll_y = target;
+                        return true;
+                    }
+                    return false;
                 }
-                return false;
+                ScrollRetarget::Animate { start } => {
+                    // Far-jump clamp already applied to scroll; tween from `start`.
+                    self.scroll_anim_start = start;
+                    // The caret begins where it is currently displayed, clamped toward
+                    // the cursor by the same far-jump width so a huge jump animates only
+                    // the last screenful instead of flying the caret across the buffer.
+                    let far_max = scroll_far_clamp_lines(viewport_lines, far_lines);
+                    self.caret_anim_start =
+                        clamp_scroll_start(self.caret_visual_current, cursor_visual, far_max);
+                    // Duration scaled by the post-clamp visual scroll distance.
+                    let v_start = self.app_state.logical_scroll_to_visual(start);
+                    let v_target = self.app_state.logical_scroll_to_visual(target);
+                    self.scroll_anim_duration = motion.scroll_duration_for(v_target - v_start);
+                    self.scroll_anim_started_at = Some(now);
+                }
             }
-            // Far-jump clamp: teleport everything beyond one screenful so the
-            // animation always finishes in `duration` instead of crawling.
-            let max = self.editor_viewport_lines().max(1) as f32;
-            self.scroll_anim_start = clamp_scroll_start(current, target, max);
-            self.scroll_anim_started_at = Some(now);
-            // Fall through to sample this same frame at t=0 (== start).
         }
 
         let Some(started_at) = self.scroll_anim_started_at else {
+            // Idle: keep the caret glued to its line so the next tween starts clean.
+            self.caret_visual_current = cursor_visual;
+            self.app_state.caret_scroll_lag = 0.0;
             return false;
         };
-        let (value, done) = ease_scroll(
-            self.scroll_anim_start,
-            target,
-            started_at,
-            now,
-            duration,
-            EaseCurve::EaseOutCubic,
-        );
+
+        // One shared eased fraction phase-locks scroll and caret.
+        let (frac, done) = ease_fraction(started_at, now, self.scroll_anim_duration, curve);
+
+        // Scroll eased in *visual* line space (smooth across folds), back to logical.
+        let v_start = self.app_state.logical_scroll_to_visual(self.scroll_anim_start);
+        let v_target = self.app_state.logical_scroll_to_visual(target);
+        let v_value = v_start + (v_target - v_start) * frac;
+        let value = self.app_state.visual_scroll_to_logical(v_value);
+
+        // Caret eased on the SAME fraction toward the live cursor visual line; the
+        // lag (caret − cursor, in visual lines) is what the renderer applies.
+        self.caret_visual_current =
+            self.caret_anim_start + (cursor_visual - self.caret_anim_start) * frac;
         if done {
             self.scroll_anim_started_at = None;
+            self.caret_visual_current = cursor_visual;
         }
-        let changed = (self.app_state.current_scroll_y - value).abs() > f32::EPSILON;
+        self.app_state.caret_scroll_lag = self.caret_visual_current - cursor_visual;
+
+        let changed = (self.app_state.current_scroll_y - value).abs() > f32::EPSILON
+            || self.app_state.caret_scroll_lag.abs() > f32::EPSILON;
         self.app_state.current_scroll_y = value;
         changed
     }
@@ -2321,13 +2382,23 @@ impl AppShell {
                                     &self.highlight_spans,
                                     &self.semantic_highlight_spans,
                                 );
-                            let text = self.app_state.text_string();
+                            // Cache the whole-buffer string across scroll-only frames:
+                            // it depends only on the text, so key it on (revision,
+                            // active file). The styled spans below are viewport-scoped
+                            // and rebuilt every frame, so async highlight refreshes
+                            // after a scroll are never stale.
+                            let text_key = editor_text_cache_key(&self.app_state);
+                            if self.cached_editor_text_key.as_ref() != Some(&text_key) {
+                                self.cached_editor_text = self.app_state.text_string();
+                                self.cached_editor_text_key = Some(text_key);
+                            }
+                            let text = self.cached_editor_text.as_str();
                             let mut styled_spans =
-                                syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
+                                syntax_spans_to_styled(&effective_highlights, text, &self.theme);
                             styled_spans
                                 .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
                             renderer.update_editor_content(
-                                &text,
+                                text,
                                 &self.app_state,
                                 center_bounds,
                                 &styled_spans,
@@ -3480,9 +3551,10 @@ fn focus_ring_instances(
 mod tests {
     use super::{
         AppShell, breadcrumb_segment_text, build_editor_breadcrumb_segments,
-        build_editor_header_segments, focus_ring_instances, focus_target_region_id,
-        mouse_button_code, point_in_bounds, sgr_mouse_sequence, sgr_wheel_sequence,
-        statusbar_source_path_label, terminal_cell_at_position, visible_region_bounds,
+        build_editor_header_segments, editor_text_cache_key, focus_ring_instances,
+        focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
+        sgr_wheel_sequence, statusbar_source_path_label, terminal_cell_at_position,
+        visible_region_bounds,
     };
     use crate::app::app_state::AppState;
     use crate::async_runtime::message::{
@@ -3495,6 +3567,30 @@ mod tests {
     };
     use std::path::{Path, PathBuf};
     use winit::event::MouseButton;
+
+    #[test]
+    fn editor_text_cache_key_distinguishes_content_and_is_stable() {
+        // Different content (here, different byte length) must produce different
+        // keys, so the scroll-frame text cache never serves stale text.
+        let a = AppState::from_text(PathBuf::from("a.rs"), "short\n");
+        let b = AppState::from_text(PathBuf::from("b.rs"), "a much longer body here\n");
+        assert_ne!(editor_text_cache_key(&a), editor_text_cache_key(&b));
+        // Stable when nothing changes (a scroll-only frame → cache hit).
+        assert_eq!(editor_text_cache_key(&a), editor_text_cache_key(&a));
+    }
+
+    #[test]
+    fn editor_text_cache_key_changes_when_text_edited() {
+        // A text edit bumps the revision, invalidating the cached string.
+        let mut st = AppState::from_text(PathBuf::from("edit.rs"), "abc\n");
+        let before = editor_text_cache_key(&st);
+        st.insert_char('Z');
+        assert_ne!(
+            before,
+            editor_text_cache_key(&st),
+            "editing the text must invalidate the cache key"
+        );
+    }
 
     #[test]
     fn focus_target_region_id_maps_center_editor() {

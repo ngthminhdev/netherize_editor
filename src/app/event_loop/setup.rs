@@ -287,6 +287,12 @@ impl AppShell {
             scroll_anim_started_at: None,
             scroll_anim_start: 0.0,
             scroll_anim_last_target: 0.0,
+            scroll_anim_duration: Duration::ZERO,
+            caret_anim_start: 0.0,
+            caret_visual_current: 0.0,
+            cached_editor_text: String::new(),
+            cached_editor_text_key: None,
+            scroll_anim_force: false,
             last_git_branch_refresh_at: now,
             last_workspace_git_status_refresh_at: now,
             last_lsp_loading_animation_tick: now,
@@ -645,7 +651,20 @@ impl AppShell {
         self.sidebar_selection_quads.clear();
     }
 
+    /// True while a workbench dock slide (toggle/zen) is mid-tween. During the
+    /// slide every region's bounds are interpolated small→full, so re-fitting a
+    /// PTY grid to those transient heights would trim the live rows into
+    /// scrollback and never restore them on grow — clearing the terminal and
+    /// pushing recent output out of view. The grids are re-fitted exactly once,
+    /// on the settle frame (`panel_transition == None`, panels marked dirty).
+    fn dock_slide_active(&self) -> bool {
+        self.panel_transition.is_some()
+    }
+
     pub(super) fn sync_right_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
+        if self.dock_slide_active() {
+            return false;
+        }
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
         let panel_padding = scaled_ui.layout.inner_padding;
         let line_height = self.theme.ui.panel_line_height.max(1.0);
@@ -677,6 +696,9 @@ impl AppShell {
     }
 
     pub(super) fn sync_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
+        if self.dock_slide_active() {
+            return false;
+        }
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
         let panel_padding = scaled_ui.layout.inner_padding;
         let line_height = self.theme.ui.panel_line_height.max(1.0);
@@ -721,6 +743,9 @@ impl AppShell {
         session_id: u64,
         bounds: [f32; 4],
     ) -> bool {
+        if self.dock_slide_active() {
+            return false;
+        }
         let Some(grid) = self.terminal_buffer_grids.get_mut(&session_id) else {
             return false;
         };

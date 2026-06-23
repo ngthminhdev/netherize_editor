@@ -12,7 +12,10 @@ use crate::{
     config::theme_config::ThemeConfig,
     core::mode::EditorMode,
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance,
+        icon_pipeline::{canonical_icon_id, IconDrawInstance},
+        region_pipeline::RegionDrawInstance,
+        renderer::Renderer,
     },
     text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
 };
@@ -94,6 +97,7 @@ impl Renderer {
         let selection_bg = self.theme.ui.selection_bg.as_f32();
 
         let mut glyphs = Vec::new();
+        let mut icons = Vec::new();
         let mut chrome = vec![
             RegionDrawInstance::new([left_x, panel_y, left_w, panel_h], panel_bg),
             RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
@@ -279,8 +283,31 @@ impl Renderer {
                     let _ = write!(count_label, "{}", group_count);
                     let count_w = estimate_monospace_width(count_label, font_size).max(16.0 * s);
                     let indicator = if is_collapsed { "▸" } else { "▾" };
+                    let file_icon = self.theme.icon_theme_for_filename(&file_name, false);
+                    let file_icon_id = canonical_icon_id(&file_icon.glyph);
+                    let icon_size = (line_height * 0.78).clamp(12.0 * s, 18.0 * s);
+                    let icon_x = left_x
+                        + 16.0 * s
+                        + estimate_monospace_width(indicator, font_size)
+                        + 8.0 * s;
+                    if let Some(icon) = file_icon_id {
+                        icons.push(IconDrawInstance {
+                            icon,
+                            rect: [
+                                icon_x,
+                                draw_y + 4.0 * s + (line_height - icon_size) * 0.5,
+                                icon_size,
+                                icon_size,
+                            ],
+                            tint: file_icon.color.as_f32(),
+                        });
+                    }
                     right_header_buffer.clear();
-                    let _ = write!(right_header_buffer, "{} {}", indicator, file_name);
+                    let _ = write!(
+                        right_header_buffer,
+                        "{}",
+                        reference_group_header_label(indicator, &file_name, file_icon_id.is_some())
+                    );
                     glyphs.extend(layout_panel_text_bold(
                         &clamp_monospace_text(
                             right_header_buffer,
@@ -498,6 +525,15 @@ impl Renderer {
         }
 
         self.editor_overlay_chrome_instances = chrome;
+        self.editor_overlay_icon_instances = icons;
+        self.editor_overlay_icon_pipeline.upload_instances(
+            &self.device,
+            &self.editor_overlay_icon_instances,
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,
@@ -537,6 +573,14 @@ fn reference_row_summary<'a>(item: &'a ReferencesBufferItem, buffer: &'a mut Str
         buffer.as_str()
     } else {
         summary
+    }
+}
+
+fn reference_group_header_label(indicator: &str, file_name: &str, has_icon: bool) -> String {
+    if has_icon {
+        format!("{}    {}", indicator, file_name)
+    } else {
+        format!("{} {}", indicator, file_name)
     }
 }
 
@@ -622,7 +666,19 @@ pub(super) fn grouped_list_window_start(
 
 #[cfg(test)]
 mod tests {
-    use super::grouped_list_window_start;
+    use super::{grouped_list_window_start, reference_group_header_label};
+
+    #[test]
+    fn reference_group_header_reserves_space_for_file_icon() {
+        assert_eq!(
+            reference_group_header_label("▾", "main.rs", true),
+            "▾    main.rs"
+        );
+        assert_eq!(
+            reference_group_header_label("▾", "main.rs", false),
+            "▾ main.rs"
+        );
+    }
 
     /// Mirror the renderer's vertical layout: each group draws one header, an
     /// expanded member draws a row, a collapsed member draws nothing. Returns the
@@ -681,15 +737,7 @@ mod tests {
             &collapsed,
         );
 
-        let y = simulate_selected_y(
-            start,
-            &groups,
-            &collapsed,
-            selected_index,
-            3.0,
-            1.0,
-            1.0,
-        );
+        let y = simulate_selected_y(start, &groups, &collapsed, selected_index, 3.0, 1.0, 1.0);
         assert!(y.is_some(), "selected row must be visible, start={start}");
     }
 
@@ -709,15 +757,7 @@ mod tests {
             &collapsed,
         );
 
-        let y = simulate_selected_y(
-            start,
-            &groups,
-            &collapsed,
-            selected_index,
-            4.0,
-            1.0,
-            1.0,
-        );
+        let y = simulate_selected_y(start, &groups, &collapsed, selected_index, 4.0, 1.0, 1.0);
         let y = y.expect("selected row must stay visible with a collapsed group above");
         assert!(
             (0.0..=3.0).contains(&y),
@@ -741,15 +781,7 @@ mod tests {
             &collapsed,
         );
 
-        let y = simulate_selected_y(
-            start,
-            &groups,
-            &collapsed,
-            selected_index,
-            4.0,
-            1.0,
-            1.0,
-        );
+        let y = simulate_selected_y(start, &groups, &collapsed, selected_index, 4.0, 1.0, 1.0);
         assert!(
             y.is_some(),
             "collapsed selected group's header must be visible, start={start}"
@@ -793,16 +825,14 @@ mod tests {
         let same = |l: usize, r: usize| groups[l] == groups[r];
         let (content, row, header) = (6.0f32, 1.0f32, 1.0f32);
 
-        let start_before = grouped_list_window_start(
-            groups.len(), 1, content, row, header, &same, &collapsed,
-        );
+        let start_before =
+            grouped_list_window_start(groups.len(), 1, content, row, header, &same, &collapsed);
         let y_before =
             simulate_selected_y(start_before, &groups, &collapsed, 1, content, row, header)
                 .expect("selection visible before leap");
 
-        let start_after = grouped_list_window_start(
-            groups.len(), 12, content, row, header, &same, &collapsed,
-        );
+        let start_after =
+            grouped_list_window_start(groups.len(), 12, content, row, header, &same, &collapsed);
         let y_after =
             simulate_selected_y(start_after, &groups, &collapsed, 12, content, row, header)
                 .expect("selection visible after leap");

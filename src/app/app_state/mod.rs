@@ -2280,6 +2280,10 @@ pub struct AppState {
     dirty: bool,
     pub target_scroll_y: f32,
     pub current_scroll_y: f32,
+    /// Visual-line offset added to the caret's drawn Y so it animates on the same
+    /// clock as the scroll tween (0 = caret glued to its line). Recomputed every
+    /// frame by the smooth-scroll tick; read by the editor renderer.
+    pub caret_scroll_lag: f32,
     pub scroll_column: usize,
     workspace_model: Option<WorkspaceModel>,
     pub(crate) command_palette: CommandPalette,
@@ -2384,6 +2388,7 @@ impl AppState {
             dirty: false,
             target_scroll_y: 0.0,
             current_scroll_y: 0.0,
+            caret_scroll_lag: 0.0,
             scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
@@ -2512,6 +2517,7 @@ impl AppState {
             dirty: false,
             target_scroll_y: 0.0,
             current_scroll_y: 0.0,
+            caret_scroll_lag: 0.0,
             scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
@@ -2641,6 +2647,52 @@ impl AppState {
             .sum()
     }
 
+    /// Visual (on-screen) line position for a logical scroll value, collapsing
+    /// folded (hidden) lines. Identity when nothing is folded. The smooth-scroll
+    /// tween eases in this visual space so motion stays smooth across folds
+    /// instead of stuttering on the hidden lines' zero-height logical span.
+    pub fn logical_scroll_to_visual(&self, logical_scroll: f32) -> f32 {
+        let clamped = logical_scroll.max(0.0);
+        let lbase = clamped.floor() as usize;
+        let lfrac = clamped.fract();
+        // A logical line inside a fold collapses onto its marker (the fold start).
+        let visible = self.fold_marker_line_for_hidden_line(lbase).unwrap_or(lbase);
+        let hidden_before: usize = self
+            .folded_ranges
+            .iter()
+            .filter(|&&(_s, e)| e < visible)
+            .map(|&(s, e)| e - s)
+            .sum();
+        visible.saturating_sub(hidden_before) as f32 + lfrac
+    }
+
+    /// The cursor's current visual line (fold-aware): a cursor parked on a hidden
+    /// line maps to its fold marker first. Used to phase-lock the caret tween to
+    /// the scroll tween in visual space.
+    pub fn cursor_visual_line(&self) -> f32 {
+        let (raw, _) = self.cursor_line_col();
+        let logical = self.fold_marker_line_for_hidden_line(raw).unwrap_or(raw);
+        self.logical_scroll_to_visual(logical as f32)
+    }
+
+    /// Inverse of `logical_scroll_to_visual`. The integer part always lands on a
+    /// visible line, so `visual_y_for_logical_scroll_with_folds` maps the result
+    /// to a monotonic on-screen y (no fold stutter during the tween).
+    pub fn visual_scroll_to_logical(&self, visual_scroll: f32) -> f32 {
+        let clamped = visual_scroll.max(0.0);
+        let vbase = clamped.floor() as usize;
+        let vfrac = clamped.fract();
+        // Walk folds in ascending order, skipping each hidden block the growing
+        // logical line passes (folded_ranges is kept sorted by start).
+        let mut logical = vbase;
+        for &(s, e) in &self.folded_ranges {
+            if s < logical {
+                logical += e - s;
+            }
+        }
+        logical as f32 + vfrac
+    }
+
     pub fn next_visible_line_after(&self, line_idx: usize) -> usize {
         let total = self.text.len_lines();
         if line_idx + 1 >= total {
@@ -2683,7 +2735,8 @@ impl AppState {
     }
 
     pub fn auto_fold_pathological_long_lines(&mut self) -> bool {
-        const AUTO_FOLD_LINE_CHAR_THRESHOLD: usize = 200;
+        // Only fold genuinely pathological lines; ordinary long lines render fine.
+        const AUTO_FOLD_LINE_CHAR_THRESHOLD: usize = 1000;
         let mut lines = Vec::new();
         for line_idx in 0..self.text.len_lines() {
             let line = self.text.line(line_idx);
