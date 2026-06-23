@@ -147,6 +147,28 @@ fn sgr_wheel_sequence(scroll_up: bool, col: usize, row: usize) -> String {
     sgr_mouse_sequence(code, col, row, true)
 }
 
+/// Lines of scrollback the bottom-dock terminal moves per wheel "notch"
+/// (one `LineDelta` line, or one `line_height` of `PixelDelta`). Lower =
+/// gentler. Was effectively 3.0; halved to reduce mouse-scroll sensitivity.
+const BOTTOM_TERMINAL_WHEEL_LINES_PER_NOTCH: f64 = 1.5;
+
+/// SGR wheel steps the right-dock terminal forwards per wheel "notch".
+/// Lower = gentler. Was effectively 1.0; halved to reduce sensitivity.
+const RIGHT_TERMINAL_WHEEL_STEPS_PER_NOTCH: f64 = 0.5;
+
+/// Convert a raw wheel delta into a signed line count (positive = up),
+/// returning `None` when the delta is negligible. `line_height` normalizes
+/// `PixelDelta` into line units.
+fn wheel_delta_lines(delta: MouseScrollDelta, line_height: f64) -> Option<f64> {
+    match delta {
+        MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => Some(y as f64),
+        MouseScrollDelta::PixelDelta(position) if position.y.abs() > f64::EPSILON => {
+            Some(position.y / line_height)
+        }
+        _ => None,
+    }
+}
+
 fn mouse_button_code(button: MouseButton) -> Option<u8> {
     match button {
         MouseButton::Left => Some(0),
@@ -692,29 +714,30 @@ impl AppShell {
             return false;
         }
         let line_height = self.theme.ui.panel_line_height.max(1.0) as f64;
-        let Some((scroll_up, steps)) = (match delta {
-            MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => {
-                Some((y > 0.0, y.abs().ceil() as usize))
-            }
-            MouseScrollDelta::PixelDelta(position) if position.y.abs() > f64::EPSILON => Some((
-                position.y > 0.0,
-                (position.y.abs() / line_height).ceil() as usize,
-            )),
-            _ => None,
-        }) else {
+        let Some(delta_lines) = wheel_delta_lines(delta, line_height) else {
             return false;
         };
-        let idx = self.active_terminal_tab;
-        let Some(tab) = self.terminal_tabs.get_mut(idx) else {
-            return false;
-        };
-        let lines = (3 * steps.clamp(1, 24)).max(1);
-        if scroll_up {
-            tab.grid.view_scroll_up(lines);
-        } else {
-            tab.grid.view_scroll_down(lines);
+        // Reset the carry when the direction flips so a reversal responds at once
+        // instead of first cancelling out leftover travel from the old direction.
+        if self.bottom_terminal_wheel_accum.signum() != delta_lines.signum() {
+            self.bottom_terminal_wheel_accum = 0.0;
         }
-        self.terminal_needs_layout = true;
+        self.bottom_terminal_wheel_accum += delta_lines * BOTTOM_TERMINAL_WHEEL_LINES_PER_NOTCH;
+        let whole = self.bottom_terminal_wheel_accum.trunc();
+        if whole != 0.0 {
+            self.bottom_terminal_wheel_accum -= whole;
+            let idx = self.active_terminal_tab;
+            let Some(tab) = self.terminal_tabs.get_mut(idx) else {
+                return false;
+            };
+            let lines = (whole.abs() as usize).clamp(1, 24);
+            if whole > 0.0 {
+                tab.grid.view_scroll_up(lines);
+            } else {
+                tab.grid.view_scroll_down(lines);
+            }
+            self.terminal_needs_layout = true;
+        }
         true
     }
 
@@ -785,20 +808,23 @@ impl AppShell {
         }
 
         let line_height = self.theme.ui.panel_line_height.max(1.0) as f64;
-        let Some((scroll_up, steps)) = (match delta {
-            MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => {
-                Some((y > 0.0, y.abs().ceil() as usize))
-            }
-            MouseScrollDelta::PixelDelta(position) if position.y.abs() > f64::EPSILON => Some((
-                position.y > 0.0,
-                (position.y.abs() / line_height).ceil() as usize,
-            )),
-            _ => None,
-        }) else {
+        let Some(delta_lines) = wheel_delta_lines(delta, line_height) else {
             return false;
         };
 
         self.focus_right_terminal_for_mouse();
+
+        if self.right_terminal_wheel_accum.signum() != delta_lines.signum() {
+            self.right_terminal_wheel_accum = 0.0;
+        }
+        self.right_terminal_wheel_accum += delta_lines * RIGHT_TERMINAL_WHEEL_STEPS_PER_NOTCH;
+        let whole = self.right_terminal_wheel_accum.trunc();
+        if whole == 0.0 {
+            return true;
+        }
+        self.right_terminal_wheel_accum -= whole;
+        let scroll_up = whole > 0.0;
+        let steps = (whole.abs() as usize).clamp(1, 24);
 
         // opencode keeps its chat history inside its own TUI viewport, so the
         // wheel must be forwarded as SGR mouse events for opencode to scroll
@@ -811,13 +837,12 @@ impl AppShell {
                 (self.right_terminal_grid.cols / 2).max(1),
                 (self.right_terminal_grid.rows / 2).max(1),
             ));
-        let mut changed = false;
-        for _ in 0..steps.max(1).min(24) {
-            changed |= self.handle_command(Command::TerminalWriteInput(sgr_wheel_sequence(
+        for _ in 0..steps {
+            self.handle_command(Command::TerminalWriteInput(sgr_wheel_sequence(
                 scroll_up, col, row,
             )));
         }
-        changed
+        true
     }
 
     fn handle_right_terminal_mouse_input(

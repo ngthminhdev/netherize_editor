@@ -98,6 +98,14 @@ pub struct AppShell {
     right_terminal_needs_layout: bool,
     last_right_terminal_bounds: Option<[f32; 4]>,
     last_cursor_position: Option<(f32, f32)>,
+    /// Fractional mouse-wheel carry for the bottom-dock terminal scrollback.
+    /// Wheels (esp. trackpads) emit many sub-line pixel deltas; we scale them
+    /// down for gentler scrolling and carry the remainder so slow scrolls still
+    /// register. Reset to 0 when the scroll direction flips.
+    bottom_terminal_wheel_accum: f64,
+    /// Fractional mouse-wheel carry for the right-dock terminal (forwarded as
+    /// SGR wheel events). Same gentling/carry scheme as the bottom dock.
+    right_terminal_wheel_accum: f64,
     /// Active pointer drag (panel resize / card move / card resize), if any.
     active_drag: Option<crate::workbench::pointer_drag::ActiveDrag>,
     /// What draggable zone the cursor is currently hovering (for cursor shape +

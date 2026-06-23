@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-23T04:40:16.339Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-23T16:04:58.369Z
 > Files: 472 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -435,7 +435,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Scroll-target moves smaller than this (in lines) snap instantly instead of (~45837 tok)
+- `application.rs` — Scroll-target moves smaller than this (in lines) snap instantly instead of (~46186 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_canvas.rs` — World-units the camera pans per keypress (Shift+hjkl). (~10074 tok)
 - `commands_completion.rs` (~15455 tok)
@@ -450,8 +450,8 @@
 - `commands_tests.rs` — [derive(Default)] (~44179 tok)
 - `commands.rs` — [path = "commands_ai_agent.rs"] (~12436 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18734 tok)
-- `mod.rs` — Struct: AppShell (~8389 tok)
-- `setup.rs` — new, new_for_tests (~24206 tok)
+- `mod.rs` — Struct: AppShell (~8530 tok)
+- `setup.rs` — new, new_for_tests (~24230 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -612,7 +612,7 @@
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~8541 tok)
 - `completion.rs` — Declares MAX_VISIBLE_ROWS (~4455 tok)
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
-- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~9366 tok)
+- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~9806 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~19503 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)

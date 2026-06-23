@@ -2,14 +2,14 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 42970889,
-    "total_reads": 4252,
-    "total_writes": 7506,
-    "total_sessions": 179,
-    "anatomy_hits": 3937,
+    "total_tokens_estimated": 43069813,
+    "total_reads": 4257,
+    "total_writes": 7515,
+    "total_sessions": 182,
+    "anatomy_hits": 3942,
     "anatomy_misses": 269,
-    "repeated_reads_blocked": 5131,
-    "estimated_savings_vs_bare_cli": 66101565
+    "repeated_reads_blocked": 5136,
+    "estimated_savings_vs_bare_cli": 66258271
   },
   "sessions": [
     {
@@ -69100,6 +69100,115 @@
         "writes_count": 3,
         "repeated_reads_blocked": 9,
         "anatomy_lookups": 5
+      }
+    },
+    {
+      "id": "session-2026-06-23-1515",
+      "started": "2026-06-23T08:15:30.348Z",
+      "ended": "2026-06-23T08:18:37.061Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/buffers.rs",
+          "tokens_estimated": 8541,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/fuzzy.rs",
+          "tokens_estimated": 9806,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/fuzzy.rs",
+          "tokens_estimated": 56,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/fuzzy.rs",
+          "tokens_estimated": 36,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/fuzzy.rs",
+          "tokens_estimated": 531,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/fuzzy.rs",
+          "tokens_estimated": 176,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 18347,
+        "output_tokens_estimated": 799,
+        "reads_count": 2,
+        "writes_count": 4,
+        "repeated_reads_blocked": 1,
+        "anatomy_lookups": 2
+      }
+    },
+    {
+      "id": "session-2026-06-23-2257",
+      "started": "2026-06-23T15:57:55.601Z",
+      "ended": "2026-06-23T16:06:06.281Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+          "tokens_estimated": 45837,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/mod.rs",
+          "tokens_estimated": 8389,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs",
+          "tokens_estimated": 24206,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/mod.rs",
+          "tokens_estimated": 186,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs",
+          "tokens_estimated": 46,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+          "tokens_estimated": 307,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+          "tokens_estimated": 365,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+          "tokens_estimated": 442,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 78432,
+        "output_tokens_estimated": 1346,
+        "reads_count": 3,
+        "writes_count": 5,
+        "repeated_reads_blocked": 4,
+        "anatomy_lookups": 3
       }
     }
   ],

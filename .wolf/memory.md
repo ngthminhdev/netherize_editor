@@ -3631,3 +3631,29 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 - Root cause: panel slide (LayoutTransition) lerp bounds height 0→full mỗi frame; render loop gọi sync_*_layout với height trung gian → grid.resize shrink rồi grow, trim live rows vào scrollback và không khôi phục; còn spam ResizePtySession (SIGWINCH).
 - Fix: thêm `AppShell::dock_slide_active()` (= panel_transition.is_some()) và early-return false trong 3 hàm sync_terminal_layout / sync_terminal_buffer_layout / sync_right_terminal_layout (src/app/event_loop/setup.rs). Grid chỉ re-fit 1 lần ở settle frame. Body vẫn render clipped trong khi slide.
 | 11:43 | Session end: 3 writes across 1 files (setup.rs) | 5 reads | ~106199 tok |
+
+## Session: 2026-06-23 15:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:17 | Edited src/render/renderer/editor/fuzzy.rs | 3→6 lines | ~52 |
+| 15:17 | Edited src/render/renderer/editor/fuzzy.rs | 2→3 lines | ~34 |
+| 15:17 | Edited src/render/renderer/editor/fuzzy.rs | modified is_some() | ~496 |
+| 15:17 | Edited src/render/renderer/editor/fuzzy.rs | expanded (+9 lines) | ~164 |
+| 15:18 | Session end: 4 writes across 1 files (fuzzy.rs) | 2 reads | ~19146 tok |
+
+## Session: 2026-06-23 15:27
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-23 22:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:03 | Edited src/app/event_loop/mod.rs | expanded (+8 lines) | ~174 |
+| 23:03 | Edited src/app/event_loop/setup.rs | 2→4 lines | ~43 |
+| 23:04 | Edited src/app/event_loop/application.rs | modified wheel_delta_lines() | ~287 |
+| 23:04 | Edited src/app/event_loop/application.rs | modified point_in_bounds() | ~341 |
+| 23:04 | Edited src/app/event_loop/application.rs | modified signum() | ~412 |
+| 23:06 | Session end: 5 writes across 3 files (mod.rs, setup.rs, application.rs) | 3 reads | ~79778 tok |

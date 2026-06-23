@@ -4374,5 +4374,23 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-23T00:00:00+07:00"
+  },
+  {
+    "id": "bug-185",
+    "timestamp": "2026-06-23T15:13:34+07:00",
+    "error_message": "File icons not showing in group headers of Fuzzy Finder live grep (leader fw) left result panel.",
+    "root_cause": "update_fuzzy_picker_buffer_content (fuzzy.rs) never declared an icons vec, never called icon_theme_for_filename, never pushed IconDrawInstance, and never uploaded to editor_overlay_icon_pipeline. The References panel (buffers.rs) does all of this; the fuzzy renderer was missing the entire icon path.",
+    "fix": "Added icon_pipeline::{canonical_icon_id, IconDrawInstance} imports to fuzzy.rs, declared let mut icons: Vec<IconDrawInstance> alongside glyphs/chrome, added file_icon/file_icon_id lookup + IconDrawInstance push in the live-grep group header section, reserved 4-space icon placeholder in the header label (matching reference_group_header_label pattern), and assigned + uploaded editor_overlay_icon_instances at the end of the function. src/render/renderer/editor/fuzzy.rs.",
+    "tags": [
+      "fuzzy-finder",
+      "live-grep",
+      "icons",
+      "renderer",
+      "leader-fw",
+      "group-header"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-23T15:13:34+07:00"
   }
 ]
