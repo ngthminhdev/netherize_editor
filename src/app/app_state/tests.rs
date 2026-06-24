@@ -2583,6 +2583,26 @@ mod tests {
     }
 
     #[test]
+    fn insert_line_below_matches_file_indent_when_smaller_than_config() {
+        // File uses 2-space indent but app config is 4-space; `o` into the block
+        // must follow the file's 2-space scope, not the 4-space config.
+        let mut state =
+            AppState::from_text(unique_temp_path("o_2space"), "const X = {\n  error: 0,\n}");
+        assert!(state.insert_line_below());
+        assert_eq!(state.text_string(), "const X = {\n  \n  error: 0,\n}");
+        assert_eq!(state.cursor_line_col(), (1, 2));
+    }
+
+    #[test]
+    fn insert_line_below_falls_back_to_config_unit_for_empty_block() {
+        // No body line to sample → fall back to the configured indent (4 spaces).
+        let mut state = AppState::from_text(unique_temp_path("o_empty"), "const X = {\n}");
+        assert!(state.insert_line_below());
+        assert_eq!(state.text_string(), "const X = {\n    \n}");
+        assert_eq!(state.cursor_line_col(), (1, 4));
+    }
+
+    #[test]
     fn insert_line_below_descends_from_indented_opener() {
         // `o` on an already-indented opener adds one more level on top.
         let mut state = AppState::from_text(

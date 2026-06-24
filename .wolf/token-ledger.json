@@ -2,10 +2,10 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 45658247,
+    "total_tokens_estimated": 45659743,
     "total_reads": 4472,
-    "total_writes": 7910,
-    "total_sessions": 186,
+    "total_writes": 7916,
+    "total_sessions": 187,
     "anatomy_hits": 4147,
     "anatomy_misses": 279,
     "repeated_reads_blocked": 5332,
@@ -72694,6 +72694,68 @@
         "writes_count": 4,
         "repeated_reads_blocked": 1,
         "anatomy_lookups": 5
+      }
+    },
+    {
+      "id": "session-2026-06-24-1155",
+      "started": "2026-06-24T04:55:53.497Z",
+      "ended": "2026-06-24T04:57:36.042Z",
+      "reads": [],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/tests.rs",
+          "tokens_estimated": 296,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs",
+          "tokens_estimated": 341,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/editor.rs",
+          "tokens_estimated": 111,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 0,
+        "output_tokens_estimated": 748,
+        "reads_count": 0,
+        "writes_count": 3,
+        "repeated_reads_blocked": 0,
+        "anatomy_lookups": 0
+      }
+    },
+    {
+      "id": "session-2026-06-24-1155",
+      "started": "2026-06-24T04:55:53.497Z",
+      "ended": "2026-06-24T04:58:34.541Z",
+      "reads": [],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/tests.rs",
+          "tokens_estimated": 296,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs",
+          "tokens_estimated": 341,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/editor.rs",
+          "tokens_estimated": 111,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 0,
+        "output_tokens_estimated": 748,
+        "reads_count": 0,
+        "writes_count": 3,
+        "repeated_reads_blocked": 0,
+        "anatomy_lookups": 0
       }
     }
   ],

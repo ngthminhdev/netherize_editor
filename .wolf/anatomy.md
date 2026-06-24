@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-24T04:32:09.479Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-24T04:56:28.109Z
 > Files: 473 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -424,14 +424,14 @@
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
 - `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~26672 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
-- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~12043 tok)
+- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~12084 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~28041 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~20154 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~20451 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~20558 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12601 tok)
-- `tests.rs` — [cfg(test)] (~27198 tok)
+- `tests.rs` — [cfg(test)] (~27456 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/

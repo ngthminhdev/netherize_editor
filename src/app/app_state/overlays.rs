@@ -795,6 +795,28 @@ impl AppState {
         matches!(line_text.trim_end().chars().next_back(), Some('{' | '(' | '['))
     }
 
+    /// Indent string of the first non-blank line that follows `line_idx` and is
+    /// nested deeper than it — i.e. the actual indentation of the block this line
+    /// opens. Lets `o` follow the file's real indent step (e.g. 2 spaces) instead
+    /// of guessing from config. Returns None when there is no deeper body line to
+    /// sample (e.g. an empty block).
+    pub(super) fn block_body_indent(&self, line_idx: usize) -> Option<String> {
+        let total = self.text.len_lines();
+        let opener_indent = self.line_indent_string(line_idx);
+        for next in (line_idx + 1)..total {
+            let line_text = self.text.line(next).to_string();
+            if line_text.trim().is_empty() {
+                continue; // skip blank lines inside the block
+            }
+            let body_indent = self.line_indent_string(next);
+            if body_indent.len() > opener_indent.len() && body_indent.starts_with(&opener_indent) {
+                return Some(body_indent);
+            }
+            return None; // first real line isn't nested deeper → nothing to sample
+        }
+        None
+    }
+
     pub(super) fn indent_unit_for_line(&self, current_indent: &str) -> String {
         if current_indent.contains('\t') || !self.indent_config.insert_spaces {
             "\t".to_string()

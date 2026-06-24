@@ -239,7 +239,11 @@ impl AppState {
         let insert_at = self.line_content_end_char_idx(line_idx);
         let mut indent = self.line_indent_string(line_idx);
         if self.line_opens_block(line_idx) {
-            indent.push_str(&self.indent_unit_for_line(&indent));
+            if let Some(body_indent) = self.block_body_indent(line_idx) {
+                indent = body_indent;
+            } else {
+                indent.push_str(&self.indent_unit_for_line(&indent));
+            }
         }
         let indent_char_count = indent.chars().count();
 

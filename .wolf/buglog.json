@@ -4508,15 +4508,16 @@
     "id": "bug-191",
     "error_message": "Vim `o`/`O` (insert_line_below/above) did not match the current scope indentation: `o` after a block-opening line (`{`/`(`/`[`) stayed at the opener's indent instead of descending one level, and `O` always landed at column 0 with no indent.",
     "root_cause": "AppState::insert_line_below (src/app/app_state/editor.rs) copied the current line's leading whitespace but never added an indent level when the line opened a block, so `o` on `const X = {` produced an empty/under-indented line. AppState::insert_line_above inserted a bare \"\\n\" with target_col=0, copying no indent at all, so `O` always sat at column 0. The legacy src/editor_core.rs buffer is not on the live `o`/`O` dispatch path (command_dispatch/editing.rs calls AppState's methods).",
-    "fix": "Added AppState::line_opens_block (src/app/app_state/overlays.rs) — true when a line's last non-blank char is `{`/`(`/`[`. insert_line_below now appends one indent_unit_for_line() (config-aware: tab vs tab_width spaces, respecting the line's existing tabs) when the source line opens a block. insert_line_above now copies the current line's indent (format!(\"{indent}\\n\")) and places the caret after that indent. Reused existing indent_unit_for_line/line_indent_string helpers, matching smart_insert_newline. Tests added in src/app/app_state/tests.rs: insert_line_below_after_open_brace/open_paren/descends_from_indented_opener/copies_indent_without_extra_for_plain_line, insert_line_above_matches_current_line_indent, insert_line_above_uses_indent_of_line_pushed_down.",
+    "fix": "Added AppState::line_opens_block (src/app/app_state/overlays.rs) — true when a line's last non-blank char is `{`/`(`/`[`. insert_line_below now appends one indent_unit_for_line() (config-aware: tab vs tab_width spaces, respecting the line's existing tabs) when the source line opens a block. insert_line_above now copies the current line's indent (format!(\"{indent}\\n\")) and places the caret after that indent. Reused existing indent_unit_for_line/line_indent_string helpers, matching smart_insert_newline. Tests added in src/app/app_state/tests.rs: insert_line_below_after_open_brace/open_paren/descends_from_indented_opener/copies_indent_without_extra_for_plain_line, insert_line_above_matches_current_line_indent, insert_line_above_uses_indent_of_line_pushed_down. REFINEMENT: when `o` opens a block, AppState::block_body_indent (overlays.rs) samples the first non-blank, deeper-nested following line and uses its exact indent string, so the new line follows the file's real indent step (e.g. 2 spaces) instead of the config tab_width (4). Falls back to indent_unit_for_line() only for empty blocks with no body to sample. Tests: insert_line_below_matches_file_indent_when_smaller_than_config, insert_line_below_falls_back_to_config_unit_for_empty_block.",
     "tags": [
-      "editor",
-      "vim",
-      "indent",
-      "smartindent",
-      "o-command",
       "O-command",
-      "insert_line"
+      "editor",
+      "indent",
+      "indent-detection",
+      "insert_line",
+      "o-command",
+      "smartindent",
+      "vim"
     ],
     "occurrences": 1,
     "last_seen": "2026-06-24T00:00:00+07:00"
