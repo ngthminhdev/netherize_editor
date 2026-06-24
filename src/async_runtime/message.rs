@@ -372,6 +372,25 @@ pub enum WorkerRequestPayload {
         max_tokens: u32,
         cancel_token: CancellationToken,
     },
+    /// AI re-rank of an LSP completion popup. The worker asks the model to order
+    /// `candidates` (the server's own labels) by relevance at the cursor and
+    /// returns the preferred ordering. The model never adds or removes labels.
+    AiCompletionRerankRequest {
+        api_url: String,
+        api_key: Option<String>,
+        model: String,
+        endpoint_kind: Option<String>,
+        reasoning_effort: Option<String>,
+        prefix: String,
+        suffix: String,
+        language_id: Option<String>,
+        candidates: Vec<String>,
+        /// Echoed back so the main thread can drop a result that arrived after
+        /// the user changed the typed prefix / closed the popup.
+        prefix_token: String,
+        completion_revision: u64,
+        cancel_token: CancellationToken,
+    },
     /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
     CheckSystemDeps,
     /// Install system CLI tools one-by-one, streaming per-tool progress messages.
@@ -836,6 +855,14 @@ pub enum WorkerResultPayload {
     },
     AiInlineCompletionResult {
         suggestion: String,
+    },
+    /// AI re-rank result: the candidate labels in the model's preferred order.
+    /// `prefix_token` / `completion_revision` are echoed from the request so the
+    /// main thread can drop a result the user has already moved past.
+    AiCompletionRerankResult {
+        ranked: Vec<String>,
+        prefix_token: String,
+        completion_revision: u64,
     },
     /// Result of system dependency check: list of tools not found by `which`.
     SystemDepCheckResult {

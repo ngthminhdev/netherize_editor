@@ -298,6 +298,9 @@ pub struct AppShell {
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
     ai_inline_cancel_token: Option<CancellationToken>,
+    /// Cancels an in-flight AI completion-rerank request when a newer completion
+    /// popup supersedes it.
+    ai_rerank_cancel_token: Option<CancellationToken>,
     last_ai_inline_submit_at: Option<Instant>,
     /// Set when the current typing command consumed the head of the visible
     /// ghost text (prefix match) — the post-edit hook must keep the retained

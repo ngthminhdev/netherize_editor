@@ -892,6 +892,10 @@ impl AppState {
         self.completion.as_ref()
     }
 
+    pub fn completion_mut(&mut self) -> Option<&mut CompletionState> {
+        self.completion.as_mut()
+    }
+
     pub fn has_completion(&self) -> bool {
         self.completion.is_some()
     }

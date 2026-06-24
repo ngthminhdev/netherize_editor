@@ -94,7 +94,8 @@ impl AsyncResultRouter for AppShell {
                 lsp::handle_lsp_result(self, result.payload, request_id, revision_id);
             }
             WorkerResultPayload::AiInlineCompletionChunk { .. }
-            | WorkerResultPayload::AiInlineCompletionResult { .. } => {
+            | WorkerResultPayload::AiInlineCompletionResult { .. }
+            | WorkerResultPayload::AiCompletionRerankResult { .. } => {
                 ai::handle_ai_result(self, result.payload);
             }
             WorkerResultPayload::SystemDepCheckResult { .. }

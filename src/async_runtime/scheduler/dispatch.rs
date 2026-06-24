@@ -13,7 +13,7 @@ use crate::{
 
 use super::{
     LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache, SyntaxEngineCacheHandle,
-    ai::execute_ai_inline_request,
+    ai::{execute_ai_inline_request, execute_ai_rerank_request},
     async_trace,
     codegraph::run_codegraph_request,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
@@ -244,6 +244,70 @@ pub(super) async fn dispatch_loop(
                     }),
                 );
                 match execute_ai_inline_request(&request, Some(&worker_tx)).await {
+                    Ok(payload) => {
+                        emit_message(
+                            &worker_tx,
+                            WorkerMessage::Result(WorkerResult {
+                                request_id: request.request_id,
+                                revision_id: request.revision_id,
+                                topic: request.topic,
+                                payload,
+                            }),
+                        );
+                        emit_message(
+                            &worker_tx,
+                            WorkerMessage::Event(WorkerEvent {
+                                request_id: request.request_id,
+                                revision_id: request.revision_id,
+                                topic: request.topic,
+                                kind: WorkerEventKind::Completed,
+                            }),
+                        );
+                        let _ = ai_event_proxy.send_event(AppEvent::AiInlineReady);
+                    }
+                    Err(message) => {
+                        let kind = if message.contains("cancelled") {
+                            WorkerEventKind::Cancelled { reason: message }
+                        } else {
+                            WorkerEventKind::Failed {
+                                error: WorkerFailure {
+                                    kind: WorkerFailureKind::Execution,
+                                    message,
+                                },
+                            }
+                        };
+                        emit_message(
+                            &worker_tx,
+                            WorkerMessage::Event(WorkerEvent {
+                                request_id: request.request_id,
+                                revision_id: request.revision_id,
+                                topic: request.topic,
+                                kind,
+                            }),
+                        );
+                    }
+                }
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::AiCompletionRerankRequest { .. }
+        ) {
+            let worker_tx = result_tx.clone();
+            let ai_event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                emit_message(
+                    &worker_tx,
+                    WorkerMessage::Event(WorkerEvent {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        kind: WorkerEventKind::Started,
+                    }),
+                );
+                match execute_ai_rerank_request(&request).await {
                     Ok(payload) => {
                         emit_message(
                             &worker_tx,

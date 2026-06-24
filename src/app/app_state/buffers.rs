@@ -91,9 +91,30 @@ impl AppState {
             buffer.last_known_modified_time = modified_time;
         }
         let _ = self.workspace_expand_to_path(&canonical_path);
+        self.reindex_ts_js_exports_for_saved_file(&canonical_path);
         self.dirty = false;
         self.external_conflict = None;
         Ok(canonical_path)
+    }
+
+    /// Re-extract a just-saved TS/JS file's exports into the workspace symbol
+    /// cache. The whole-workspace export index only runs once at LSP start, so
+    /// without this an export added after startup stays invisible to auto-import
+    /// until a restart. No-op for non-TS/JS files or when no workspace is open.
+    fn reindex_ts_js_exports_for_saved_file(&self, saved_path: &Path) {
+        let Some(profile) = crate::lsp::registry::language_profile_for_path(saved_path) else {
+            return;
+        };
+        if !matches!(profile.key, "typescript" | "tsx" | "javascript" | "jsx") {
+            return;
+        }
+        let Some(workspace_root) = self.workspace_root_path().map(PathBuf::from) else {
+            return;
+        };
+        let text = self.text.to_string();
+        let symbols = crate::lsp::extract_ts_js_exports_from_text(saved_path, &workspace_root, &text);
+        self.workspace_symbol_cache()
+            .upsert_file_symbols(profile.key, saved_path, symbols);
     }
 
     pub fn reload_active_file_from_disk_discarding_local(&mut self) -> Result<PathBuf, String> {

@@ -125,6 +125,32 @@ pub(super) fn handle_ai_result(app: &mut AppShell, payload: WorkerResultPayload)
             }
             app.request_redraw();
         }
+        WorkerResultPayload::AiCompletionRerankResult {
+            ranked,
+            prefix_token,
+            completion_revision,
+        } => {
+            // Apply only if the very popup we ranked is still open and untouched:
+            // the typed prefix must be unchanged AND the user must not have moved
+            // the selection (which bumps `current_revision`). Otherwise drop it —
+            // a re-rank must never yank a selection the user has already acted on.
+            let still_current = app
+                .app_state
+                .completion()
+                .is_some_and(|completion| {
+                    completion.typed_prefix == prefix_token
+                        && completion.current_revision == completion_revision
+                });
+            if !still_current {
+                return;
+            }
+            if let Some(completion) = app.app_state.completion_mut()
+                && completion.apply_ai_rerank(&ranked)
+            {
+                app.editor_caret_needs_layout = true;
+                app.request_redraw();
+            }
+        }
         _ => {}
     }
 }

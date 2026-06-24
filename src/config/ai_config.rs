@@ -8,6 +8,21 @@ use crate::config::paths::user_config_root;
 pub struct AiConfig {
     pub inline_completion: Option<InlineCompletionConfig>,
     pub leetcode: Option<LeetCodeConfig>,
+    pub completion_rerank: Option<CompletionRerankConfig>,
+}
+
+/// AI-assisted re-ranking of the LSP completion popup. The model only reorders
+/// the server's own candidates by cursor context — it never invents or drops a
+/// suggestion — so correctness stays with the LSP while ordering gets smarter.
+/// Disabled by default; opt in via `[completion_rerank] enabled = true`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CompletionRerankConfig {
+    pub enabled: Option<bool>,
+    pub provider: AiProviderConfig,
+    pub debounce_ms: Option<u64>,
+    /// Cap on how many of the top candidates are sent to the model. Keeps the
+    /// prompt small and the round-trip fast.
+    pub max_candidates: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -66,6 +81,14 @@ impl AiConfig {
         self.inline_completion
             .as_ref()
             .filter(|cfg| cfg.enabled.unwrap_or(true))
+    }
+
+    /// Active re-rank config, or `None` when the section is missing or disabled.
+    pub fn completion_rerank(&self) -> Option<&CompletionRerankConfig> {
+        self.completion_rerank
+            .as_ref()
+            .filter(|cfg| cfg.enabled.unwrap_or(false))
+            .filter(|cfg| !cfg.provider.api_url.trim().is_empty())
     }
 
     pub fn inline_completion_enabled(&self) -> bool {
@@ -308,6 +331,16 @@ impl InlineCompletionConfig {
 
     pub fn min_interval_ms(&self) -> u64 {
         self.min_interval_ms.unwrap_or(250)
+    }
+}
+
+impl CompletionRerankConfig {
+    pub fn debounce_ms(&self) -> u64 {
+        self.debounce_ms.unwrap_or(120)
+    }
+
+    pub fn max_candidates(&self) -> usize {
+        self.max_candidates.unwrap_or(20).clamp(2, 50)
     }
 }
 

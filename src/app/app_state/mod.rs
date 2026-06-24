@@ -1942,6 +1942,60 @@ impl CompletionState {
             language_id: language_id.map(|s| s.to_string()),
         }
     }
+
+    /// Apply an AI re-rank: reorder `filtered_items` by `ranked` (best-first),
+    /// preserving membership, and pre-select the new top item. Returns `true`
+    /// when the visible order actually changed.
+    pub fn apply_ai_rerank(&mut self, ranked: &[String]) -> bool {
+        if ranked.is_empty() || self.filtered_items.len() < 2 {
+            return false;
+        }
+        let before: Vec<String> = self
+            .filtered_items
+            .iter()
+            .map(|entry| entry.item.label.clone())
+            .collect();
+        let reordered = rerank_completion_items(std::mem::take(&mut self.filtered_items), ranked);
+        let changed = reordered
+            .iter()
+            .map(|entry| &entry.item.label)
+            .ne(before.iter());
+        self.filtered_items = reordered;
+        if changed {
+            self.selected_index = 0;
+        }
+        changed
+    }
+}
+
+/// Reorder completion `items` so the labels named in `ranked` (best-first) move
+/// to the front in that order; every other item keeps its original relative
+/// order after them. Membership is invariant: labels in `ranked` that aren't
+/// present are ignored, and items not named in `ranked` are preserved. This is
+/// how an AI re-rank is applied to an LSP candidate list — it can only reorder
+/// the server's ground-truth candidates, never invent or drop one.
+pub fn rerank_completion_items(
+    items: Vec<CompletionDisplayItem>,
+    ranked: &[String],
+) -> Vec<CompletionDisplayItem> {
+    if ranked.is_empty() || items.len() < 2 {
+        return items;
+    }
+
+    let mut remaining: Vec<Option<CompletionDisplayItem>> = items.into_iter().map(Some).collect();
+    let mut reordered = Vec::with_capacity(remaining.len());
+
+    for label in ranked {
+        if let Some(slot) = remaining
+            .iter_mut()
+            .find(|slot| slot.as_ref().is_some_and(|entry| &entry.item.label == label))
+        {
+            reordered.push(slot.take().expect("slot matched is Some"));
+        }
+    }
+
+    reordered.extend(remaining.into_iter().flatten());
+    reordered
 }
 
 #[derive(Debug, Clone, PartialEq)]

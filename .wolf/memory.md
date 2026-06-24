@@ -3657,3 +3657,93 @@ Fixed cards being clipped by topbar/breadcrumb/terminal. `update_canvas_content`
 | 23:04 | Edited src/app/event_loop/application.rs | modified point_in_bounds() | ~341 |
 | 23:04 | Edited src/app/event_loop/application.rs | modified signum() | ~412 |
 | 23:06 | Session end: 5 writes across 3 files (mod.rs, setup.rs, application.rs) | 3 reads | ~79778 tok |
+
+## Session: 2026-06-23 23:34
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:39 | Edited config/keymaps/default.toml | 2→2 lines | ~10 |
+| 23:40 | Session end: 1 writes across 1 files (default.toml) | 1 reads | ~5599 tok |
+
+## Session: 2026-06-23 00:17
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-23 00:31
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:47 | Edited src/app/event_loop/commands_tests.rs | modified resolvable_lsp_item_is_not_enriched_by_cache_so_real_auto_import_wins() | ~481 |
+| 00:48 | Edited src/app/app_state/overlays.rs | modified is_none() | ~194 |
+| 00:51 | Edited src/app/event_loop/commands_tests.rs | modified standalone_workspace_symbol_injections_are_capped() | ~423 |
+| 00:51 | Edited src/app/app_state/overlays.rs | expanded (+9 lines) | ~175 |
+| 00:51 | Edited src/app/app_state/overlays.rs | modified build_completion_display_items_with_cache() | ~112 |
+| 00:53 | Edited src/app/event_loop/commands_tests.rs | modified rerank_item() | ~450 |
+| 00:53 | Edited src/app/app_state/mod.rs | modified rerank_completion_items() | ~338 |
+| 00:55 | Edited src/config/ai_config.rs | expanded (+15 lines) | ~242 |
+| 00:56 | Edited src/config/ai_config.rs | modified completion_rerank() | ~105 |
+| 00:56 | Edited src/config/ai_config.rs | modified min_interval_ms() | ~85 |
+| 00:56 | Edited src/async_runtime/message.rs | expanded (+19 lines) | ~320 |
+| 00:56 | Edited src/async_runtime/message.rs | expanded (+8 lines) | ~115 |
+| 00:57 | Edited src/async_runtime/scheduler/ai.rs | modified execute_ai_rerank_request() | ~1400 |
+| 00:57 | Edited src/async_runtime/scheduler/ai.rs | modified cancelled_message() | ~300 |
+| 00:57 | Edited src/async_runtime/scheduler/dispatch.rs | inline fix | ~17 |
+| 00:57 | Edited src/async_runtime/scheduler/dispatch.rs | modified contains() | ~797 |
+| 00:58 | Edited src/app/app_state/mod.rs | modified apply_ai_rerank() | ~272 |
+| 00:58 | Edited src/app/event_loop/commands_tests.rs | modified completion_state_apply_ai_rerank_floats_item_and_preselects_it() | ~270 |
+| 00:58 | Edited src/app/event_loop/mod.rs | 2→5 lines | ~72 |
+| 00:58 | Edited src/app/event_loop/setup.rs | 2→3 lines | ~34 |
+| 01:00 | Edited src/app/event_loop/setup.rs | modified maybe_request_ai_completion_rerank() | ~888 |
+| 01:00 | Edited src/app/event_loop/async_results/lsp.rs | 7→8 lines | ~84 |
+| 01:00 | Edited src/app/event_loop/async_results/ai.rs | modified apply_ai_rerank() | ~312 |
+| 01:00 | Edited src/app/app_state/state.rs | modified completion() | ~68 |
+| 01:00 | Edited src/app/event_loop/async_results/mod.rs | 4→5 lines | ~74 |
+| 01:01 | Edited config/ai.toml | expanded (+15 lines) | ~145 |
+| 01:06 | Created ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_completion_rerank.md | — | ~567 |
+| 01:06 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md | 1→2 lines | ~77 |
+| 01:06 | Session end: 28 writes across 13 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 16 reads | ~193354 tok |
+| 09:35 | Session end: 28 writes across 13 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 17 reads | ~209668 tok |
+| 09:48 | Edited src/render/renderer/editor/completion.rs | 5→5 lines | ~79 |
+| 09:50 | Edited src/render/renderer/editor/completion.rs | modified clamp_completion_detail() | ~183 |
+| 09:50 | Edited src/render/renderer/editor/completion.rs | inline fix | ~27 |
+| 09:50 | Edited src/render/renderer/editor/completion.rs | 3→3 lines | ~52 |
+| 09:51 | Session end: 32 writes across 14 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 19 reads | ~218452 tok |
+| 10:04 | Session end: 32 writes across 14 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 20 reads | ~237622 tok |
+| 10:09 | Edited src/lsp/symbol_cache.rs | modified indexes_whole_module_default_by_filename_for_commonjs() | ~579 |
+| 10:09 | Edited src/lsp/symbol_cache.rs | inline fix | ~14 |
+| 10:09 | Edited src/lsp/symbol_cache.rs | modified enumerate() | ~153 |
+| 10:10 | Edited src/lsp/symbol_cache.rs | modified is_whole_module_default_line() | ~902 |
+| 10:11 | Edited src/app/event_loop/commands_tests.rs | modified typing_filename_suggests_require_for_whole_module_default() | ~521 |
+| 10:12 | Edited src/lsp/symbol_cache.rs | modified logger() | ~152 |
+| 10:14 | Edited src/lsp/symbol_cache.rs | expanded (+6 lines) | ~160 |
+| 10:17 | Session end: 39 writes across 15 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 20 reads | ~241831 tok |
+| 10:26 | Edited src/app/event_loop/commands_tests.rs | modified saving_a_ts_js_file_reindexes_its_exports() | ~402 |
+| 10:26 | Edited src/app/event_loop/commands_tests.rs | 6→7 lines | ~73 |
+| 10:29 | Edited src/app/app_state/buffers.rs | modified reindex_ts_js_exports_for_saved_file() | ~331 |
+| 10:29 | Edited src/app/event_loop/commands_tests.rs | 3→4 lines | ~64 |
+| 10:35 | Session end: 43 writes across 16 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 23 reads | ~270180 tok |
+| 10:36 | Edited src/app/event_loop/commands_tests.rs | modified non_go_bare_workspace_symbol_is_not_offered_standalone() | ~460 |
+| 10:36 | Edited src/app/app_state/overlays.rs | 14→18 lines | ~296 |
+| 10:39 | Session end: 45 writes across 16 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 23 reads | ~273553 tok |
+| 10:42 | Session end: 45 writes across 16 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 23 reads | ~273553 tok |
+| 10:47 | Session end: 45 writes across 16 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 23 reads | ~273553 tok |
+| 10:50 | Edited src/lsp/symbol_cache.rs | modified indexes_chained_module_exports_object_by_filename() | ~299 |
+| 10:51 | Edited src/lsp/symbol_cache.rs | modified is_whole_module_default_line() | ~389 |
+| 10:51 | Edited src/lsp/symbol_cache.rs | 3→5 lines | ~91 |
+| 10:55 | Edited src/lsp/symbol_cache.rs | modified filename_default_added_even_when_a_nonimportable_local_shares_the_name() | ~321 |
+| 10:55 | Edited src/lsp/symbol_cache.rs | modified default_import_name_from_path() | ~162 |
+| 10:56 | Edited src/app/event_loop/commands_tests.rs | 4→6 lines | ~124 |
+| 10:57 | Edited src/lsp/symbol_cache.rs | modified enumerate() | ~128 |
+| 10:57 | Edited src/lsp/symbol_cache.rs | modified filter() | ~314 |
+| 11:00 | Session end: 53 writes across 16 files (commands_tests.rs, overlays.rs, mod.rs, ai_config.rs, message.rs) | 23 reads | ~276573 tok |
+
+## Session: 2026-06-24 11:23
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:31 | Edited src/app/app_state/tests.rs | added 2 condition(s) | ~669 |
+| 11:31 | Edited src/app/app_state/overlays.rs | modified line_opens_block() | ~172 |
+| 11:32 | Edited src/app/app_state/editor.rs | modified line_opens_block() | ~98 |
+| 11:32 | Edited src/app/app_state/editor.rs | 6→9 lines | ~119 |
+| 11:36 | Session end: 4 writes across 3 files (tests.rs, overlays.rs, editor.rs) | 5 reads | ~81677 tok |

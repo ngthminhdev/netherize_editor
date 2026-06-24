@@ -237,7 +237,10 @@ impl AppState {
     pub fn insert_line_below(&mut self) -> bool {
         let line_idx = self.text.char_to_line(self.cursor_char_idx);
         let insert_at = self.line_content_end_char_idx(line_idx);
-        let indent = self.line_indent_string(line_idx);
+        let mut indent = self.line_indent_string(line_idx);
+        if self.line_opens_block(line_idx) {
+            indent.push_str(&self.indent_unit_for_line(&indent));
+        }
         let indent_char_count = indent.chars().count();
 
         self.apply_insert(insert_at, format!("\n{}", indent));
@@ -253,10 +256,13 @@ impl AppState {
     pub fn insert_line_above(&mut self) -> bool {
         let line_idx = self.text.char_to_line(self.cursor_char_idx);
         let line_start = self.text.line_to_char(line_idx);
+        let indent = self.line_indent_string(line_idx);
+        let indent_char_count = indent.chars().count();
 
-        self.apply_insert(line_start, "\n".to_string());
-        self.cursor_char_idx = line_start;
-        self.target_col = 0;
+        self.apply_insert(line_start, format!("{}\n", indent));
+        self.cursor_char_idx = line_start + indent_char_count;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
         self.dirty = true;
         self.bump_revision();
         true

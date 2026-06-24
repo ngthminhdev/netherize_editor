@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-23T16:04:58.369Z
-> Files: 472 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-24T04:32:09.479Z
+> Files: 473 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -22,8 +22,9 @@
 - `feedback_never_auto_commit.md` (~239 tok)
 - `feedback_no_panel_lightening.md` (~279 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~382 tok)
+- `MEMORY.md` (~426 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
+- `project_completion_rerank.md` (~550 tok)
 - `project_leetcode_gen_model.md` (~519 tok)
 - `project_spatial_canvas.md` (~11832 tok)
 - `project_vim_palette_review.md` (~389 tok)
@@ -252,11 +253,11 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~283 tok)
+- `ai.toml` (~273 tok)
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5589 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5590 tok)
 
 ## config/themes/
 
@@ -419,18 +420,18 @@
 
 ## src/app/app_state/
 
-- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~7786 tok)
+- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~8073 tok)
 - `canvas_edit.rs` — NetherCanvas in-card editing (v2): the focused card is edited by the full (~7636 tok)
 - `canvas.rs` — `AppState` integration for NetherCanvas (Phase A). Builds/clears the (~26672 tok)
 - `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
-- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~11960 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~27489 tok)
+- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~12043 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~28041 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~20154 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~20558 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
-- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12572 tok)
-- `tests.rs` — [cfg(test)] (~26545 tok)
+- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12601 tok)
+- `tests.rs` — [cfg(test)] (~27198 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
@@ -447,24 +448,24 @@
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~13344 tok)
-- `commands_tests.rs` — [derive(Default)] (~44179 tok)
+- `commands_tests.rs` — [derive(Default)] (~47135 tok)
 - `commands.rs` — [path = "commands_ai_agent.rs"] (~12436 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18734 tok)
-- `mod.rs` — Struct: AppShell (~8530 tok)
-- `setup.rs` — new, new_for_tests (~24230 tok)
+- `mod.rs` — Struct: AppShell (~8574 tok)
+- `setup.rs` — new, new_for_tests (~25084 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
-- `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2325 tok)
+- `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2619 tok)
 - `canvas_scope.rs` — Scope-aware card snapshot selection (T4). (~1438 tok)
 - `failure.rs` — Consecutive inline-completion failures before the user is told once and (~1604 tok)
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
-- `lsp.rs` — Declares fetch (~14862 tok)
-- `mod.rs` (~9396 tok)
+- `lsp.rs` — Declares fetch (~14878 tok)
+- `mod.rs` (~9414 tok)
 - `preview.rs` (~1145 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
 - `shell.rs` (~112 tok)
@@ -491,7 +492,7 @@
 ## src/async_runtime/
 
 - `dart_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~1030 tok)
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7891 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~8387 tok)
 - `mod.rs` (~22 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~2566 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~3132 tok)
@@ -499,9 +500,9 @@
 ## src/async_runtime/scheduler/
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
-- `ai.rs` (~1916 tok)
+- `ai.rs` (~3656 tok)
 - `codegraph.rs` — Code Graph HUD worker job — spawns the external `codegraph` CLI and builds (~1431 tok)
-- `dispatch.rs` (~7205 tok)
+- `dispatch.rs` (~7971 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
@@ -534,7 +535,7 @@
 
 ## src/config/
 
-- `ai_config.rs` — Dedicated AI provider for the LeetCode adapter. When left empty the code (~3527 tok)
+- `ai_config.rs` — AI-assisted re-ranking of the LSP completion popup. The model only reorders (~3884 tok)
 - `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~350 tok)
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
@@ -574,7 +575,7 @@
 - `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path (~16331 tok)
 - `mod.rs` (~62 tok)
 - `registry.rs` — LanguageProfile: companion_servers_for_key, companion_servers_for_path, expected_server_binaries, bi (~5544 tok)
-- `symbol_cache.rs` — Upper bound on node_modules packages scanned for type exports. High enough to (~19170 tok)
+- `symbol_cache.rs` — Upper bound on node_modules packages scanned for type exports. High enough to (~21842 tok)
 
 ## src/render/
 
@@ -610,7 +611,7 @@
 ## src/render/renderer/editor/
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~8541 tok)
-- `completion.rs` — Declares MAX_VISIBLE_ROWS (~4455 tok)
+- `completion.rs` — Declares MAX_VISIBLE_ROWS (~4992 tok)
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~9806 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)

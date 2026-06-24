@@ -1378,6 +1378,47 @@ fn dirty_buffer_close_confirmation_yes_saves_then_closes() {
 }
 
 #[test]
+fn saving_a_ts_js_file_reindexes_its_exports() {
+    // Staleness fix: the whole-workspace export index only runs at LSP start, so
+    // edits made afterwards were invisible until restart. Saving a TS/JS file must
+    // refresh that file's exports in the workspace symbol cache.
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("reindex_on_save");
+    std::fs::create_dir_all(&root).expect("create workspace root");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    let file = root.join("lib/widget.js");
+    let _canonical = open_completion_file(&mut shell, &file, "export const Widget = 1;\n");
+
+    // Opening alone does not index the file's exports.
+    assert!(
+        shell
+            .app_state
+            .workspace_symbol_cache()
+            .query_symbols("Widget", Some("javascript"))
+            .is_empty(),
+        "precondition: export not indexed before save"
+    );
+
+    // Dirty the buffer, then save. (SaveFile reports no document-state change, so
+    // its return is false; the re-index runs inside save_file itself.)
+    shell.app_state.insert_char(' ');
+    shell.handle_command(Command::SaveFile);
+
+    let hits = shell
+        .app_state
+        .workspace_symbol_cache()
+        .query_symbols("Widget", Some("javascript"));
+    assert!(
+        hits.iter().any(|symbol| symbol.name == "Widget"),
+        "saving a TS/JS file should re-index its exports"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn dirty_buffer_close_confirmation_no_discards_changes_and_closes() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let file_path = std::env::temp_dir().join(format!(
@@ -3296,6 +3337,51 @@ fn go_workspace_completion_symbols_merge_with_lsp_results() {
 }
 
 #[test]
+fn non_go_bare_workspace_symbol_is_not_offered_standalone() {
+    // Java/Rust/Python can't reference a bare name without an import, and the
+    // editor synthesizes imports only for TS/JS. So a workspace symbol with no
+    // export metadata in these languages must NOT be injected standalone — their
+    // LSP provides the proper auto-import form. (Go is exempt: goimports /
+    // same-package resolves bare inserts.)
+    let root = completion_temp_root("rust_bare_not_standalone");
+    let source_path = write_completion_file(&root.join("src/lib.rs"), "pub fn connect() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols(
+        "rust",
+        vec![crate::lsp::CachedSymbol {
+            name: "connect".to_string(),
+            kind: "Function".to_string(),
+            container_name: None,
+            file_path: source_path.clone(),
+            line: 0,
+            character: 7,
+            source_path: None,
+            import_path: None,
+            export_kind: None,
+            callable: Some(true),
+            has_parameters: Some(false),
+        }],
+    );
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("connectLocal", "connectLocal")],
+        0,
+        3,
+        0,
+        "con".to_string(),
+        &cache,
+        Some("rust"),
+    );
+    assert!(
+        completion
+            .filtered_items
+            .iter()
+            .all(|entry| entry.item.label != "connect"),
+        "a bare Rust workspace symbol must not be offered as a standalone completion"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn ts_non_exported_workspace_symbol_is_not_offered_standalone() {
     // A TS workspace symbol without export metadata can't be auto-imported, so
     // inserting it bare would create an undefined reference. It must be filtered
@@ -3373,6 +3459,210 @@ fn workspace_completion_import_metadata_enriches_duplicate_lsp_item() {
     assert_eq!(
         shell.app_state.text_string(),
         "import { connect } from './api';\nconst value = connect()"
+    );
+}
+
+fn rerank_item(label: &str, score: i64) -> crate::app::app_state::CompletionDisplayItem {
+    crate::app::app_state::CompletionDisplayItem {
+        item: test_completion_item(label, label),
+        match_ranges: Vec::new(),
+        score,
+        source: crate::app::app_state::CompletionItemSource::Lsp,
+    }
+}
+
+#[test]
+fn ai_rerank_floats_named_labels_to_front_in_ranked_order() {
+    let items = vec![
+        rerank_item("alpha", 100),
+        rerank_item("beta", 90),
+        rerank_item("gamma", 80),
+    ];
+    let ranked = vec!["gamma".to_string(), "alpha".to_string()];
+    let out = crate::app::app_state::rerank_completion_items(items, &ranked);
+    let labels: Vec<_> = out.iter().map(|entry| entry.item.label.clone()).collect();
+    // gamma + alpha float up in the AI's order; beta keeps its place after them.
+    assert_eq!(labels, vec!["gamma", "alpha", "beta"]);
+}
+
+#[test]
+fn ai_rerank_ignores_unknown_labels_and_never_changes_membership() {
+    let items = vec![rerank_item("alpha", 100), rerank_item("beta", 90)];
+    let ranked = vec!["zeta".to_string(), "beta".to_string()];
+    let out = crate::app::app_state::rerank_completion_items(items, &ranked);
+    let labels: Vec<_> = out.iter().map(|entry| entry.item.label.clone()).collect();
+    assert_eq!(labels, vec!["beta", "alpha"]);
+    assert_eq!(out.len(), 2, "rerank must never drop or add items");
+}
+
+#[test]
+fn completion_state_apply_ai_rerank_floats_item_and_preselects_it() {
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let mut completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![
+            test_completion_item("append", "append"),
+            test_completion_item("apply", "apply"),
+        ],
+        0,
+        2,
+        0,
+        "ap".to_string(),
+        &cache,
+        None,
+    );
+    // Default score order is shortest-first: "apply" before "append".
+    assert_eq!(completion.filtered_items[0].item.label, "apply");
+
+    let changed = completion.apply_ai_rerank(&["append".to_string()]);
+    assert!(changed, "reordering should report a change");
+    assert_eq!(completion.filtered_items[0].item.label, "append");
+    assert_eq!(
+        completion.selected_index, 0,
+        "the AI's top pick must become the pre-selected item"
+    );
+    assert_eq!(completion.filtered_items.len(), 2);
+}
+
+#[test]
+fn ai_rerank_with_empty_order_is_identity() {
+    let items = vec![rerank_item("alpha", 100), rerank_item("beta", 90)];
+    let out = crate::app::app_state::rerank_completion_items(items.clone(), &[]);
+    assert_eq!(out, items);
+}
+
+#[test]
+fn standalone_workspace_symbol_injections_are_capped() {
+    // Typing a short prefix in a large workspace can match dozens of exported
+    // symbols. Injecting all of them buries the LSP's context-aware suggestions
+    // under workspace-wide noise, which is exactly the "gợi ý không đúng context"
+    // complaint. The standalone injections must be capped to the best few.
+    let root = completion_temp_root("workspace_injection_cap");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let symbols: Vec<_> = (0..30)
+        .map(|i| {
+            let path = write_completion_file(
+                &root.join(format!("src/m{i}.ts")),
+                &format!("export function connect{i}() {{}}\n"),
+            );
+            cached_ts_export(&format!("connect{i}"), &path)
+        })
+        .collect();
+    cache.insert_symbols("typescript", symbols);
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        4,
+        0,
+        "conn".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+
+    let injected = completion
+        .filtered_items
+        .iter()
+        .filter(|entry| {
+            entry.source == crate::app::app_state::CompletionItemSource::WorkspaceSymbol
+        })
+        .count();
+    assert!(
+        injected <= 12,
+        "standalone workspace-symbol completions must be capped to avoid flooding the popup; got {injected}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn resolvable_lsp_item_is_not_enriched_by_cache_so_real_auto_import_wins() {
+    // A real tsserver auto-import candidate carries `raw_json`/`data` so it can
+    // be resolved into real `additionalTextEdits`. When the workspace cache holds
+    // a same-named export, it must NOT overwrite the LSP item's import metadata:
+    // doing so flips `export_kind`/`source_path` to `Some`, which suppresses
+    // `should_resolve_lsp_completion_before_accept` and forces a *guessed* import
+    // instead of the server's correct one.
+    let root = completion_temp_root("resolvable_not_enriched");
+    let source_path =
+        write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_export("connect", &source_path)],
+    );
+
+    let mut item = test_completion_item("connect", "connect");
+    item.raw_json = Some(r#"{"label":"connect","data":{"source":"./api"}}"#.to_string());
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        3,
+        0,
+        "con".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+
+    let entry = completion
+        .filtered_items
+        .iter()
+        .find(|entry| entry.item.label == "connect")
+        .expect("connect candidate present");
+    assert_eq!(
+        entry.item.export_kind, None,
+        "resolvable LSP item must keep export_kind None so resolve fires"
+    );
+    assert_eq!(
+        entry.item.source_path, None,
+        "resolvable LSP item must keep source_path None so resolve fires"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn typing_filename_suggests_require_for_whole_module_default() {
+    // The user's exact case: `lib/logger.js` does `module.exports = createLogger()`
+    // (RHS has no name). Typing `logg` in another file must suggest `logger` and,
+    // on accept, add `const logger = require('../lib/logger')`.
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // The real-world shape: a non-importable local `const logger` plus a chained
+    // `let seft = module.exports = exports = { … }` whole-module export.
+    let logger_src = "const logger = winston.createLogger({});\nlet seft = module.exports = exports = {\n  logError: () => {},\n};\n";
+    let text = "const x = logg";
+    let root = completion_temp_root("filename_default_require");
+    let logger_path = write_completion_file(&root.join("lib/logger.js"), logger_src);
+    let _path = open_completion_file(&mut shell, &root.join("src/app.js"), text);
+
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols(
+        "javascript",
+        crate::lsp::extract_ts_js_exports_from_text(&logger_path, &root, logger_src),
+    );
+
+    let cursor_col = text.chars().count();
+    let prefix_start = "const x = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        cursor_col,
+        prefix_start,
+        "logg".to_string(),
+        &cache,
+        Some("javascript"),
+    );
+    let logger = completion
+        .filtered_items
+        .iter()
+        .find(|entry| entry.item.label == "logger")
+        .expect("whole-module default should be suggested when typing its file name");
+    assert_eq!(logger.item.export_kind.as_deref(), Some("default"));
+
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "const logger = require('../lib/logger');\nconst x = logger"
     );
 }
 

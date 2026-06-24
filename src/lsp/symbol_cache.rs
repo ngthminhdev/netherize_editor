@@ -521,10 +521,14 @@ pub fn extract_ts_js_exports_from_text(
     let mut brace_depth = 0usize;
     let mut in_block_comment = false;
     let mut accumulating_export: Option<(ExportType, String, usize)> = None;
+    let mut whole_module_default_line: Option<usize> = None;
 
     for (line_idx, raw_line) in text.lines().enumerate() {
         let code_line = strip_ts_js_comments(raw_line, &mut in_block_comment);
         let trimmed = code_line.trim_start();
+        if whole_module_default_line.is_none() && is_whole_module_default_line(trimmed) {
+            whole_module_default_line = Some(line_idx);
+        }
         while contexts
             .last()
             .is_some_and(|context| brace_depth < context.body_depth)
@@ -678,7 +682,129 @@ pub fn extract_ts_js_exports_from_text(
         brace_depth = next_brace_depth;
     }
 
+    // Whole-module default export → also index the module under its FILE NAME,
+    // since that is the binding name when imported: `const logger =
+    // require('../../lib/logger')` / `import logger from './logger'`. This covers
+    // the very common case where the RHS has no usable name of its own
+    // (`module.exports = winston.createLogger({})`, `export default createX()`),
+    // which the name-based patterns above skip. Deduped against any same-named
+    // symbol already produced (e.g. `module.exports = logger`).
+    // Only when the default export is ANONYMOUS — no named default symbol was
+    // captured (`export default function logger` / `module.exports = Logger`
+    // already give a usable name). The filename is the fallback binding name.
+    let has_named_default = symbols
+        .iter()
+        .any(|symbol| symbol.export_kind.as_deref() == Some("default"));
+    // `.d.ts` declaration files are package type entries, not modules you import
+    // by relative file name — skip them so the package indexer's own default
+    // resolution (import_path = package name) stays authoritative.
+    let is_declaration_file = file_path.to_str().is_some_and(|path| {
+        path.ends_with(".d.ts") || path.ends_with(".d.cts") || path.ends_with(".d.mts")
+    });
+    if let Some(default_line) = whole_module_default_line.filter(|_| !has_named_default && !is_declaration_file)
+    {
+        if let Some(default_name) = default_import_name_from_path(file_path) {
+            // Skip only if an *importable* same-named symbol already exists. A
+            // non-importable local of the same name (`const logger = …` inside the
+            // module) must NOT block the filename default — otherwise typing the
+            // file name surfaces nothing usable. The synthetic symbol takes the
+            // export statement's line so it doesn't collide (same name+file+line)
+            // with such a local in `query_symbols` dedup.
+            if !symbols
+                .iter()
+                .any(|symbol| symbol.name == default_name && symbol.export_kind.is_some())
+            {
+                symbols.push(cached_ts_js_symbol(
+                    default_name,
+                    "Module".to_string(),
+                    None,
+                    file_path,
+                    "",
+                    default_line,
+                    import_path.as_deref(),
+                    Some("default"),
+                ));
+            }
+        }
+    }
+
     symbols
+}
+
+/// Does this comment-stripped line assign the *whole module*? True for an
+/// `export default …` or a `module.exports =` / `exports =` assignment appearing
+/// ANYWHERE on the line — including mid-line chained forms like
+/// `let seft = module.exports = exports = { … }` — but NOT member assignments
+/// (`module.exports.foo =` / `exports.foo =`) or comparisons (`==`, `=>`). Such a
+/// module is imported whole under its file name regardless of the RHS shape, so
+/// it gets a filename-based default symbol.
+fn is_whole_module_default_line(trimmed: &str) -> bool {
+    if trimmed.starts_with("export default") {
+        return true;
+    }
+    // Longest marker first so `exports` doesn't match inside `module.exports`.
+    for marker in ["module.exports", "exports"] {
+        let mut from = 0;
+        while let Some(rel) = trimmed[from..].find(marker) {
+            let start = from + rel;
+            let end = start + marker.len();
+            let left_ok = start == 0
+                || trimmed[..start].chars().last().is_none_or(|prev| {
+                    !prev.is_alphanumeric() && prev != '_' && prev != '$' && prev != '.'
+                });
+            let rest = trimmed[end..].trim_start();
+            let right_ok =
+                rest.starts_with('=') && !rest.starts_with("==") && !rest.starts_with("=>");
+            if left_ok && right_ok {
+                return true;
+            }
+            from = end;
+        }
+    }
+    false
+}
+
+/// The identifier a whole-module import binds to, derived from the file name:
+/// `lib/logger.js` → `logger`, `utils/my-helpers.ts` → `myHelpers`,
+/// `store/index.js` → `store` (index files take their directory name). Returns
+/// `None` when no valid JS identifier can be formed (e.g. a purely numeric stem).
+fn default_import_name_from_path(file_path: &Path) -> Option<String> {
+    let stem = file_path.file_stem().and_then(|value| value.to_str())?;
+    let base = if stem.eq_ignore_ascii_case("index") {
+        file_path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|value| value.to_str())
+            .unwrap_or(stem)
+    } else {
+        stem
+    };
+    sanitize_module_identifier(base)
+}
+
+/// Camel-case a file base into a JS identifier: separators (`-`, `.`, `_`, space)
+/// become word boundaries (`my-utils` → `myUtils`). Returns `None` when the result
+/// would not start with a valid identifier character.
+fn sanitize_module_identifier(base: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut upper_next = false;
+    for ch in base.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if upper_next && !out.is_empty() {
+                out.extend(ch.to_uppercase());
+            } else {
+                out.push(ch);
+            }
+            upper_next = false;
+        } else {
+            upper_next = true;
+        }
+    }
+    let first = out.chars().next()?;
+    if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return None;
+    }
+    Some(out)
 }
 
 fn extract_commonjs_candidates_from_line(
@@ -1997,6 +2123,105 @@ module.exports = TelegramClient;
     }
 
     #[test]
+    fn indexes_whole_module_default_by_filename_for_commonjs() {
+        // The common JS case: `lib/logger.js` exports a whole module whose RHS has
+        // no usable name of its own. When imported it is bound to the FILE name —
+        // `const logger = require('../../lib/logger')` — so it must be indexed as
+        // `logger`, not skipped because `winston.createLogger({})` isn't an ident.
+        let root = PathBuf::from("/proj");
+        let file = root.join("lib/logger.js");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "const winston = require('winston');\nmodule.exports = winston.createLogger({});\n",
+        );
+        let logger = symbols
+            .iter()
+            .find(|symbol| symbol.name == "logger")
+            .expect("whole-module default must be indexed under the file name");
+        assert_eq!(logger.export_kind.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn indexes_chained_module_exports_object_by_filename() {
+        // Real-world pattern: `let seft = module.exports = exports = { ... }`. The
+        // `module.exports` assignment is mid-line and the RHS is an object, but the
+        // module is still imported whole under its file name:
+        // `const logger = require('../../lib/logger')`.
+        let root = PathBuf::from("/proj");
+        let file = root.join("src/lib/logger.js");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "const x = 1;\nlet seft = module.exports = exports = {\n  logInfo: () => {},\n  logError: () => {},\n};\n",
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|symbol| symbol.name == "logger"
+                    && symbol.export_kind.as_deref() == Some("default")),
+            "chained module.exports object should be importable by file name; got {:?}",
+            symbols.iter().map(|symbol| &symbol.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn filename_default_added_even_when_a_nonimportable_local_shares_the_name() {
+        // The real logger.js: `const logger = winston.createLogger(...)` is a local
+        // (export_kind None, not importable) AND the module exports an object. The
+        // non-importable local must NOT block the importable filename default, or
+        // typing `logger` surfaces nothing usable.
+        let root = PathBuf::from("/proj");
+        let file = root.join("src/lib/logger.js");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "const logger = winston.createLogger({});\nlet seft = module.exports = exports = {\n  logError: () => {},\n};\n",
+        );
+        assert!(
+            symbols.iter().any(|symbol| symbol.name == "logger"
+                && symbol.export_kind.as_deref() == Some("default")),
+            "an importable filename default must be produced; got {:?}",
+            symbols
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.export_kind.as_deref()))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn indexes_whole_module_default_by_filename_for_esm() {
+        let root = PathBuf::from("/proj");
+        let file = root.join("src/services/cache.ts");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "export default createCache({ ttl: 60 });\n",
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|symbol| symbol.name == "cache" && symbol.export_kind.as_deref() == Some("default")),
+            "anonymous ESM default export must be indexed under the file name"
+        );
+    }
+
+    #[test]
+    fn index_file_default_uses_parent_dir_name() {
+        let root = PathBuf::from("/proj");
+        let file = root.join("src/store/index.js");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "module.exports = createStore();\n",
+        );
+        assert!(
+            symbols.iter().any(|symbol| symbol.name == "store"),
+            "index.js whole-module default should be named after its directory"
+        );
+    }
+
+    #[test]
     fn extracts_multiline_exports() {
         let root = PathBuf::from("/repo");
         let file = root.join("src/utils/math.js");
@@ -2017,7 +2242,9 @@ export {
         );
 
         let names: Vec<_> = symbols.iter().map(|symbol| symbol.name.as_str()).collect();
-        assert_eq!(names, vec!["sum", "PI", "wait", "foo", "baz"]);
+        // The named members, plus a trailing filename default: a `module.exports = {…}`
+        // module can also be imported whole as `const math = require('./math')`.
+        assert_eq!(names, vec!["sum", "PI", "wait", "foo", "baz", "math"]);
     }
 
     #[test]

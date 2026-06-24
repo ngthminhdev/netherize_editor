@@ -778,6 +778,7 @@ pub(super) fn handle_lsp_result(
             let changed = app.app_state.set_completion(completion);
             if changed {
                 app.submit_completion_resolve();
+                app.maybe_request_ai_completion_rerank();
                 app.editor_caret_needs_layout = true;
                 app.request_redraw();
             }

@@ -17,9 +17,9 @@ use crate::{
 use cosmic_text::Metrics;
 
 use super::super::helpers::{
-    caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, estimate_monospace_width,
-    gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_italic,
-    rect_to_scissor, should_draw_block_cursor,
+    caret_rect_for_mode, clamp_monospace_text, clamp_monospace_text_left, clamp_popup_width,
+    estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
+    layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::app::app_state::CompletionState;
@@ -224,7 +224,7 @@ pub(crate) fn draw_completion_menu(
             .as_deref()
             .map(str::trim)
             .filter(|d| !d.is_empty())
-            .map(|d| clamp_monospace_text(d, (list_w * 0.35).max(char_w * 8.0), geom.font_size))
+            .map(|d| clamp_completion_detail(d, (list_w * 0.35).max(char_w * 8.0), geom.font_size))
             .unwrap_or_default();
         let inline_w = if inline_detail.is_empty() {
             0.0
@@ -314,6 +314,19 @@ const COMPLETION_KIND_STRUCT: u32 = 22;
 const COMPLETION_KIND_EVENT: u32 = 23;
 const COMPLETION_KIND_OPERATOR: u32 = 24;
 const COMPLETION_KIND_TYPE_PARAMETER: u32 = 25;
+
+/// Clamp a completion's inline detail to `max_width`. Path/import-like details
+/// (module specifiers, "Auto import from …", file paths) keep their END so the
+/// source stays visible (".../logger'") instead of "Auto import fro…"; other
+/// details (type signatures) keep their start as before.
+pub(super) fn clamp_completion_detail(detail: &str, max_width: f32, font_size: f32) -> String {
+    let pathish = detail.contains('/') || detail.contains('\\') || detail.contains("import");
+    if pathish {
+        clamp_monospace_text_left(detail, max_width, font_size)
+    } else {
+        clamp_monospace_text(detail, max_width, font_size)
+    }
+}
 
 pub(super) fn completion_label_spans(
     item: &CompletionDisplayItem,
@@ -442,5 +455,46 @@ pub(super) fn completion_kind_badge<'a>(
             icon: "built_in:identifier",
             color: theme.ui.fg_ghost.as_f32(),
         },
+    }
+}
+
+#[cfg(test)]
+mod detail_clamp_tests {
+    use super::clamp_completion_detail;
+
+    #[test]
+    fn import_detail_keeps_the_source_tail() {
+        // "Auto import from './logger'" must not become "Auto import fro..." —
+        // the user needs to see WHERE it comes from, so we keep the tail.
+        let out = clamp_completion_detail("Auto import from './logger'", 60.0, 10.0);
+        assert!(
+            out.starts_with("..."),
+            "import detail should truncate from the left, got {out:?}"
+        );
+        assert!(
+            out.ends_with("logger'"),
+            "the import source must stay visible, got {out:?}"
+        );
+    }
+
+    #[test]
+    fn module_path_detail_keeps_the_tail() {
+        let out = clamp_completion_detail("@/components/ui/logger", 70.0, 10.0);
+        assert!(out.starts_with("..."), "got {out:?}");
+        assert!(out.ends_with("logger"), "got {out:?}");
+    }
+
+    #[test]
+    fn signature_detail_keeps_its_head() {
+        let out = clamp_completion_detail("(value: number) => Promise<void>", 60.0, 10.0);
+        assert!(
+            out.ends_with("..."),
+            "signature detail should truncate from the right, got {out:?}"
+        );
+    }
+
+    #[test]
+    fn short_detail_is_unchanged() {
+        assert_eq!(clamp_completion_detail("winston", 400.0, 10.0), "winston");
     }
 }

@@ -116,6 +116,148 @@ pub(super) async fn execute_ai_inline_request(
     Ok(WorkerResultPayload::AiInlineCompletionResult { suggestion })
 }
 
+pub(super) async fn execute_ai_rerank_request(
+    request: &WorkerRequest,
+) -> Result<WorkerResultPayload, String> {
+    let WorkerRequestPayload::AiCompletionRerankRequest {
+        api_url,
+        api_key,
+        model,
+        endpoint_kind,
+        reasoning_effort,
+        prefix,
+        suffix,
+        language_id,
+        candidates,
+        prefix_token,
+        completion_revision,
+        cancel_token,
+    } = &request.payload
+    else {
+        return Err("ai rerank request payload mismatch".to_string());
+    };
+
+    if cancel_token.is_cancelled() {
+        return Err(cancelled_message());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|err| format!("ai client build failed: {err}"))?;
+    let endpoint = match endpoint_kind.as_deref() {
+        Some("responses") => format!("{}/responses", api_url.trim_end_matches('/')),
+        Some(path) if path.starts_with('/') => format!("{}{}", api_url.trim_end_matches('/'), path),
+        _ => format!("{}/chat/completions", api_url.trim_end_matches('/')),
+    };
+
+    let system = "You re-rank code-completion candidates. You are given the code immediately before and after the cursor and a list of candidate identifiers the language server proposed. Return ONLY a JSON array of those SAME identifiers, reordered best-first for this exact cursor context. Never add, remove, rename, translate, or invent identifiers. Output the JSON array and nothing else.";
+    let candidate_list = candidates
+        .iter()
+        .map(|label| format!("- {label}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let user = format!(
+        "Language: {}\n\nCode before cursor:\n{}\n\nCode after cursor:\n{}\n\nCandidates:\n{}\n\nReturn the JSON array of these identifiers, best-first.",
+        language_id.clone().unwrap_or_default(),
+        prefix,
+        suffix,
+        candidate_list,
+    );
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ],
+        "temperature": 0.0,
+        "max_tokens": 512,
+        "stream": false
+    });
+    if let Some(effort) = reasoning_effort
+        .as_ref()
+        .filter(|effort| !effort.is_empty())
+    {
+        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
+    }
+
+    let mut req = client.post(endpoint).json(&body);
+    if let Some(key) = api_key.as_ref().filter(|key| !key.is_empty()) {
+        req = req.bearer_auth(key);
+    }
+
+    let response = tokio::select! {
+        _ = cancel_token.cancelled() => {
+            return Err(cancelled_message());
+        }
+        response = req.send() => response.map_err(|err| format!("ai rerank request failed: {err}"))?,
+    };
+    let status = response.status();
+    let body_text = tokio::select! {
+        _ = cancel_token.cancelled() => {
+            return Err(cancelled_message());
+        }
+        text = response.text() => text.map_err(|err| format!("ai rerank read failed: {err}"))?,
+    };
+    if cancel_token.is_cancelled() {
+        return Err(cancelled_message());
+    }
+    let json: serde_json::Value = serde_json::from_str(body_text.trim())
+        .map_err(|err| format!("ai rerank decode failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("ai rerank error {}: {}", status, json));
+    }
+
+    let content = extract_non_streaming_suggestion(&json);
+    // Keep only labels the server actually proposed: the model is instructed not
+    // to invent, but a defensive filter guarantees membership can never change.
+    let allowed: std::collections::HashSet<&str> =
+        candidates.iter().map(String::as_str).collect();
+    let ranked = parse_rerank_response(&content)
+        .into_iter()
+        .filter(|label| allowed.contains(label.as_str()))
+        .collect();
+
+    Ok(WorkerResultPayload::AiCompletionRerankResult {
+        ranked,
+        prefix_token: prefix_token.clone(),
+        completion_revision: *completion_revision,
+    })
+}
+
+/// Parse a re-rank model response into an ordered list of labels. Accepts a JSON
+/// array (possibly wrapped in prose or code fences) and falls back to one label
+/// per line with common list decorations stripped.
+fn parse_rerank_response(text: &str) -> Vec<String> {
+    let trimmed = text.trim();
+    if let (Some(start), Some(end)) = (trimmed.find('['), trimmed.rfind(']'))
+        && start < end
+        && let Ok(array) = serde_json::from_str::<Vec<String>>(&trimmed[start..=end])
+    {
+        return array
+            .into_iter()
+            .map(|label| label.trim().to_string())
+            .filter(|label| !label.is_empty())
+            .collect();
+    }
+
+    trimmed
+        .lines()
+        .map(|line| {
+            line.trim()
+                .trim_start_matches(|c: char| {
+                    c.is_ascii_digit() || matches!(c, '.' | ')' | '-' | '*' | ' ' | '\t')
+                })
+                .trim()
+                .trim_matches(|c| matches!(c, '"' | '`' | ','))
+                .trim()
+                .to_string()
+        })
+        .filter(|label| !label.is_empty())
+        .collect()
+}
+
 async fn read_streaming_response(
     request: &WorkerRequest,
     worker_tx: &std_mpsc::Sender<WorkerMessage>,
@@ -211,4 +353,44 @@ fn extract_streaming_delta(payload: &str) -> Option<String> {
 
 fn cancelled_message() -> String {
     "ai inline request cancelled".to_string()
+}
+
+#[cfg(test)]
+mod rerank_parse_tests {
+    use super::parse_rerank_response;
+
+    #[test]
+    fn parses_plain_json_array() {
+        assert_eq!(
+            parse_rerank_response(r#"["connect", "configure"]"#),
+            vec!["connect".to_string(), "configure".to_string()]
+        );
+    }
+
+    #[test]
+    fn parses_json_array_wrapped_in_prose_or_fences() {
+        let text = "Sure! Here is the order:\n```json\n[\"beta\", \"alpha\"]\n```";
+        assert_eq!(
+            parse_rerank_response(text),
+            vec!["beta".to_string(), "alpha".to_string()]
+        );
+    }
+
+    #[test]
+    fn falls_back_to_decorated_lines() {
+        let text = "1. connect\n2. configure\n- consume";
+        assert_eq!(
+            parse_rerank_response(text),
+            vec![
+                "connect".to_string(),
+                "configure".to_string(),
+                "consume".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_response_yields_no_order() {
+        assert!(parse_rerank_response("   ").is_empty());
+    }
 }

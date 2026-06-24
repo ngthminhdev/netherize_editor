@@ -783,6 +783,18 @@ impl AppState {
             .collect()
     }
 
+    /// True if the given line's last non-blank character opens a block
+    /// (`{`, `(`, `[`). Used by `o`/`O` to add one extra indent level, mirroring
+    /// Vim's smartindent.
+    pub(super) fn line_opens_block(&self, line_idx: usize) -> bool {
+        if self.text.len_lines() == 0 {
+            return false;
+        }
+        let clamped_line = line_idx.min(self.text.len_lines().saturating_sub(1));
+        let line_text = self.text.line(clamped_line).to_string();
+        matches!(line_text.trim_end().chars().next_back(), Some('{' | '(' | '['))
+    }
+
     pub(super) fn indent_unit_for_line(&self, current_indent: &str) -> String {
         if current_indent.contains('\t') || !self.indent_config.insert_spaces {
             "\t".to_string()
@@ -1895,6 +1907,10 @@ pub(super) fn build_completion_display_items(
         .collect()
 }
 
+/// Upper bound on standalone workspace-symbol items blended into one completion
+/// list, so a short prefix in a large workspace can't flood the popup.
+const MAX_STANDALONE_WORKSPACE_COMPLETIONS: usize = 12;
+
 /// Build completion display items with workspace symbol fallback.
 /// If LSP returns fewer than `min_items` results, query the workspace symbol cache.
 pub(super) fn build_completion_display_items_with_cache(
@@ -1927,6 +1943,12 @@ pub(super) fn build_completion_display_items_with_cache(
                     && existing.item.additional_text_edits.is_empty()
                     && existing.item.source_path.is_none()
                     && existing.item.export_kind.is_none()
+                    // A resolvable LSP item (carries `data`/`raw_json`) computes its
+                    // own correct auto-import via `completionItem/resolve`. Enriching
+                    // it here sets `export_kind`/`source_path`, which suppresses
+                    // `should_resolve_lsp_completion_before_accept` and forces a
+                    // *guessed* import. Leave it untouched so the server wins.
+                    && existing.item.raw_json.is_none()
                 {
                     existing.item.source_path = symbol
                         .source_path
@@ -1948,18 +1970,22 @@ pub(super) fn build_completion_display_items_with_cache(
                 return None;
             }
 
-            // For TS/JS, only surface a standalone cache item when it carries
-            // export metadata, so accepting it synthesizes the import. Without
-            // it (non-exported locals, class members) the editor would insert a
-            // bare, unqualified name → an undefined reference, since TS imports
-            // are auto-synthesized only for exports. Their in-scope forms come
-            // from the LSP server. Other languages (e.g. Go, where bare inserts
-            // are resolved by goimports/same-package) keep their behavior.
+            // Only surface a standalone cache item when accepting it produces
+            // valid code. Two cases qualify:
+            //   • TS/JS WITH export metadata → the editor synthesizes the import.
+            //   • Go → a bare insert is resolved by goimports / same-package.
+            // Everything else (TS/JS without export metadata; Java/Rust/Python,
+            // whose cache symbols come from LSP `workspace/symbol` with no export
+            // info and which the editor can't auto-import) would insert a bare,
+            // unqualified name → an undefined reference. Drop those and let the
+            // language server provide the proper auto-import completion instead.
             let is_ts_js_family = matches!(
                 language_id,
                 Some("typescript" | "tsx" | "javascript" | "jsx")
             );
-            if is_ts_js_family && symbol.export_kind.is_none() {
+            let bare_insert_safe = matches!(language_id, Some("go"));
+            let import_synthesizable = is_ts_js_family && symbol.export_kind.is_some();
+            if !bare_insert_safe && !import_synthesizable {
                 return None;
             }
 
@@ -1996,6 +2022,15 @@ pub(super) fn build_completion_display_items_with_cache(
             })
         })
         .collect();
+
+    // Cap standalone workspace-symbol injections to the best few. A short prefix
+    // in a large workspace can match dozens of exports; injecting all of them
+    // buries the LSP's context-aware items under workspace-wide noise. Enriched
+    // LSP items are unaffected — this only bounds the *extra* entries we add.
+    if workspace_items.len() > MAX_STANDALONE_WORKSPACE_COMPLETIONS {
+        workspace_items.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.item.label.cmp(&b.item.label)));
+        workspace_items.truncate(MAX_STANDALONE_WORKSPACE_COMPLETIONS);
+    }
 
     lsp_items.append(&mut workspace_items);
     lsp_items.sort_by(|a, b| {

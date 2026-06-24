@@ -265,6 +265,7 @@ impl AppShell {
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
             ai_inline_cancel_token: None,
+            ai_rerank_cancel_token: None,
             last_ai_inline_submit_at: None,
             ai_inline_suggestion_retained: false,
             ai_inline_inflight: false,
@@ -1442,6 +1443,83 @@ impl AppShell {
                 language_id,
                 file_path: self.app_state.active_file().map(PathBuf::from),
                 max_tokens,
+                cancel_token,
+            },
+        });
+    }
+
+    /// Ask the local AI model (config `[completion_rerank]`) to reorder the
+    /// currently-shown LSP completion candidates by cursor context. The model
+    /// only reorders the server's labels — it never adds or removes one — so
+    /// correctness stays with the LSP. No-op when the section is disabled, when
+    /// no popup is open, or when there are fewer than two candidates. The result
+    /// is applied later in `handle_ai_result`, guarded by the echoed prefix +
+    /// revision so it can't yank a selection the user has already moved.
+    pub(super) fn maybe_request_ai_completion_rerank(&mut self) {
+        let (provider, max_candidates) = match self.ai_config.completion_rerank() {
+            Some(cfg) => (cfg.provider.clone(), cfg.max_candidates()),
+            None => {
+                if let Some(token) = self.ai_rerank_cancel_token.take() {
+                    token.cancel();
+                }
+                return;
+            }
+        };
+
+        let Some((candidates, prefix_token, completion_revision)) = ({
+            let Some(completion) = self.app_state.completion() else {
+                return;
+            };
+            if completion.filtered_items.len() < 2 {
+                None
+            } else {
+                let candidates: Vec<String> = completion
+                    .filtered_items
+                    .iter()
+                    .take(max_candidates)
+                    .map(|entry| entry.item.label.clone())
+                    .collect();
+                Some((
+                    candidates,
+                    completion.typed_prefix.clone(),
+                    completion.current_revision,
+                ))
+            }
+        }) else {
+            return;
+        };
+
+        let text = self.app_state.text_string();
+        let cursor = self.app_state.cursor_char_idx();
+        let prefix_all: Vec<char> = text.chars().take(cursor).collect();
+        let prefix: String = prefix_all
+            .iter()
+            .skip(prefix_all.len().saturating_sub(1200))
+            .collect();
+        let suffix: String = text.chars().skip(cursor).take(400).collect();
+        let language_id = self.app_state.active_file().map(language_id_for_path);
+
+        if let Some(token) = self.ai_rerank_cancel_token.take() {
+            token.cancel();
+        }
+        let cancel_token = CancellationToken::new();
+        self.ai_rerank_cancel_token = Some(cancel_token.clone());
+
+        self.submit(RequestSpec {
+            revision_id: completion_revision,
+            topic: RequestTopic::AiInlineCompletion,
+            payload: WorkerRequestPayload::AiCompletionRerankRequest {
+                api_url: provider.api_url.clone(),
+                api_key: provider.api_key.clone(),
+                model: provider.model.clone(),
+                endpoint_kind: provider.endpoint_kind.clone(),
+                reasoning_effort: provider.reasoning_effort.clone(),
+                prefix,
+                suffix,
+                language_id,
+                candidates,
+                prefix_token,
+                completion_revision,
                 cancel_token,
             },
         });

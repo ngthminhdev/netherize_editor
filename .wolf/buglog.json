@@ -4392,5 +4392,133 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-23T15:13:34+07:00"
+  },
+  {
+    "id": "bug-186",
+    "timestamp": "2026-06-24T00:00:00+07:00",
+    "error_message": "TS/JS LSP completion auto-import inserts wrong/guessed import paths and the popup suggests workspace symbols that don't fit the cursor context.",
+    "file": "src/app/app_state/overlays.rs",
+    "root_cause": "build_completion_display_items_with_cache enriched a resolvable LSP completion item (one carrying raw_json/data, i.e. a real tsserver auto-import candidate) with cache-guessed export_kind/source_path. That flipped should_resolve_lsp_completion_before_accept (commands_completion.rs) to false, suppressing completionItem/resolve and forcing the self-synthesized import branch instead of the server's correct additionalTextEdits. Separately, the 'always blend' workspace-symbol injection added unbounded importable exports matching the prefix, flooding the popup with out-of-context entries.",
+    "fix": "Added `&& existing.item.raw_json.is_none()` to the cache enrich guard so resolvable LSP items keep export_kind/source_path None and resolve their real auto-import. Capped standalone workspace-symbol injections via MAX_STANDALONE_WORKSPACE_COMPLETIONS=12 (sorted by score) to stop popup flooding. Both covered by new tests in commands_tests.rs (resolvable_lsp_item_is_not_enriched_by_cache_so_real_auto_import_wins, standalone_workspace_symbol_injections_are_capped).",
+    "tags": [
+      "lsp",
+      "completion",
+      "auto-import",
+      "typescript",
+      "workspace-symbols",
+      "resolve"
+    ],
+    "related_bugs": [
+      "bug-178"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-24T00:00:00+07:00"
+  },
+  {
+    "id": "bug-187",
+    "timestamp": "2026-06-24T00:00:00+07:00",
+    "error_message": "JS/TS: typing a module's file name (e.g. `logger` for lib/logger.js exported via `module.exports = winston.createLogger({})`) shows no auto-import suggestion; cannot insert `const logger = require('../../lib/logger')`.",
+    "file": "src/lsp/symbol_cache.rs",
+    "root_cause": "extract_ts_js_exports_from_text indexed symbols by EXPORT NAME only (named exports, or the RHS identifier of `module.exports = X`). A whole-module default export whose RHS has no usable name (`module.exports = winston.createLogger({})`, `export default createX()`) produced NO symbol, so the module was never suggestable under its file-name binding — the most common CommonJS/JS import shape.",
+    "fix": "Added a post-pass in extract_ts_js_exports_from_text: when the file has a whole-module default export (is_whole_module_default_line: `module.exports = <non-object>` or `export default`) AND no named default symbol was captured, emit a default symbol named after the file (default_import_name_from_path: file stem, index.js->dir name, camelCased via sanitize_module_identifier). Gated to skip `.d.ts` declaration files so the node_modules package indexer's own default resolution (import_path = package name) stays authoritative — that .d.ts gate fixed a regression where a bogus filename default suppressed package_default_export_symbol. Accept/synthesize path already produced the require/import. Tests: indexes_whole_module_default_by_filename_for_commonjs/_esm, index_file_default_uses_parent_dir_name (symbol_cache), typing_filename_suggests_require_for_whole_module_default (commands_tests, end-to-end).",
+    "tags": [
+      "lsp",
+      "completion",
+      "auto-import",
+      "javascript",
+      "commonjs",
+      "workspace-symbols",
+      "filename-default"
+    ],
+    "related_bugs": [
+      "bug-186"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-24T00:00:00+07:00"
+  },
+  {
+    "id": "bug-188",
+    "timestamp": "2026-06-24T00:00:00+07:00",
+    "error_message": "JS/TS exports added/edited after the editor started were invisible to auto-import until restart (workspace export index only ran once at LSP init).",
+    "file": "src/app/app_state/buffers.rs",
+    "root_cause": "index_ts_js_workspace_exports runs only on LspServerInitialized (submit_workspace_symbol_indexing). refresh_active_ts_js_export_cache re-indexes only on completion typing, for the active file. Nothing re-indexed a file when it was saved, so a new/edited export stayed stale.",
+    "fix": "save_file() now calls reindex_ts_js_exports_for_saved_file: for ts/tsx/js/jsx it re-extracts the saved file's exports via extract_ts_js_exports_from_text and upserts them into the workspace symbol cache. No-op for non-TS/JS or when no workspace is open. Note SaveFile's DispatchReport reports state_changed=false so the changed-gated post-command hook can't host this; the save_file layer always runs. Test: saving_a_ts_js_file_reindexes_its_exports (commands_tests).",
+    "tags": [
+      "lsp",
+      "completion",
+      "auto-import",
+      "javascript",
+      "workspace-symbols",
+      "reindex-on-save"
+    ],
+    "related_bugs": [
+      "bug-187"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-24T00:00:00+07:00"
+  },
+  {
+    "id": "bug-189",
+    "timestamp": "2026-06-24T00:00:00+07:00",
+    "error_message": "Java/Rust/Python: workspace-symbol completions could be injected as bare names with no import, producing undefined references when accepted.",
+    "file": "src/app/app_state/overlays.rs",
+    "root_cause": "In build_completion_display_items_with_cache the standalone-injection guard only dropped bare TS/JS symbols (is_ts_js_family && export_kind.is_none()). Java/Rust/Python symbols (sourced from LSP workspace/symbol with export_kind None) fell through and were injected as bare-name completions; accept inserts the name with no import since the editor synthesizes imports only for TS/JS.",
+    "fix": "Generalized the guard to a whitelist: only inject a standalone workspace symbol when bare_insert_safe (Go — goimports/same-package) OR import_synthesizable (TS/JS with export_kind Some). Everything else returns None so the language server's own auto-import completion is used. Test: non_go_bare_workspace_symbol_is_not_offered_standalone (commands_tests); Go and TS standalone paths unchanged.",
+    "tags": [
+      "lsp",
+      "completion",
+      "auto-import",
+      "rust",
+      "java",
+      "python",
+      "workspace-symbols",
+      "guard"
+    ],
+    "related_bugs": [
+      "bug-186",
+      "bug-187"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-24T00:00:00+07:00"
+  },
+  {
+    "id": "bug-190",
+    "timestamp": "2026-06-24T00:00:00+07:00",
+    "error_message": "Real JS logger module (src/lib/logger.js with `const logger = winston.createLogger(...)` + `let seft = module.exports = exports = {...}`) was not suggested when typing `logger`; only unrelated package exports appeared.",
+    "file": "src/lsp/symbol_cache.rs",
+    "root_cause": "Two gaps beyond bug-187: (1) is_whole_module_default_line required `module.exports`/`exports` at line START, so the mid-line chained form `let seft = module.exports = exports = {…}` was undetected → no filename default. (2) After broadening detection, the file's non-importable local `const logger` (export_kind None, line 0) blocked the filename default two ways: the dedup gate `!any(name==default)` matched it, and the synthetic symbol used line 0 — same (name,file,line) key as the local — so query_symbols dedup dropped the importable one; overlays then dropped the export_kind-None local, leaving nothing.",
+    "fix": "(1) Rewrote is_whole_module_default_line to detect `module.exports =`/`exports =` (and `export default`) anywhere on the line, excluding member assignments (.foo) and ==/=>; object-literal RHS now also yields a filename default (whole-module import). (2) Dedup gate now skips only when an IMPORTABLE same-named symbol exists (export_kind.is_some()). (3) Tracked whole_module_default_line and stamped the synthetic symbol with the export statement's line so it can't collide with a same-named local in query_symbols. Tests: indexes_chained_module_exports_object_by_filename, filename_default_added_even_when_a_nonimportable_local_shares_the_name (symbol_cache), updated extracts_multiline_exports (+filename default) and end-to-end typing_filename_suggests_require_for_whole_module_default (real shape).",
+    "tags": [
+      "lsp",
+      "completion",
+      "auto-import",
+      "javascript",
+      "commonjs",
+      "filename-default",
+      "dedup"
+    ],
+    "related_bugs": [
+      "bug-187",
+      "bug-188"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-24T00:00:00+07:00"
+  },
+  {
+    "id": "bug-191",
+    "error_message": "Vim `o`/`O` (insert_line_below/above) did not match the current scope indentation: `o` after a block-opening line (`{`/`(`/`[`) stayed at the opener's indent instead of descending one level, and `O` always landed at column 0 with no indent.",
+    "root_cause": "AppState::insert_line_below (src/app/app_state/editor.rs) copied the current line's leading whitespace but never added an indent level when the line opened a block, so `o` on `const X = {` produced an empty/under-indented line. AppState::insert_line_above inserted a bare \"\\n\" with target_col=0, copying no indent at all, so `O` always sat at column 0. The legacy src/editor_core.rs buffer is not on the live `o`/`O` dispatch path (command_dispatch/editing.rs calls AppState's methods).",
+    "fix": "Added AppState::line_opens_block (src/app/app_state/overlays.rs) — true when a line's last non-blank char is `{`/`(`/`[`. insert_line_below now appends one indent_unit_for_line() (config-aware: tab vs tab_width spaces, respecting the line's existing tabs) when the source line opens a block. insert_line_above now copies the current line's indent (format!(\"{indent}\\n\")) and places the caret after that indent. Reused existing indent_unit_for_line/line_indent_string helpers, matching smart_insert_newline. Tests added in src/app/app_state/tests.rs: insert_line_below_after_open_brace/open_paren/descends_from_indented_opener/copies_indent_without_extra_for_plain_line, insert_line_above_matches_current_line_indent, insert_line_above_uses_indent_of_line_pushed_down.",
+    "tags": [
+      "editor",
+      "vim",
+      "indent",
+      "smartindent",
+      "o-command",
+      "O-command",
+      "insert_line"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-24T00:00:00+07:00"
   }
 ]

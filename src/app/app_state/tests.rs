@@ -2564,4 +2564,63 @@ mod tests {
             prev_visual = visual_back;
         }
     }
+
+    #[test]
+    fn insert_line_below_after_open_brace_indents_one_level() {
+        // `o` on a block-opening line should descend one indent level.
+        let mut state = AppState::from_text(unique_temp_path("o_brace"), "const X = {\n}");
+        assert!(state.insert_line_below());
+        assert_eq!(state.text_string(), "const X = {\n    \n}");
+        assert_eq!(state.cursor_line_col(), (1, 4));
+    }
+
+    #[test]
+    fn insert_line_below_after_open_paren_indents_one_level() {
+        let mut state = AppState::from_text(unique_temp_path("o_paren"), "foo(");
+        assert!(state.insert_line_below());
+        assert_eq!(state.text_string(), "foo(\n    ");
+        assert_eq!(state.cursor_line_col(), (1, 4));
+    }
+
+    #[test]
+    fn insert_line_below_descends_from_indented_opener() {
+        // `o` on an already-indented opener adds one more level on top.
+        let mut state = AppState::from_text(
+            unique_temp_path("o_nested"),
+            "    if (x) {\n        body();\n    }",
+        );
+        assert!(state.insert_line_below());
+        assert_eq!(
+            state.text_string(),
+            "    if (x) {\n        \n        body();\n    }"
+        );
+        assert_eq!(state.cursor_line_col(), (1, 8));
+    }
+
+    #[test]
+    fn insert_line_below_copies_indent_without_extra_for_plain_line() {
+        let mut state = AppState::from_text(unique_temp_path("o_plain"), "        body();");
+        assert!(state.insert_line_below());
+        assert_eq!(state.text_string(), "        body();\n        ");
+        assert_eq!(state.cursor_line_col(), (1, 8));
+    }
+
+    #[test]
+    fn insert_line_above_matches_current_line_indent() {
+        // `O` should land at the current line's indent, not column 0.
+        let mut state = AppState::from_text(unique_temp_path("o_above_indent"), "        logger();");
+        assert!(state.insert_line_above());
+        assert_eq!(state.text_string(), "        \n        logger();");
+        assert_eq!(state.cursor_line_col(), (0, 8));
+    }
+
+    #[test]
+    fn insert_line_above_uses_indent_of_line_pushed_down() {
+        let mut state =
+            AppState::from_text(unique_temp_path("o_above_body"), "} catch {\n    body();");
+        state.move_down(); // cursor onto the indented body line
+        assert!(state.insert_line_above());
+        assert_eq!(state.text_string(), "} catch {\n    \n    body();");
+        assert_eq!(state.cursor_line_col(), (1, 4));
+    }
 }

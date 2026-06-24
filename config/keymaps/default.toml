@@ -964,7 +964,7 @@ command = "codegraph.open_graph_hud"
 
 [[bindings]]
 mode = "normal"
-key = "F8"
+key = "g e"
 command = "canvas.open"
 
 # `gca` re-arranges the canvas cards when the canvas is in the Background (editor
