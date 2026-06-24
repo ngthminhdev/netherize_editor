@@ -118,7 +118,7 @@ impl Renderer {
                     icon_instances.push(IconDrawInstance {
                         icon: icon_id,
                         rect: [x, icon_y, icon_size, icon_size],
-                        tint: segment.color,
+                        tint: [1.0_f32; 4],
                     });
                     x += icon_w;
                 }

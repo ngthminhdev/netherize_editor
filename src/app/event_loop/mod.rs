@@ -387,6 +387,11 @@ pub struct AppShell {
     runtime_versions: RuntimeVersionInfo,
     /// Scheduled instant to auto-retry LSP server start after user accepted an install guide.
     lsp_retry_at: Option<Instant>,
+    /// Set when the user requests an LSP restart: the running session(s) are
+    /// shut down first, and the fresh server is spawned only once the
+    /// `LspServerStopped` result lands (LSP requests run concurrently, so
+    /// respawning in the same turn would race the shutdown's drain).
+    pending_lsp_restart: bool,
 }
 
 const DEBUG_UI_ENABLED: bool = false;

@@ -1427,6 +1427,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("lsp.rename", "Rename Symbol"),
         ("lsp.select_python_env", "Change Python Venv"),
         ("lsp.select_dart_env", "Change Dart/Flutter SDK"),
+        ("lsp.restart", "Restart Language Server"),
         ("runner.new_leetcode_file", "New LeetCode File"),
         ("runner.fetch_leetcode_problem", "Fetch LeetCode Problem"),
         ("workspace.reload", "Reload Workspace"),

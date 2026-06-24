@@ -16,6 +16,7 @@ impl AppShell {
             Command::CodeAction => Some(self.submit_lsp_code_action()),
             Command::LspSelectPythonEnv => Some(self.handle_lsp_select_python_env()),
             Command::LspSelectDartEnv => Some(self.handle_lsp_select_dart_env()),
+            Command::LspRestart => Some(self.handle_lsp_restart()),
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
@@ -1181,6 +1182,43 @@ impl AppShell {
         });
 
         self.show_transient_toast(format!("Python env selected: {}", selected_path.display()));
+        true
+    }
+
+    /// Restart the language server backing the active file. The app picks the
+    /// server from whichever file is focused, so this also re-applies the
+    /// current Python interpreter / Dart SDK selection (the fresh spawn re-sends
+    /// `workspace/didChangeConfiguration`).
+    pub(super) fn handle_lsp_restart(&mut self) -> bool {
+        let Some(desired) = self.desired_lsp_server_for_active_file() else {
+            self.show_transient_toast(
+                "Restart LSP: no language server for this file".to_string(),
+            );
+            return false;
+        };
+
+        // Drop the tracking so `queue_lsp_server_start`'s dedupe doesn't
+        // short-circuit the respawn, then shut down every running session
+        // (the primary plus any companion like ruff). LSP requests run
+        // concurrently in the worker, so spawning the new server now would
+        // race the shutdown's drain — instead we arm `pending_lsp_restart`
+        // and spawn once the `LspServerStopped` result lands.
+        self.active_lsp_server = None;
+        self.pending_lsp_server = None;
+        self.pending_lsp_document_sync = None;
+        self.lsp_completion_trigger_chars.clear();
+        self.pending_lsp_restart = true;
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspClient,
+            payload: WorkerRequestPayload::ShutdownAllLspServers,
+        });
+
+        self.show_transient_toast(format!(
+            "Restarting language server: {}",
+            desired.server_name
+        ));
         true
     }
 

@@ -537,5 +537,9 @@ fn dispatch_command_with_clipboard_once(
                 changed,
             )
         }
+        Command::LspRestart => DispatchReport::success(
+            "Dispatch: lsp restart routed to event loop".to_string(),
+            false,
+        ),
     }
 }

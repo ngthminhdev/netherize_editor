@@ -84,6 +84,13 @@ pub(super) fn handle_lsp_result(
             }
             app.pending_lsp_document_sync = None;
             app.lsp_completion_trigger_chars.clear();
+
+            // A user-requested restart shuts the old session down first, then
+            // spawns the fresh server here — once the stop has fully completed —
+            // so the new spawn can't race the shutdown's concurrent drain.
+            if std::mem::take(&mut app.pending_lsp_restart) {
+                app.sync_lsp_server_for_workspace();
+            }
         }
         WorkerResultPayload::LspDiagnostics {
             uri,

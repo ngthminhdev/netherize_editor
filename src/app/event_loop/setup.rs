@@ -312,6 +312,7 @@ impl AppShell {
             selected_dart_env: None,
             runtime_versions: RuntimeVersionInfo::default(),
             lsp_retry_at: None,
+            pending_lsp_restart: false,
         })
     }
 
@@ -1803,7 +1804,7 @@ impl AppShell {
         }
     }
 
-    fn desired_lsp_server_for_active_file(&self) -> Option<ActiveLspServer> {
+    pub(super) fn desired_lsp_server_for_active_file(&self) -> Option<ActiveLspServer> {
         let Some(path) = self.app_state.active_file() else {
             return None;
         };

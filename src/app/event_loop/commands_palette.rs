@@ -517,6 +517,32 @@ impl AppShell {
                     return Some(self.confirm_lsp_rename_prompt());
                 }
 
+                // Restart Language Server is a fire-and-execute command that
+                // needs the event loop (it submits worker requests), so it can't
+                // run through the core dispatch path other palette commands use.
+                // Intercept it here, close the overlay, and run the restart.
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::CommandPalette)
+                    )
+                    && matches!(
+                        self.app_state.command_palette_selected_action(),
+                        Some(crate::app::command_palette::CommandPaletteAction::ExecuteCommand(id))
+                            if id == crate::core::command_ids::LSP_RESTART
+                    )
+                {
+                    let _ = self.app_state.close_command_palette();
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                        if result.changed {
+                            self.editor_needs_layout = true;
+                        }
+                    }
+                    self.focus_manager.set(FocusTarget::CenterEditor);
+                    self.input_handler.clear_pending_prefix();
+                    return Some(self.handle_lsp_restart());
+                }
+
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),

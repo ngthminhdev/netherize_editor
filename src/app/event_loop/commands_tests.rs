@@ -1993,6 +1993,102 @@ fn lsp_rename_opens_palette_prompt() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+fn shell_with_python_file(tag: &str) -> (AppShell, PathBuf) {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_lsp_restart_{}_{}",
+        tag,
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    let file_path = root.join("main.py");
+    std::fs::write(&file_path, "import os\n").expect("write file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell.app_state.open_file(file_path).expect("open file");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "pyright-langserver".to_string(),
+        root_path: root.clone(),
+    });
+    (shell, root)
+}
+
+#[test]
+fn restart_lsp_arms_restart_and_stops_active_server() {
+    let (mut shell, root) = shell_with_python_file("arms");
+
+    assert!(shell.handle_command(Command::LspRestart));
+
+    assert!(shell.pending_lsp_restart, "restart should be armed");
+    assert!(
+        shell.active_lsp_server.is_none(),
+        "running server tracking must be cleared so the respawn isn't deduped"
+    );
+    assert!(shell.pending_lsp_server.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn restart_lsp_respawns_server_after_stop_completes() {
+    let (mut shell, root) = shell_with_python_file("respawn");
+
+    assert!(shell.handle_command(Command::LspRestart));
+    assert!(shell.pending_lsp_restart);
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LspClient,
+        payload: crate::async_runtime::message::WorkerResultPayload::LspServerStopped {
+            exit_status: None,
+            reason: "test".to_string(),
+        },
+    });
+
+    assert!(
+        !shell.pending_lsp_restart,
+        "restart flag must clear once the stop completes"
+    );
+    assert!(
+        shell.pending_lsp_server.is_some(),
+        "a fresh server start must be queued after the old one stops"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn restart_lsp_from_command_list_restarts_active_server() {
+    let (mut shell, root) = shell_with_python_file("palette");
+
+    assert!(shell.handle_command(Command::OpenCommandPalette));
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::CommandPalette,
+        "",
+        vec![crate::app::command_palette::CommandPaletteItem::command(
+            "lsp.restart",
+            "Restart Language Server",
+        )],
+    ));
+
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert!(
+        shell.pending_lsp_restart,
+        "selecting the restart command from the palette must arm a restart"
+    );
+    assert!(shell.active_lsp_server.is_none());
+    assert!(
+        !shell.app_state.is_command_palette_visible(),
+        "palette should close after running the restart command"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn opening_fuzzy_buffer_marks_editor_layout_dirty() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");

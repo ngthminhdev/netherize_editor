@@ -462,6 +462,9 @@ pub enum Command {
     CodeAction,
     LspSelectPythonEnv,
     LspSelectDartEnv,
+    /// Restart the language server for the active file (stop running session(s)
+    /// then respawn against the current interpreter/SDK selection).
+    LspRestart,
     /// gp: Open the Code Graph HUD for the symbol under the caret.
     CodeGraphOpenGraphHud,
     /// Code Graph HUD navigation (vim hjkl) while the overlay is open.

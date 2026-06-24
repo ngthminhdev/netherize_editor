@@ -150,6 +150,7 @@ pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const LSP_CODE_ACTION: &str = "lsp.code_action";
 pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
 pub const LSP_SELECT_DART_ENV: &str = "lsp.select_dart_env";
+pub const LSP_RESTART: &str = "lsp.restart";
 pub const CODEGRAPH_OPEN_GRAPH_HUD: &str = "codegraph.open_graph_hud";
 pub const CANVAS_OPEN: &str = "canvas.open";
 pub const CANVAS_AUTO_ARRANGE: &str = "canvas.auto_arrange";
@@ -418,6 +419,7 @@ pub const ALL_IDS: &[&str] = &[
     LSP_CODE_ACTION,
     LSP_SELECT_PYTHON_ENV,
     LSP_SELECT_DART_ENV,
+    LSP_RESTART,
     CODEGRAPH_OPEN_GRAPH_HUD,
     RELOAD_WORKSPACE,
     COMPLETION_NEXT,
@@ -676,6 +678,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_CODE_ACTION => Some(Command::CodeAction),
         LSP_SELECT_PYTHON_ENV => Some(Command::LspSelectPythonEnv),
         LSP_SELECT_DART_ENV => Some(Command::LspSelectDartEnv),
+        LSP_RESTART => Some(Command::LspRestart),
         CODEGRAPH_OPEN_GRAPH_HUD => Some(Command::CodeGraphOpenGraphHud),
         CANVAS_OPEN => Some(Command::CanvasOpen),
         CANVAS_AUTO_ARRANGE => Some(Command::CanvasAutoArrange),

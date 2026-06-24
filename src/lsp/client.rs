@@ -291,6 +291,30 @@ pub fn patched_env_path() -> String {
     static_patched_env_path()
 }
 
+/// First `python3` (preferred) or `python` executable found by walking the
+/// colon-separated `path` in order. Pure over its argument so it can be tested
+/// without spawning a shell.
+fn first_python_on_path(path: &str) -> Option<PathBuf> {
+    for exe in ["python3", "python"] {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join(exe);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Best-effort default Python interpreter for when the user hasn't picked a
+/// venv: the first `python3`/`python` on the login-shell PATH. This matches the
+/// interpreter the user gets in their terminal (e.g. Homebrew) instead of
+/// leaving pyright to its own auto-detection, which can fall back to an old
+/// system Python and then mis-resolve imports and the language version.
+fn resolve_default_python_interpreter() -> Option<PathBuf> {
+    first_python_on_path(&patched_env_path())
+}
+
 /// Static PATH augmentation — fallback when the login-shell probe is unavailable.
 ///
 /// Prepends directories commonly absent when the app launches as a macOS .app
@@ -995,13 +1019,35 @@ pub async fn spawn_lsp_server(
     // imports, completion and diagnostics resolve against that environment
     // rather than the one the server itself runs under. Best-effort: a failure
     // here must not abort spawn. pyright and pylsp use different config keys.
-    if let Some(interpreter) = interpreter_path {
-        let binary = Path::new(&server_name)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(&server_name);
+    let binary = Path::new(&server_name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&server_name)
+        .to_string();
+    let is_python_server = matches!(
+        binary.as_str(),
+        "pyright-langserver" | "pyright" | "basedpyright-langserver" | "pylsp"
+    );
+    // Use the user's explicit choice, or — for a Python server with none set —
+    // fall back to the default interpreter on the login-shell PATH so pyright
+    // resolves against the same Python the user runs in their terminal (e.g.
+    // Homebrew) instead of its own auto-detection, which can pick an old system
+    // Python and then mis-resolve imports and the language version.
+    let resolved_interpreter: Option<PathBuf> = interpreter_path
+        .map(Path::to_path_buf)
+        .or_else(|| is_python_server.then(resolve_default_python_interpreter).flatten());
+
+    if let Some(interpreter) = resolved_interpreter {
+        let source = if interpreter_path.is_some() {
+            "selected"
+        } else {
+            "login-shell default"
+        };
         let interpreter = interpreter.to_string_lossy();
-        let settings = match binary {
+        eprintln!(
+            "[LSP:{binary}] applying interpreter ({source}) via didChangeConfiguration: pythonPath={interpreter}"
+        );
+        let settings = match binary.as_str() {
             "pyright-langserver" | "pyright" | "basedpyright-langserver" => Some(json!({
                 "python": {
                     "pythonPath": interpreter,
@@ -1023,6 +1069,11 @@ pub async fn spawn_lsp_server(
                 )
                 .await;
         }
+    } else if is_python_server {
+        eprintln!(
+            "[LSP:{binary}] no Python interpreter found on PATH — pyright will auto-detect \
+             (imports/version may resolve against the wrong environment)"
+        );
     }
 
     Ok(SpawnedLspServer {
@@ -1458,9 +1509,86 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        detect_lsp_server_for_path, detect_lsp_server_for_workspace, parse_publish_diagnostics,
-        read_json_rpc_message, resolve_lsp_server_command, write_json_rpc_message,
+        detect_lsp_server_for_path, detect_lsp_server_for_workspace, first_python_on_path,
+        parse_publish_diagnostics, read_json_rpc_message, resolve_lsp_server_command,
+        write_json_rpc_message,
     };
+
+    fn make_executable_file(dir: &Path, name: &str) -> PathBuf {
+        fs::create_dir_all(dir).expect("create dir");
+        let path = dir.join(name);
+        fs::write(&path, b"#!/bin/sh\n").expect("write fake interpreter");
+        path
+    }
+
+    #[test]
+    fn first_python_on_path_finds_python3_in_first_matching_dir() {
+        let base = unique_temp_dir("py_on_path_basic");
+        let empty = base.join("empty");
+        let real = base.join("real");
+        fs::create_dir_all(&empty).expect("create empty dir");
+        let expected = make_executable_file(&real, "python3");
+
+        let path = std::env::join_paths([&empty, &real])
+            .expect("join")
+            .into_string()
+            .expect("utf8");
+
+        assert_eq!(first_python_on_path(&path), Some(expected));
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn first_python_on_path_respects_dir_order() {
+        let base = unique_temp_dir("py_on_path_order");
+        let first = base.join("first");
+        let second = base.join("second");
+        let winner = make_executable_file(&first, "python3");
+        let _loser = make_executable_file(&second, "python3");
+
+        let path = std::env::join_paths([&first, &second])
+            .expect("join")
+            .into_string()
+            .expect("utf8");
+
+        assert_eq!(
+            first_python_on_path(&path),
+            Some(winner),
+            "earlier PATH entry must win"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn first_python_on_path_prefers_python3_over_python() {
+        let base = unique_temp_dir("py_on_path_prefer");
+        let dir = base.join("bin");
+        let py3 = make_executable_file(&dir, "python3");
+        let _py = make_executable_file(&dir, "python");
+
+        let path = dir.to_string_lossy().to_string();
+
+        assert_eq!(
+            first_python_on_path(&path),
+            Some(py3),
+            "python3 must be preferred over python in the same dir"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn first_python_on_path_returns_none_when_absent() {
+        let base = unique_temp_dir("py_on_path_none");
+        fs::create_dir_all(&base).expect("create dir");
+        let path = base.to_string_lossy().to_string();
+
+        assert_eq!(first_python_on_path(&path), None);
+
+        let _ = fs::remove_dir_all(&base);
+    }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let stamp = SystemTime::now()
