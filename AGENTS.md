@@ -3,6 +3,14 @@
 - These rules supplement system/developer instructions and must be applied consistently across all tasks in this repository.
 - Before implementing code changes, check whether project rule files exist and follow them.
 
+# Project Knowledge
+
+Curated project lessons and bug history live in `docs/project-knowledge/`:
+- `lessons.md` — accumulated, project-specific learnings (canvas semantics, theme/layout invariants, clippy gotchas, input-routing rules, etc.).
+- `buglog.json` — searchable archive of past bug fixes.
+
+Consult these **on demand** — grep/read the relevant section before working on an area they cover, or before fixing a bug that may have recurred. Do NOT read them in full every session (they are large; that wastes context). When you learn a durable, non-obvious project fact, append it to `lessons.md`.
+
 # RTK - Rust Token Killer
 
 **Usage**: Token-optimized CLI proxy for shell commands.

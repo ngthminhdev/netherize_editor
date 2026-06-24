@@ -418,8 +418,6 @@ impl WorkspaceModel {
         let Some(selected_path) = self.selected_path.as_ref() else {
             return false;
         };
-        let line_height = line_height.max(1.0);
-        let viewport_height = viewport_height.max(line_height);
         let visible_paths = self.visible_node_paths();
         let Some(index) = visible_paths
             .iter()
@@ -428,7 +426,28 @@ impl WorkspaceModel {
             return false;
         };
 
-        let node_y = index as f32 * line_height;
+        self.scroll_to_row(index, visible_paths.len(), viewport_height, line_height)
+    }
+
+    /// Scroll so that row `row` of a `total_rows`-long rendered list stays in
+    /// view. Caller passes the row index and count of the *currently rendered*
+    /// list — which may be filtered (text filter, git-changes-only) — so the
+    /// scroll offset never references rows that aren't shown.
+    pub fn scroll_to_row(
+        &mut self,
+        row: usize,
+        total_rows: usize,
+        viewport_height: f32,
+        line_height: f32,
+    ) -> bool {
+        if total_rows == 0 {
+            return false;
+        }
+        let line_height = line_height.max(1.0);
+        let viewport_height = viewport_height.max(line_height);
+        let row = row.min(total_rows - 1);
+
+        let node_y = row as f32 * line_height;
         let node_bottom = node_y + line_height;
         let padding = (line_height * 2.0).min(((viewport_height - line_height) * 0.5).max(0.0));
         let viewport_top = self.scroll_offset.max(0.0);
@@ -742,6 +761,46 @@ mod tests {
             workspace.selected_path(),
             Some(canonical_nested_file.as_path())
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn scroll_to_row_anchors_against_given_row_count_not_full_tree() {
+        // Regression: when the explorer is filtered (e.g. git-changes-only "s"),
+        // the rendered list is a small subset. Scrolling must use that subset's
+        // row index + count, NOT the selected file's index in the full tree —
+        // otherwise the tree jumps to an out-of-range offset on every j/k.
+        let root = std::env::temp_dir().join(format!(
+            "netherize_workspace_scroll_to_row_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("create root");
+        // A large tree exists on disk...
+        for idx in 0..30 {
+            fs::write(root.join(format!("file_{idx:02}.rs")), "fn main() {}\n")
+                .expect("write file");
+        }
+        let mut workspace = WorkspaceModel::load(root.clone()).expect("load workspace");
+
+        // ...but the filtered list shows only 3 rows, all of which fit in a
+        // 5-row viewport: selecting the last visible row must NOT scroll.
+        assert!(!workspace.scroll_to_row(2, 3, 50.0, 10.0));
+        assert_eq!(workspace.scroll_offset(), 0.0);
+
+        // A longer filtered list scrolls to keep the focused row visible, but
+        // bounded by the list itself.
+        assert!(workspace.scroll_to_row(20, 30, 50.0, 10.0));
+        let offset = workspace.scroll_offset();
+        assert!(offset > 0.0);
+        assert!(offset <= 30.0 * 10.0);
+
+        // Out-of-range rows clamp instead of running off the end.
+        assert!(workspace.scroll_to_row(999, 3, 50.0, 10.0));
+        assert!(workspace.scroll_offset() <= 3.0 * 10.0);
+
+        // Empty list is a no-op.
+        assert!(!workspace.scroll_to_row(0, 0, 50.0, 10.0));
 
         let _ = fs::remove_dir_all(root);
     }

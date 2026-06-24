@@ -963,8 +963,20 @@ impl AppShell {
     }
 
     pub(super) fn sync_explorer_scroll_to_selected(&mut self, bounds: [f32; 4]) -> bool {
+        // Scroll against the rendered explorer snapshot (which honors the text
+        // and git-changes-only filters), not the model's unfiltered tree —
+        // otherwise the offset references rows that aren't shown and the tree
+        // jumps on every cursor move while a filter is active.
+        self.ensure_explorer_snapshot();
+        let total_rows = self.explorer_snapshot.entries.len();
+        if total_rows == 0 {
+            return false;
+        }
+        let row = self.explorer_cursor.min(total_rows - 1);
         let viewport_height = self.sidebar_tree_viewport_height(bounds);
-        self.app_state.workspace_scroll_to_selected_node(
+        self.app_state.workspace_scroll_to_row(
+            row,
+            total_rows,
             viewport_height,
             self.theme.ui.sidebar_line_height.max(1.0),
         )

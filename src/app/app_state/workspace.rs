@@ -415,6 +415,18 @@ impl AppState {
         })
     }
 
+    pub fn workspace_scroll_to_row(
+        &mut self,
+        row: usize,
+        total_rows: usize,
+        viewport_height: f32,
+        line_height: f32,
+    ) -> bool {
+        self.workspace_model.as_mut().is_some_and(|workspace| {
+            workspace.scroll_to_row(row, total_rows, viewport_height, line_height)
+        })
+    }
+
     pub fn workspace_scroll_offset_rows(&self, line_height: f32) -> usize {
         self.workspace_model
             .as_ref()
