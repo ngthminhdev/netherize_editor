@@ -61,6 +61,15 @@ impl InlineSuggestionTokenKind {
 }
 
 impl AppState {
+    pub fn minimap_visible(&self) -> bool {
+        self.minimap_visible
+    }
+
+    pub fn toggle_minimap(&mut self) -> bool {
+        self.minimap_visible = !self.minimap_visible;
+        self.minimap_visible
+    }
+
     pub fn file_history_picker_items(
         &self,
     ) -> Vec<crate::app::command_palette::CommandPaletteItem> {

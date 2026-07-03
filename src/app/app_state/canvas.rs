@@ -160,6 +160,20 @@ impl AppState {
             .unwrap_or(false)
     }
 
+    /// Count of drawn relation cards (the invisible Focal anchor doesn't count).
+    /// Zero means the canvas is showing the empty "Nothing to show" plane.
+    pub fn canvas_relation_count(&self) -> usize {
+        self.canvas
+            .as_ref()
+            .map(|c| {
+                c.blocks
+                    .iter()
+                    .filter(|b| b.relation != BlockRelation::Focal)
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
     // ── Phase B: edit-in-card (S2) / background (S3) ─────────────────────────
 
     /// The current canvas interaction sub-state, if a canvas is open.

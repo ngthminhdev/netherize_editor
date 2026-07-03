@@ -103,6 +103,52 @@ fn canvas_open_toggles_off_when_canvas_has_navigation_focus() {
     let _ = std::fs::remove_file(path);
 }
 
+/// Regression: `space x` closing the LAST relation card must close the whole
+/// canvas, not leave an invisible-focal-only "Nothing to show" plane the user
+/// can't reopen (in-canvas `g e` is inert). After it closes, focus returns to
+/// the editor so `g e` re-sources a fresh canvas.
+#[test]
+fn closing_last_relation_card_closes_canvas() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let path = std::env::temp_dir().join(format!(
+        "netherize_canvas_lastcard_{}.rs",
+        std::process::id()
+    ));
+    std::fs::write(&path, "fn main() {}\n").expect("write canvas fixture");
+    shell.app_state = AppState::new(path.clone());
+    shell.app_state.open_file(path.clone()).expect("open canvas fixture");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+
+    // Simulate the source-function card the definition result spawns.
+    shell.app_state.canvas_add_relations(vec![(
+        crate::canvas::BlockRelation::Definition,
+        crate::canvas::BlockOrigin {
+            path: path.clone(),
+            start_byte: 0,
+            end_byte: 1,
+            symbol_name: "main".into(),
+            lsp_line: 5,
+            lsp_character: 0,
+        },
+        {
+            let mut s = crate::canvas::BlockSnapshot::default();
+            s.text = "fn main() {}".into();
+            s
+        },
+    )]);
+    assert_eq!(shell.app_state.canvas_relation_count(), 1);
+
+    // `space x` on the only card → canvas closes entirely.
+    assert!(shell.handle_command(Command::CanvasCloseFocused));
+    assert!(
+        !shell.app_state.is_canvas_active(),
+        "closing the last card must close the canvas, not leave a dead plane"
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
 /// Regression (bug-020): once you've navigated to a different source file,
 /// pressing F8 must open a FRESH canvas on the file in front of you — NOT
 /// teleport the editor back to the old focal file to restore the stale canvas.
@@ -250,8 +296,12 @@ fn background_canvas_with_stashed_session_lets_main_editor_move() {
 /// Background (so the user is "coding in the main editor" with cards floating).
 fn shell_with_background_canvas_card() -> (AppShell, std::path::PathBuf, crate::canvas::BlockId) {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let nanos = std::process::id();
-    let dir = std::env::temp_dir().join(format!("netherize_canvas_click_{nanos}"));
+    // Unique per CALL, not per process: parallel tests each get their own dir, so
+    // one test's teardown `remove_dir_all` can't yank files out from under another.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir()
+        .join(format!("netherize_canvas_click_{}_{n}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let foo = dir.join("foo.rs");
     let bar = dir.join("bar.rs");
@@ -308,6 +358,36 @@ fn clicking_a_canvas_card_focuses_it_and_enters_edit() {
         }
         other => panic!("expected EditCard, got {other:?}"),
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Accepting a canvas completion whose edit session already ended must NOT fall
+/// through `dispatch_card_editing_command` into the MAIN editor buffer (the
+/// Backspace×prefix + InsertText would corrupt it) — the stale completion is
+/// simply dropped.
+#[test]
+fn stale_canvas_completion_accept_never_edits_the_main_buffer() {
+    let (mut shell, dir, _card_id) = shell_with_background_canvas_card();
+    // Background canvas = no live edit session; leave a stale completion behind.
+    assert!(shell.app_state.canvas_edit_session_block().is_none());
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("helper", "helper")],
+        0,
+        3,
+        0,
+        "hel".to_string(),
+        &cache,
+        Some("rust"),
+    );
+    shell.canvas_completion = Some(completion);
+    let before = shell.app_state.text_string();
+
+    let handled = shell.handle_canvas_completion_command(&Command::CompletionAccept);
+
+    assert_eq!(handled, Some(false), "accept is swallowed, not routed to the editor");
+    assert!(shell.canvas_completion.is_none(), "stale completion dropped");
+    assert_eq!(shell.app_state.text_string(), before, "main buffer untouched");
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -1283,26 +1283,51 @@ impl AppState {
                 if self.active_buffer_index != Some(index) {
                     self.save_current_text_buffer_history();
                 }
+                // CRITICAL: the old buffer's state is saved; clear the index so
+                // nothing below (e.g. the mtime stamp inside
+                // `load_buffer_from_file_resetting_view`) writes into the OLD slot
+                // while `self.text` is mid-switch.
+                self.active_buffer_index = None;
 
                 let mut restored_view_state = TextBufferViewState::default();
                 let mut restored_history = EditHistory::new();
                 let mut restored_in_memory_text: Option<Rope> = None;
                 let mut restored_dirty = false;
+                let mut restored_mtime: Option<std::time::SystemTime> = None;
                 if let Some(slot) = self.buffers.get(index) {
                     if let BufferContent::Text(ref new_buf) = slot.content {
                         restored_history = new_buf.history.clone();
                         restored_in_memory_text = new_buf.in_memory_text.clone();
                         restored_dirty = new_buf.dirty;
                         restored_view_state = new_buf.view_state;
+                        restored_mtime = new_buf.last_known_modified_time;
                     }
                 }
-                if let Some(snapshot) = restored_in_memory_text {
+                // A clean snapshot is only trustworthy while the file on disk is
+                // unchanged: the fs watcher never covers closed tabs, so a file
+                // rewritten externally (git checkout, AI agent) while its tab was
+                // closed would otherwise show the stale cache forever. Dirty
+                // snapshots always win — losing unsaved edits is worse than stale.
+                let disk_mtime = std::fs::metadata(&buffer.path)
+                    .and_then(|m| m.modified())
+                    .ok();
+                let snapshot_stale =
+                    !restored_dirty && disk_mtime.is_some() && disk_mtime != restored_mtime;
+                let mut loaded_from_disk = false;
+                if let Some(snapshot) = restored_in_memory_text.filter(|_| !snapshot_stale) {
                     self.text = snapshot;
                     self.cached_line_starts = None;
                     let _ = self.refresh_active_search_highlights();
                 } else {
-                    // First open of this buffer in current session: load from disk baseline.
+                    // First open in this session, or stale snapshot: disk baseline.
                     self.load_buffer_from_file_resetting_view(&buffer.path)?;
+                    loaded_from_disk = true;
+                    if snapshot_stale {
+                        // The old text's undo history and cursor can't apply to
+                        // the reloaded content — drop them with the snapshot.
+                        restored_history = EditHistory::new();
+                        restored_view_state = TextBufferViewState::default();
+                    }
                 }
                 self.history = restored_history;
                 self.restore_text_buffer_view_state(restored_view_state);
@@ -1312,7 +1337,11 @@ impl AppState {
                 if let Some(slot) = self.buffers.get_mut(index)
                     && let BufferContent::Text(ref mut live_buf) = slot.content
                 {
-                    if live_buf.in_memory_text.is_none() {
+                    if loaded_from_disk {
+                        live_buf.in_memory_text = Some(self.text.clone());
+                        live_buf.history = self.history.clone();
+                        live_buf.last_known_modified_time = disk_mtime;
+                    } else if live_buf.in_memory_text.is_none() {
                         live_buf.in_memory_text = Some(self.text.clone());
                     }
                     live_buf.dirty = self.dirty;

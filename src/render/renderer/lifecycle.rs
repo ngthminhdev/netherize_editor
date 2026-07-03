@@ -226,6 +226,8 @@ impl Renderer {
             gutter_glyph_instances: Vec::new(),
             relative_numbers: false,
             last_editor_chrome_instances: Vec::new(),
+            minimap_instances: Vec::new(),
+            minimap_layout: Default::default(),
             editor_breadcrumb_segments: Vec::new(),
             sidebar_text_system,
             sidebar_text_pipeline,

@@ -178,6 +178,22 @@ pub(crate) struct EditorBreadcrumbSegment {
     pub(crate) icon_id: Option<&'static str>,
 }
 
+/// Cached minimap geometry so the scroll-dependent viewport indicator can be
+/// recomputed on the caret fast path (gg/G jump through it, changing scroll_y
+/// without a full re-render). The static bars live in `minimap_instances`.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MinimapLayout {
+    pub(crate) active: bool,
+    pub(crate) strip_x: f32,
+    pub(crate) strip_w: f32,
+    pub(crate) strip_y: f32,
+    pub(crate) content_h: f32,
+    pub(crate) step: f32,
+    pub(crate) ind_h: f32,
+    pub(crate) line_count: f32,
+    pub(crate) accent: [f32; 4],
+}
+
 // ── Renderer struct ────────────────────────────────────────────────────────────
 
 pub struct Renderer {
@@ -233,6 +249,12 @@ pub struct Renderer {
     pub(super) gutter_glyph_instances: Vec<GlyphInstance>,
     pub relative_numbers: bool,
     pub(super) last_editor_chrome_instances: Vec<RegionDrawInstance>,
+    /// Cached minimap quads, rebuilt on full re-render and re-appended on the
+    /// caret fast path so the minimap doesn't flicker on cursor moves.
+    pub(super) minimap_instances: Vec<RegionDrawInstance>,
+    /// Cached minimap geometry so the scroll indicator tracks gg/G jumps that
+    /// go through the caret fast path (no full re-render).
+    pub(super) minimap_layout: MinimapLayout,
     pub(super) editor_breadcrumb_segments: Vec<EditorBreadcrumbSegment>,
 
     // ── Explorer sidebar ──────────────────────────────────────────────────────

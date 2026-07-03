@@ -42,7 +42,21 @@ impl AppShell {
             Command::CanvasExpandCallee => self.canvas_submit_definition(),
             Command::CanvasExpandCaller => self.canvas_submit_references(),
             Command::CanvasTogglePin => self.app_state.canvas_toggle_pin(),
-            Command::CanvasCloseFocused => self.app_state.canvas_close_focused(),
+            Command::CanvasCloseFocused => {
+                let closed = self.app_state.canvas_close_focused();
+                // Closing the last relation card leaves only the invisible focal
+                // anchor — a dead "Nothing to show" plane the user can't reopen
+                // (in-canvas `g e` is inert; only F8/Esc·Esc toggle). Close the
+                // whole canvas so focus returns to the editor and `g e` re-sources.
+                if closed && self.app_state.canvas_relation_count() == 0 {
+                    self.dismiss_canvas_card_completion();
+                    self.canvas_hover_request_id = None;
+                    self.canvas_def_deferred = false;
+                    self.submit_canvas_card_did_close();
+                    self.app_state.close_canvas();
+                }
+                closed
+            }
             // Phase B: Enter promotes the focused card to a live mini-editor;
             // Esc-staged exits are routed here from the input layer.
             Command::CanvasEnterEdit => {
@@ -772,6 +786,12 @@ impl AppShell {
         };
         self.canvas_completion_request_id = None;
         self.app_state.canvas_clear_card_overlay();
+        // No live session → the card edit already ended; without this guard the
+        // Backspace×prefix + InsertText below would fall through
+        // `dispatch_card_editing_command` into the MAIN editor buffer.
+        if self.app_state.canvas_edit_session_block().is_none() {
+            return false;
+        }
         let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
             return false;
         };

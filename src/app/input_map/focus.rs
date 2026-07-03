@@ -40,6 +40,14 @@ impl InputMap {
                     reason: "canvas: gc prefix (gca = arrange)",
                 });
             }
+            if input.physical_key == Some(KeyE) {
+                // `g e` mirrors F8: a full toggle from inside the canvas too, so
+                // the same key the user opened with also closes (Navigate → close).
+                return Some(KeybindingMatch {
+                    command: Command::CanvasOpen,
+                    reason: "canvas: g e -> toggle canvas",
+                });
+            }
             if input.physical_key == Some(KeyD) {
                 return Some(KeybindingMatch {
                     command: Command::CanvasExpandCallee,

@@ -272,6 +272,18 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             true,
             false,
         ),
+        Command::ToggleMinimap => {
+            let visible = ctx.app_state.toggle_minimap();
+            DispatchReport::success_with_flags(
+                if visible {
+                    "Dispatch: minimap shown".to_string()
+                } else {
+                    "Dispatch: minimap hidden".to_string()
+                },
+                true,
+                true,
+            )
+        }
         Command::HelpScrollDown
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown

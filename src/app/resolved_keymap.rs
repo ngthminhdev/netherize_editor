@@ -1239,6 +1239,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyM), ph(KeyCode::KeyN)]),
+        TOGGLE_MINIMAP,
+    );
+    km.insert_sequence(
+        Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyG), ph(KeyCode::KeyF)]),
         GIT_OPEN_LAZYGIT,
     );

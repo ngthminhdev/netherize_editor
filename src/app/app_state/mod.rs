@@ -2334,6 +2334,7 @@ pub struct AppState {
     dirty: bool,
     pub target_scroll_y: f32,
     pub current_scroll_y: f32,
+    minimap_visible: bool,
     /// Visual-line offset added to the caret's drawn Y so it animates on the same
     /// clock as the scroll tween (0 = caret glued to its line). Recomputed every
     /// frame by the smooth-scroll tick; read by the editor renderer.
@@ -2442,6 +2443,7 @@ impl AppState {
             dirty: false,
             target_scroll_y: 0.0,
             current_scroll_y: 0.0,
+            minimap_visible: false,
             caret_scroll_lag: 0.0,
             scroll_column: 0,
             workspace_model: None,
@@ -2571,6 +2573,7 @@ impl AppState {
             dirty: false,
             target_scroll_y: 0.0,
             current_scroll_y: 0.0,
+            minimap_visible: false,
             caret_scroll_lag: 0.0,
             scroll_column: 0,
             workspace_model: None,

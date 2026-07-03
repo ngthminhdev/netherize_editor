@@ -78,6 +78,23 @@ fn insert_text_command_supports_combining_sequence() {
 }
 
 #[test]
+fn toggle_minimap_command_flips_visibility_without_text_mutation() {
+    let mut app_state = AppState::from_text(unique_temp_path("minimap"), "one\ntwo");
+
+    let first = dispatch_command(&mut app_state, Command::ToggleMinimap);
+    assert!(first.success);
+    assert!(first.state_changed);
+    assert!(first.request_redraw);
+    assert!(app_state.minimap_visible());
+    assert_eq!(app_state.text_string(), "one\ntwo");
+
+    let second = dispatch_command(&mut app_state, Command::ToggleMinimap);
+    assert!(second.success);
+    assert!(!app_state.minimap_visible());
+    assert_eq!(app_state.text_string(), "one\ntwo");
+}
+
+#[test]
 fn newline_command_inserts_line_break() {
     let mut app_state = AppState::from_text(unique_temp_path("save"), "ab");
     app_state.move_right();

@@ -194,6 +194,7 @@ pub const TOGGLE_FOLD_ALL: &str = "editor.toggle_fold_all";
 
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
+pub const TOGGLE_MINIMAP: &str = "view.toggle_minimap";
 pub const CLOSE_SIDEBARS: &str = "app.close_sidebars";
 pub const FOCUS_MARKDOWN_PREVIEW: &str = "app.focus_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
@@ -505,6 +506,7 @@ pub const ALL_IDS: &[&str] = &[
     MULTI_CURSOR_DELETE,
     MULTI_CURSOR_SELECT_ALL,
     TOGGLE_MARKDOWN_PREVIEW,
+    TOGGLE_MINIMAP,
     CLOSE_SIDEBARS,
     FOCUS_MARKDOWN_PREVIEW,
     MARKDOWN_PREVIEW_SCROLL_UP,
@@ -775,6 +777,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MULTI_CURSOR_DELETE => Some(Command::MultiCursorDelete),
         MULTI_CURSOR_SELECT_ALL => Some(Command::MultiCursorSelectAll),
         TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
+        TOGGLE_MINIMAP => Some(Command::ToggleMinimap),
         CLOSE_SIDEBARS => Some(Command::CloseSidebars),
         FOCUS_MARKDOWN_PREVIEW => Some(Command::FocusMarkdownPreview),
         MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),

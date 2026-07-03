@@ -3,14 +3,15 @@
 use crate::{
     app::app_state::{
         AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
-        FloatingBoxStyle, HelpState, ImageBuffer, OverlayColorToken, ReferencesBufferState,
-        SettingItem, SettingsState,
+        FloatingBoxStyle, GitLineStatus, HelpState, ImageBuffer, OverlayColorToken,
+        ReferencesBufferState, SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
-    config::theme_config::{ThemeConfig, linear_rgba_to_srgb_u8},
+    config::theme_config::{ThemeConfig, linear_rgba_to_srgb_u8, srgb_rgba_to_linear_f32},
     core::mode::EditorMode,
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance,
+        renderer::{MinimapLayout, Renderer},
     },
     text::layout_sync::{
         compute_caret_layout_at_with_folds, compute_caret_layout_with_folds,
@@ -54,6 +55,157 @@ fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
         h = h.rotate_left(17).wrapping_add(s.end as u64);
     }
     h
+}
+
+/// Append the viewport indicator (the box showing the on-screen region) to
+/// `chrome` from cached layout + the current scroll. Cheap; called every frame
+/// on both the full and fast paths so it tracks gg/G jumps.
+fn append_minimap_indicator(
+    chrome: &mut Vec<RegionDrawInstance>,
+    layout: &MinimapLayout,
+    scroll_y: f32,
+) {
+    if !layout.active {
+        return;
+    }
+    // `current_scroll_y` is a (fractional) LOGICAL LINE index, not pixels — it is
+    // already the top visible line, so it maps to the strip via `step` directly.
+    let first_line = scroll_y.max(0.0).min(layout.line_count);
+    let ind_y = layout.strip_y + (first_line * layout.step).min(layout.content_h);
+    let ind_h = layout
+        .ind_h
+        .min(layout.content_h - (ind_y - layout.strip_y))
+        .max(6.0);
+    let mut ind = layout.accent;
+    ind[3] = 0.16;
+    chrome.push(RegionDrawInstance::new(
+        [layout.strip_x - 3.0, ind_y, layout.strip_w + 6.0, ind_h],
+        ind,
+    ));
+}
+
+/// Build a VSCode/Zed-style minimap: one strip on the right, each source line
+/// drawn as short colored segments taken straight from the syntax spans (no
+/// readable text). Returns the static quads (cached, re-appended on the caret
+/// fast path so the minimap doesn't blink on cursor moves) plus the layout used
+/// to recompute the scroll indicator each frame.
+fn build_minimap_quads(
+    text: &str,
+    spans: &[StyledTextSpan],
+    app_state: &AppState,
+    center_bounds: [f32; 4],
+    viewport_text_top: f32,
+    viewport_text_height: f32,
+    line_height: f32,
+    fg: [f32; 4],
+    accent: [f32; 4],
+) -> (Vec<RegionDrawInstance>, MinimapLayout) {
+    let mut quads = Vec::new();
+    if !app_state.minimap_visible() || center_bounds[2] < 160.0 || viewport_text_height < 24.0 {
+        return (quads, MinimapLayout::default());
+    }
+
+    // Byte offset where each line starts — lets us map a span's global byte
+    // offset to (line, column) with a binary search instead of scanning.
+    let mut line_starts = Vec::with_capacity(256);
+    line_starts.push(0usize);
+    for (i, b) in text.bytes().enumerate() {
+        if b == b'\n' {
+            line_starts.push(i + 1);
+        }
+    }
+    let line_count = line_starts.len().max(1);
+
+    let strip_w = 200.0;
+    let strip_x = center_bounds[0] + center_bounds[2] - strip_w - 8.0;
+    let strip_y = viewport_text_top + 4.0;
+    let strip_h = (viewport_text_height - 8.0).max(1.0);
+    // Each line gets up to LINE_PX; a short file stays short instead of stretching
+    // to fill the strip. A file taller than the strip compresses to fit (step < LINE_PX).
+    const LINE_PX: f32 = 3.0;
+    let step = (strip_h / line_count as f32).min(LINE_PX);
+    let content_h = (line_count as f32 * step).min(strip_h);
+    let bar_h = step.clamp(1.0, 2.5);
+    // Columns beyond this map past the strip's right edge (like a hard wrap).
+    const MAX_COLS: f32 = 100.0;
+
+    // Faint backing panel so the strip reads as a distinct region.
+    quads.push(RegionDrawInstance::new(
+        [strip_x - 4.0, strip_y - 2.0, strip_w + 8.0, content_h + 4.0],
+        [fg[0], fg[1], fg[2], 0.04],
+    ));
+
+    let base_len = quads.len();
+    for span in spans {
+        if span.end <= span.start {
+            continue;
+        }
+        // ponytail: hard cap on pathological files; sample per-line if this ever bites.
+        if quads.len() - base_len > 8000 {
+            break;
+        }
+        let li = line_starts
+            .partition_point(|&s| s <= span.start)
+            .saturating_sub(1);
+        let col = (span.start - line_starts[li]) as f32;
+        if col > MAX_COLS {
+            continue;
+        }
+        // ponytail: multi-line spans (block comments/strings) render only their
+        // first line — good enough for a minimap, split per line if needed.
+        let len_cols = (span.end - span.start) as f32;
+        let x = strip_x + (col / MAX_COLS).min(1.0) * strip_w;
+        let avail = (strip_x + strip_w - x).max(1.0);
+        let w = ((len_cols / MAX_COLS) * strip_w).clamp(1.0, avail);
+        let y = strip_y + li as f32 * step;
+        let mut c = srgb_rgba_to_linear_f32(span.color_rgba);
+        c[3] = 0.75;
+        quads.push(RegionDrawInstance::new([x, y, w, bar_h], c));
+    }
+
+    if let Some(statuses) = app_state.active_buffer_git_line_statuses() {
+        append_minimap_git_markers(&mut quads, statuses, step, strip_x + strip_w + 2.0, strip_y);
+    }
+
+    // Indicator height is constant (visible line span); only its y tracks scroll,
+    // so cache the geometry and let `append_minimap_indicator` place it per frame.
+    let visible_lines = (viewport_text_height / line_height).max(1.0);
+    let layout = MinimapLayout {
+        active: true,
+        strip_x,
+        strip_w,
+        strip_y,
+        content_h,
+        step,
+        ind_h: (visible_lines * step).clamp(6.0, content_h),
+        line_count: line_count as f32,
+        accent,
+    };
+
+    (quads, layout)
+}
+
+fn append_minimap_git_markers(
+    quads: &mut Vec<RegionDrawInstance>,
+    statuses: &std::collections::HashMap<usize, GitLineStatus>,
+    step: f32,
+    x: f32,
+    y: f32,
+) {
+    if statuses.is_empty() {
+        return;
+    }
+
+    let marker_h = step.clamp(1.5, 3.0);
+    for (line, status) in statuses {
+        let marker_y = y + *line as f32 * step;
+        let color = match status {
+            GitLineStatus::Added => [0.18, 0.78, 0.36, 0.9],
+            GitLineStatus::Modified => [0.95, 0.70, 0.22, 0.9],
+            GitLineStatus::DeletedAbove | GitLineStatus::DeletedBelow => [0.95, 0.25, 0.25, 0.9],
+        };
+        quads.push(RegionDrawInstance::new([x, marker_y, 3.0, marker_h], color));
+    }
 }
 
 /// Truncate auto-folded long lines to 200 chars + "..." before shaping.
@@ -499,6 +651,28 @@ impl Renderer {
                 .max(3),
             geometry.gutter_width,
         );
+        // Rebuild the cached minimap here (has text + spans + scroll), then append.
+        // The caret fast path re-appends the same cache so it doesn't blink out.
+        let (minimap, layout) = build_minimap_quads(
+            text,
+            spans,
+            app_state,
+            center_bounds,
+            geometry.viewport_text_top,
+            geometry.viewport_text_height,
+            geometry.line_height,
+            self.theme.editor.fg.as_f32(),
+            self.theme.ui.accent.as_f32(),
+        );
+        self.minimap_instances = minimap;
+        self.minimap_layout = layout;
+        self.last_editor_chrome_instances
+            .extend_from_slice(&self.minimap_instances);
+        append_minimap_indicator(
+            &mut self.last_editor_chrome_instances,
+            &self.minimap_layout,
+            app_state.current_scroll_y,
+        );
     }
 
     /// Project the canvas relation connectors' FOCAL anchor (the `gc` line) to a
@@ -633,6 +807,16 @@ impl Renderer {
                 .max(3),
             geometry.gutter_width,
         );
+        // Gutter rebuild just replaced chrome; re-append the cached minimap so it
+        // stays put across caret moves instead of flickering on every keystroke.
+        // The indicator is recomputed here so gg/G jumps move it with the scroll.
+        self.last_editor_chrome_instances
+            .extend_from_slice(&self.minimap_instances);
+        append_minimap_indicator(
+            &mut self.last_editor_chrome_instances,
+            &self.minimap_layout,
+            app_state.current_scroll_y,
+        );
     }
 
     /// Collect ghost text glyph instances for the inline AI suggestion.
@@ -730,6 +914,51 @@ impl Renderer {
 
         self.atlas.flush_pending(&self.queue);
         instances
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn near(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.001
+    }
+
+    fn has_quad(quads: &[RegionDrawInstance], rect: [f32; 4], color: [f32; 4]) -> bool {
+        quads.iter().any(|q| {
+            q.rect.iter().zip(rect).all(|(a, b)| near(*a, b))
+                && q.color.iter().zip(color).all(|(a, b)| near(*a, b))
+        })
+    }
+
+    #[test]
+    fn minimap_git_markers_use_status_colors_and_line_positions() {
+        let mut statuses = HashMap::new();
+        statuses.insert(1, GitLineStatus::Added);
+        statuses.insert(3, GitLineStatus::Modified);
+        statuses.insert(9, GitLineStatus::DeletedBelow);
+        let mut quads = Vec::new();
+
+        append_minimap_git_markers(&mut quads, &statuses, 10.0, 100.0, 20.0);
+
+        assert_eq!(quads.len(), 3);
+        assert!(has_quad(
+            &quads,
+            [100.0, 30.0, 3.0, 3.0],
+            [0.18, 0.78, 0.36, 0.9]
+        ));
+        assert!(has_quad(
+            &quads,
+            [100.0, 50.0, 3.0, 3.0],
+            [0.95, 0.70, 0.22, 0.9]
+        ));
+        assert!(has_quad(
+            &quads,
+            [100.0, 110.0, 3.0, 3.0],
+            [0.95, 0.25, 0.25, 0.9]
+        ));
     }
 }
 

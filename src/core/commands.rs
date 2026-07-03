@@ -521,6 +521,8 @@ pub enum Command {
     // ── Markdown Preview ──────────────────────────────────────────────────────
     /// Toggle markdown preview panel in the right sidebar.
     ToggleMarkdownPreview,
+    /// Toggle the editor minimap strip.
+    ToggleMinimap,
     /// Close focused sidebar(s): when RightSidebar has focus, close only the
     /// right dock; when LeftSidebar has focus, close only the left dock;
     /// otherwise close both if visible.

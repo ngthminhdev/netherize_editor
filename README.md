@@ -33,6 +33,7 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Code Graph HUD | ✅ Interactive symbol dependency + risk visualization overlay |
 | Markdown preview | ✅ In-editor markdown rendering |
 | Editor breadcrumb | ✅ File icon + path breadcrumb in editor header |
+| Editor minimap | ✅ Toggleable overview-block minimap via Space M N |
 | Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
 | Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
 | LeetCode test generation | ✅ Stratified case generation + AI verification |

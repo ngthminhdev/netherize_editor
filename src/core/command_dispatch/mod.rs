@@ -493,6 +493,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatUnfocus
         | Command::AiChatFocus
         | Command::ToggleMarkdownPreview
+        | Command::ToggleMinimap
         | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
         | Command::MarkdownPreviewScrollDown

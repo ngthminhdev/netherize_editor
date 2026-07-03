@@ -967,6 +967,19 @@ mode = "normal"
 key = "g e"
 command = "canvas.open"
 
+# F8/F10 mirror `g e` from the editor side so either key is a full toggle+focus:
+# no canvas → open, backgrounded → refocus, focused → close. (Inside the canvas
+# these are handled by the canvas focus map.)
+[[bindings]]
+mode = "normal"
+key = "f8"
+command = "canvas.open"
+
+[[bindings]]
+mode = "normal"
+key = "f10"
+command = "canvas.open"
+
 # `gca` re-arranges the canvas cards when the canvas is in the Background (editor
 # focus); inside the canvas (Navigate) the same `gca` is handled by the canvas
 # focus map. `g c` alone stays free so `g c c` (line comment) works again.

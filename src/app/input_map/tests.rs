@@ -1650,6 +1650,50 @@ fn leader_d_s_maps_to_diagnostics_open_picker() {
 }
 
 #[test]
+fn leader_m_n_maps_to_toggle_minimap() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_m = NormalizedInput {
+        physical_key: Some(KeyCode::KeyM),
+        named_key: None,
+        text: Some("m".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let second = map
+        .resolve_sequence_next(&pending, &follow_m, context)
+        .expect("leader+m should still be pending");
+    let pending = match second {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected second pending sequence, got {:?}", other),
+    };
+
+    let follow_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_n, context)
+        .expect("leader+m+n should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::ToggleMinimap);
+        }
+        other => panic!("expected dispatch for leader m n, got {:?}", other),
+    }
+}
+
+#[test]
 fn leader_sequence_is_not_started_in_insert_mode() {
     let map = make_map();
     let start_input = input_from_named(NamedKey::Space);

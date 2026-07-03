@@ -594,6 +594,54 @@ mod tests {
     }
 
     #[test]
+    fn reopening_closed_buffer_reloads_disk_content_when_file_changed_externally() {
+        let mut state = AppState::new(unique_temp_path("closed_buffer_stale"));
+        let root = unique_temp_dir("closed_buffer_stale");
+        fs::create_dir_all(&root).expect("create root");
+        let file_path = root.join("stale.rs");
+        fs::write(&file_path, "old content").expect("write file");
+
+        state.open_file(file_path.clone()).expect("open file");
+        assert_eq!(state.text_string(), "old content");
+        assert!(state.close_current_buffer().expect("close active buffer"));
+
+        // External tool (git checkout / AI agent) rewrites the file while the
+        // tab is closed — the fs watcher only covers OPEN buffers, so the
+        // closed-buffer cache never hears about this change.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(&file_path, "new content").expect("rewrite file");
+
+        state.open_file(file_path.clone()).expect("reopen file");
+        assert_eq!(state.text_string(), "new content");
+        assert!(!state.is_dirty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn switching_back_to_clean_buffer_reloads_disk_content_when_file_changed_externally() {
+        let mut state = AppState::new(unique_temp_path("switch_back_stale"));
+        let root = unique_temp_dir("switch_back_stale");
+        fs::create_dir_all(&root).expect("create root");
+        let file_a = root.join("a.rs");
+        let file_b = root.join("b.rs");
+        fs::write(&file_a, "alpha").expect("write a");
+        fs::write(&file_b, "beta").expect("write b");
+
+        state.open_file(file_a.clone()).expect("open a");
+        state.open_file(file_b.clone()).expect("open b");
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(&file_a, "gamma").expect("rewrite a");
+
+        state.open_file(file_a.clone()).expect("back to a");
+        assert_eq!(state.text_string(), "gamma");
+        assert!(!state.is_dirty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn terminal_buffer_entries_are_tracked_in_tab_ring() {
         let mut state = AppState::new(unique_temp_path("terminal_buffer"));
         let root = unique_temp_dir("terminal_buffer");
