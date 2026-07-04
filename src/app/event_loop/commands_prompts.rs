@@ -552,6 +552,55 @@ impl AppShell {
         changed || self.transient_toast.is_some()
     }
 
+    /// Push the current file-history preview (full file at the selected step) into
+    /// the picker's preview pane, syntax-highlighted from the source file's
+    /// extension — same in-process highlighter the file/reference previews use.
+    pub(super) fn refresh_file_history_preview(&mut self) {
+        let Some((lines, preview_text)) = self.app_state.build_file_history_diff_preview() else {
+            return;
+        };
+        let (text, spans) = match self.app_state.file_history_source_path() {
+            Some(path) => super::helpers::build_preview_render_data(&lines, &path, &self.theme),
+            None => (preview_text, Vec::new()),
+        };
+        let _ = self.app_state.set_fuzzy_picker_preview(lines, text, spans);
+    }
+
+    /// Confirm an entry in the center-pane file-history picker: close the picker,
+    /// return to the source file, and time-travel it back to the chosen step
+    /// (non-destructively — later steps stay redoable).
+    pub(super) fn confirm_file_history_selection(&mut self) -> bool {
+        // Read target step + source file from the still-active picker before closing.
+        let target = match self.app_state.command_palette_selected_action() {
+            Some(crate::app::command_palette::CommandPaletteAction::SelectFileHistoryEntry(
+                index,
+            )) => Some(index),
+            _ => None,
+        };
+        let source_path = self.app_state.file_history_source_path();
+
+        // Drop the preview session, then close the center-pane picker buffer.
+        let _ = self.app_state.cancel_file_history_preview();
+        let _ = self.close_current_buffer_now();
+
+        // The picker closes to an arbitrary adjacent buffer, so return to the
+        // source file explicitly, then replay undo down to the selected step.
+        if let Some(path) = source_path {
+            let _ = self.app_state.activate_text_buffer_for_path(&path);
+        }
+        if let Some(index) = target {
+            let _ = self.app_state.restore_to_history_index(index);
+        }
+
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        if self.focus_manager.set(FocusTarget::CenterEditor) {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.submit_parse_for_active_buffer(true);
+        true
+    }
+
     pub(in crate::app::event_loop) fn respond_to_pending_confirmation(
         &mut self,
         confirmed: bool,

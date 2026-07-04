@@ -129,21 +129,18 @@ impl AppShell {
                     if matches!(command_for_post_hooks, Command::OpenFileHistory)
                         && !self.app_state.command_palette_result_labels().is_empty()
                     {
-                        let _ = self.app_state.preview_file_history_index(0);
-                        if let Some((lines, preview_text)) =
-                            self.app_state.build_file_history_diff_preview()
-                        {
-                            // FileHistory diff preview uses + / - markers — tree-sitter
-                            // syntax highlighting would produce misaligned spans on the
-                            // diff-formatted text. The renderer already applies green/red
-                            // backgrounds based on the line prefix, so plain text is
-                            // visually sufficient.
-                            let _ = self.app_state.set_fuzzy_picker_preview(
-                                lines,
-                                preview_text,
-                                Vec::new(),
-                            );
-                        }
+                        // Row 0 is the NEWEST entry (list is reversed), so preview the
+                        // index that row actually maps to — not undo_stack[0] (oldest).
+                        let first_index = match self.app_state.command_palette_selected_action() {
+                            Some(
+                                crate::app::command_palette::CommandPaletteAction::SelectFileHistoryEntry(
+                                    index,
+                                ),
+                            ) => index,
+                            _ => 0,
+                        };
+                        let _ = self.app_state.preview_file_history_index(first_index);
+                        self.refresh_file_history_preview();
                     }
                     if matches!(command_for_post_hooks, Command::OpenDocumentSymbols) {
                         self.submit_lsp_document_symbols();
@@ -227,18 +224,7 @@ impl AppShell {
                     ) = self.app_state.command_palette_selected_action()
                     {
                         let _ = self.app_state.preview_file_history_index(index);
-                        if let Some((lines, preview_text)) =
-                            self.app_state.build_file_history_diff_preview()
-                        {
-                            // FileHistory diff preview uses + / - markers — tree-sitter
-                            // syntax highlighting would produce misaligned spans. Plain
-                            // text with green/red backgrounds from the renderer is sufficient.
-                            let _ = self.app_state.set_fuzzy_picker_preview(
-                                lines,
-                                preview_text,
-                                Vec::new(),
-                            );
-                        }
+                        self.refresh_file_history_preview();
                     }
                 } else if self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::ThemeSelector)
@@ -541,6 +527,15 @@ impl AppShell {
                     self.focus_manager.set(FocusTarget::CenterEditor);
                     self.input_handler.clear_pending_prefix();
                     return Some(self.handle_lsp_restart());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::FileHistory)
+                    )
+                {
+                    return Some(self.confirm_file_history_selection());
                 }
 
                 if matches!(command, Command::FilePickerConfirmSelection)

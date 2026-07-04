@@ -2026,29 +2026,21 @@ pub struct FileHistoryEntrySummary {
 }
 
 #[derive(Debug, Clone)]
-struct EditorViewSnapshot {
-    text: Rope,
-    cursor: CursorState,
-    selection_anchor_char_idx: Option<usize>,
-    visual_line_mode: bool,
-    target_scroll_y: f32,
-    current_scroll_y: f32,
-    scroll_column: usize,
-    dirty: bool,
-}
-
-#[derive(Debug, Clone)]
 struct PendingTransaction {
     before_text: Rope,
     before_cursor: CursorState,
 }
 
+/// Read-only cache backing the file-history picker's preview pane. Holds the
+/// buffer text/history captured when the picker opened plus the reconstructed
+/// text for the selected step. It never owns live editor state, so ending it is
+/// a plain drop — see `cancel_file_history_preview`.
 #[derive(Debug, Clone)]
 struct FileHistoryPreviewSession {
-    baseline_view: EditorViewSnapshot,
+    baseline_text: Rope,
     baseline_history: EditHistory,
     preview_index: Option<usize>,
-    preview_view: Option<EditorViewSnapshot>,
+    preview_text: Option<Rope>,
 }
 
 impl FuzzyState {

@@ -360,32 +360,6 @@ impl AppState {
         self.visual_line_mode = state.visual_line_mode && self.selection_anchor_char_idx.is_some();
     }
 
-    pub(super) fn snapshot_editor_view(&self) -> EditorViewSnapshot {
-        EditorViewSnapshot {
-            text: self.text.clone(),
-            cursor: self.cursor_state(),
-            selection_anchor_char_idx: self.selection_anchor_char_idx,
-            visual_line_mode: self.visual_line_mode,
-            target_scroll_y: self.target_scroll_y,
-            current_scroll_y: self.current_scroll_y,
-            scroll_column: self.scroll_column,
-            dirty: self.dirty,
-        }
-    }
-
-    pub(super) fn restore_editor_view(&mut self, snapshot: &EditorViewSnapshot) {
-        self.text = snapshot.text.clone();
-        self.cached_line_starts = None;
-        self.restore_cursor_state(snapshot.cursor);
-        self.selection_anchor_char_idx = snapshot.selection_anchor_char_idx;
-        self.visual_line_mode = snapshot.visual_line_mode;
-        self.target_scroll_y = snapshot.target_scroll_y;
-        self.current_scroll_y = snapshot.current_scroll_y;
-        self.scroll_column = snapshot.scroll_column;
-        self.dirty = snapshot.dirty;
-        let _ = self.refresh_active_search_highlights();
-    }
-
     pub(super) fn ensure_current_transaction(&mut self) {
         if self.current_transaction.is_none() {
             self.current_transaction = Some(PendingTransaction {
@@ -1311,8 +1285,19 @@ impl AppState {
                 let disk_mtime = std::fs::metadata(&buffer.path)
                     .and_then(|m| m.modified())
                     .ok();
-                let snapshot_stale =
-                    !restored_dirty && disk_mtime.is_some() && disk_mtime != restored_mtime;
+                // mtime is a cheap FIRST check. When it differs, only treat the
+                // cached snapshot as stale if the on-disk CONTENT actually changed —
+                // otherwise a benign mtime bump (format-on-save, `touch`, git status)
+                // would needlessly throw away the user's undo history on reopen. A
+                // real external rewrite still drops it (old edit positions no longer
+                // apply to the new content).
+                let mtime_changed = disk_mtime.is_some() && disk_mtime != restored_mtime;
+                let snapshot_stale = !restored_dirty
+                    && mtime_changed
+                    && restored_in_memory_text
+                        .as_ref()
+                        .map(|snap| !rope_matches_disk(&buffer.path, snap))
+                        .unwrap_or(true);
                 let mut loaded_from_disk = false;
                 if let Some(snapshot) = restored_in_memory_text.filter(|_| !snapshot_stale) {
                     self.text = snapshot;
@@ -1341,8 +1326,16 @@ impl AppState {
                         live_buf.in_memory_text = Some(self.text.clone());
                         live_buf.history = self.history.clone();
                         live_buf.last_known_modified_time = disk_mtime;
-                    } else if live_buf.in_memory_text.is_none() {
-                        live_buf.in_memory_text = Some(self.text.clone());
+                    } else {
+                        if live_buf.in_memory_text.is_none() {
+                            live_buf.in_memory_text = Some(self.text.clone());
+                        }
+                        // Kept the cache across a benign mtime change (content still
+                        // matched): adopt the new mtime so we don't re-read the file
+                        // on every future activation.
+                        if mtime_changed {
+                            live_buf.last_known_modified_time = disk_mtime;
+                        }
                     }
                     live_buf.dirty = self.dirty;
                 }
@@ -1431,6 +1424,17 @@ impl AppState {
         let _ = self.clear_semantic_symbol_highlights();
         self.clear_history();
         let _ = self.refresh_active_search_highlights();
+    }
+}
+
+/// Whether the file at `path` currently holds exactly the bytes in `rope`. Used
+/// to decide whether a cached buffer snapshot is still valid when only the mtime
+/// moved. A read error counts as "changed" so the caller reloads from disk (the
+/// safe default).
+fn rope_matches_disk(path: &Path, rope: &Rope) -> bool {
+    match std::fs::read(path) {
+        Ok(bytes) => rope.to_string().as_bytes() == bytes.as_slice(),
+        Err(_) => false,
     }
 }
 

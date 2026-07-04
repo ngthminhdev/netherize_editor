@@ -655,14 +655,17 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 jumped || closed,
             )
         }
-        CommandPaletteAction::SelectFileHistoryEntry(index) => {
-            let changed = ctx.app_state.preview_file_history_index(index);
+        CommandPaletteAction::SelectFileHistoryEntry(_index) => {
+            // The real restore runs in the event loop (`confirm_file_history_selection`):
+            // it must close the center-pane picker buffer and reactivate the source
+            // file, which core dispatch can't do. Here just drop the preview session
+            // and close, so this path is a well-defined no-op if ever reached directly.
+            let _ = ctx.app_state.cancel_file_history_preview();
             let closed = ctx.close_palette_and_exit_focus();
-            let accepted = ctx.app_state.accept_file_history_preview();
             DispatchReport::success_with_flags(
-                format!("Dispatch: file history confirmed -> entry #{index}"),
+                "Dispatch: file history confirm (restore handled by event loop)".to_string(),
                 true,
-                changed || closed || accepted,
+                closed,
             )
         }
         // ApplyCodeAction được xử lý ở AppShell level (cần access vào pending_code_actions).

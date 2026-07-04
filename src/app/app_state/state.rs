@@ -107,6 +107,7 @@ impl AppState {
         if history.undo_stack.is_empty() {
             return Vec::new();
         }
+        let undo_len = history.undo_stack.len();
         history
             .undo_stack
             .iter()
@@ -114,9 +115,12 @@ impl AppState {
             .rev()
             .map(|(index, transaction)| {
                 let (label, tone) = file_history_transaction_label(transaction);
+                // Display ordinal: newest = 1 (list is newest-first). The action
+                // still carries the raw stack `index` used to restore.
+                let ordinal = undo_len - index;
                 crate::app::command_palette::CommandPaletteItem::file_history_entry(
                     label,
-                    Some(file_history_transaction_secondary(index, transaction)),
+                    Some(file_history_transaction_secondary(ordinal, transaction)),
                     index,
                     tone,
                 )
@@ -124,15 +128,48 @@ impl AppState {
             .collect()
     }
 
+    /// Preview pane for the file-history picker: the WHOLE file as it was at the
+    /// selected step (reconstructed into `preview_text` by
+    /// `preview_file_history_index`), with the line(s) that step touched marked
+    /// `is_target` so the renderer scrolls to and highlights the change.
     pub fn build_file_history_diff_preview(&self) -> Option<(Vec<FilePreviewLine>, String)> {
-        let Some(session) = self.file_history_preview.as_ref() else {
-            return None;
-        };
-        let Some(preview_index) = session.preview_index else {
-            return None;
-        };
-        let transaction = session.baseline_history.undo_stack.get(preview_index)?;
-        let lines = build_transaction_diff_preview_lines(transaction);
+        let session = self.file_history_preview.as_ref()?;
+        let preview_index = session.preview_index?;
+        let text = session.preview_text.as_ref()?;
+
+        // The edit's start maps to a line in the reconstructed text; the inserted
+        // text's line span tells us how many lines it produced there.
+        let (target_start, target_end) =
+            if let Some(transaction) = session.baseline_history.undo_stack.get(preview_index) {
+                let edit = &transaction.edit;
+                let char_idx = edit.start_char_idx.min(text.len_chars());
+                let start_line = text.char_to_line(char_idx);
+                let inserted_lines = edit.inserted_text.lines().count().max(1);
+                (start_line, start_line + inserted_lines - 1)
+            } else {
+                (0, 0)
+            };
+
+        // Window the preview to a bounded region around the change. Keeps it under
+        // the inline tree-sitter cap (300 lines) so the pane actually gets syntax
+        // colors on long files, and bounds the per-keystroke highlight cost. Real
+        // line numbers are preserved so the gutter and scroll stay correct.
+        const PREVIEW_CONTEXT: usize = 120;
+        let total = text.len_lines();
+        let win_start = target_start.saturating_sub(PREVIEW_CONTEXT);
+        let win_end = (target_end + PREVIEW_CONTEXT + 1).min(total);
+
+        let lines: Vec<FilePreviewLine> = text
+            .lines()
+            .enumerate()
+            .skip(win_start)
+            .take(win_end - win_start)
+            .map(|(i, line)| FilePreviewLine {
+                line_number: i + 1,
+                text: line.to_string().trim_end_matches('\n').to_string(),
+                is_target: i >= target_start && i <= target_end,
+            })
+            .collect();
         let preview_text = lines
             .iter()
             .map(|line| line.text.clone())
@@ -141,27 +178,48 @@ impl AppState {
         Some((lines, preview_text))
     }
 
+    /// Non-destructive time-travel: move the buffer back to the state AFTER
+    /// undo-stack entry `index`, keeping every later step on the redo stack so it
+    /// can be redone. Assumes the source text buffer is the active buffer (the
+    /// file-history picker closes and reactivates it before this runs). Just
+    /// replays `undo()` — reusing the tested edit-inversion path.
+    pub fn restore_to_history_index(&mut self, index: usize) -> bool {
+        let len = self.history.undo_stack.len();
+        if index >= len {
+            return false;
+        }
+        let steps = len - (index + 1);
+        let mut moved = false;
+        for _ in 0..steps {
+            if !self.undo() {
+                break;
+            }
+            moved = true;
+        }
+        moved
+    }
+
     pub fn begin_file_history_preview_session(&mut self) -> bool {
         let Some(_file_path) = self.active_file.clone() else {
             return false;
         };
-        if self.file_history_preview.is_some() {
-            return false;
-        }
+        // Always start fresh, overwriting any session a prior picker leaked —
+        // the session is an inert read cache, so replacing it is safe and stops
+        // a stale one from blocking re-open.
         self.file_history_preview = Some(FileHistoryPreviewSession {
-            baseline_view: self.snapshot_editor_view(),
+            baseline_text: self.text.clone(),
             baseline_history: self.history.clone(),
             preview_index: None,
-            preview_view: None,
+            preview_text: None,
         });
         true
     }
 
     pub fn preview_file_history_index(&mut self, transaction_index: usize) -> bool {
-        let Some((baseline_view, baseline_history)) =
+        let Some((baseline_text, baseline_history)) =
             self.file_history_preview.as_ref().map(|session| {
                 (
-                    session.baseline_view.clone(),
+                    session.baseline_text.clone(),
                     session.baseline_history.clone(),
                 )
             })
@@ -173,67 +231,50 @@ impl AppState {
             return false;
         }
 
-        let mut preview_view = baseline_view.clone();
+        // Reconstruct the file text at that step by undoing the later transactions
+        // on a throwaway rope. Cache it for the preview PANE only — do NOT push it
+        // into the live editor. The picker is a separate center-pane buffer, so the
+        // live view isn't visible here anyway, and mutating it is exactly what let
+        // a lingering session clobber real edits on the next save.
+        let mut text = baseline_text;
         for transaction in baseline_history
             .undo_stack
             .iter()
             .skip(transaction_index + 1)
             .rev()
         {
-            if !undo_edit_on_rope(&mut preview_view.text, &transaction.edit) {
+            if !undo_edit_on_rope(&mut text, &transaction.edit) {
                 return false;
             }
         }
-        if let Some(transaction) = baseline_history.undo_stack.get(transaction_index) {
-            preview_view.cursor = transaction.after_cursor;
-            preview_view.selection_anchor_char_idx = None;
-            preview_view.visual_line_mode = false;
-        }
 
-        self.restore_editor_view(&preview_view);
-        self.current_transaction = None;
         if let Some(session) = self.file_history_preview.as_mut() {
             session.preview_index = Some(transaction_index);
-            session.preview_view = Some(preview_view);
+            session.preview_text = Some(text);
+            return true;
         }
-        self.bump_revision();
-        true
+        false
     }
 
-    pub fn accept_file_history_preview(&mut self) -> bool {
-        let Some(session) = self.file_history_preview.take() else {
-            return false;
-        };
-        let Some(preview_index) = session.preview_index else {
-            self.history = session.baseline_history;
-            return false;
-        };
-        let Some(preview_view) = session.preview_view else {
-            self.history = session.baseline_history;
-            return false;
-        };
-
-        self.restore_editor_view(&preview_view);
-        self.dirty = session.baseline_view.dirty
-            || preview_index + 1 < session.baseline_history.undo_stack.len();
-        let keep_len = preview_index + 1;
-        self.history = session.baseline_history;
-        self.history.undo_stack.truncate(keep_len);
-        self.history.redo_stack.clear();
-        self.current_transaction = None;
-        self.bump_revision();
-        true
+    /// Source file the active file-history picker is scrubbing, if that picker is
+    /// the active buffer. Lets the event loop return to it after the picker closes.
+    pub fn file_history_source_path(&self) -> Option<PathBuf> {
+        let idx = self.active_buffer_index?;
+        let slot = self.buffers.get(idx)?;
+        if let BufferContent::FuzzyPicker(state) = &slot.content {
+            if state.mode == CommandPaletteMode::FileHistory {
+                return state.source_file_path.clone();
+            }
+        }
+        None
     }
 
+    /// End the file-history preview session. The session is a read-only cache for
+    /// the preview pane and never owns live editor state, so there is nothing to
+    /// restore — the old restore-on-cancel here is what clobbered real edits on
+    /// the next `:w`. Just drop it.
     pub fn cancel_file_history_preview(&mut self) -> bool {
-        let Some(session) = self.file_history_preview.take() else {
-            return false;
-        };
-        self.restore_editor_view(&session.baseline_view);
-        self.history = session.baseline_history;
-        self.current_transaction = None;
-        self.bump_revision();
-        true
+        self.file_history_preview.take().is_some()
     }
 
     pub fn undo(&mut self) -> bool {
@@ -1164,121 +1205,49 @@ fn file_history_transaction_label(
     transaction: &Transaction,
 ) -> (String, crate::app::command_palette::CommandPaletteItemTone) {
     let edit = &transaction.edit;
-    let inserted = diff_preview_text(&edit.inserted_text, 30);
-    let deleted = diff_preview_text(&edit.deleted_text, 30);
+    let inserted = diff_preview_text(&edit.inserted_text, 40);
+    let deleted = diff_preview_text(&edit.deleted_text, 40);
 
     match (
         !edit.inserted_text.is_empty(),
         !edit.deleted_text.is_empty(),
     ) {
         (true, false) => (
-            format!("[+ {inserted}]"),
+            format!("Insert  \"{inserted}\""),
             crate::app::command_palette::CommandPaletteItemTone::Added,
         ),
         (false, true) => (
-            format!("[- {deleted}]"),
+            format!("Delete  \"{deleted}\""),
             crate::app::command_palette::CommandPaletteItemTone::Removed,
         ),
         (true, true) => (
-            format!("[- {deleted}] [+ {inserted}]"),
+            format!("Replace  \"{deleted}\" -> \"{inserted}\""),
             crate::app::command_palette::CommandPaletteItemTone::Modified,
         ),
         (false, false) => (
-            "[no-op]".to_string(),
+            "No change".to_string(),
             crate::app::command_palette::CommandPaletteItemTone::Default,
         ),
     }
 }
 
-fn file_history_transaction_secondary(index: usize, transaction: &Transaction) -> String {
+/// `ordinal` is the human-facing step number (1 = newest), not the raw stack index.
+fn file_history_transaction_secondary(ordinal: usize, transaction: &Transaction) -> String {
     let edit = &transaction.edit;
-    match (
-        !edit.inserted_text.is_empty(),
-        !edit.deleted_text.is_empty(),
-    ) {
-        (true, false) => format!(
-            "#{index} · inserted {} chars @ {}",
-            edit.inserted_len_chars(),
-            edit.start_char_idx
-        ),
-        (false, true) => format!(
-            "#{index} · deleted {} chars @ {}",
-            edit.deleted_len_chars(),
-            edit.start_char_idx
-        ),
-        (true, true) => format!(
-            "#{index} · replaced {} -> {} chars @ {}",
-            edit.deleted_len_chars(),
-            edit.inserted_len_chars(),
-            edit.start_char_idx
-        ),
-        (false, false) => format!("#{index} · no text delta"),
-    }
-}
-
-fn build_transaction_diff_preview_lines(transaction: &Transaction) -> Vec<FilePreviewLine> {
-    let edit = &transaction.edit;
-    let mut out = vec![
-        FilePreviewLine {
-            line_number: edit.start_char_idx,
-            text: format!("@@ char {} @@", edit.start_char_idx),
-            is_target: false,
-        },
-        FilePreviewLine {
-            line_number: edit.start_char_idx,
-            text: "--- deleted".to_string(),
-            is_target: false,
-        },
-    ];
-
-    push_delta_preview_lines(&mut out, "-", &edit.deleted_text, edit.start_char_idx);
-    out.push(FilePreviewLine {
-        line_number: edit.start_char_idx,
-        text: "+++ inserted".to_string(),
-        is_target: false,
-    });
-    push_delta_preview_lines(&mut out, "+", &edit.inserted_text, edit.start_char_idx);
-
-    if edit.is_empty() {
-        out.push(FilePreviewLine {
-            line_number: edit.start_char_idx,
-            text: "  (selected history entry has no text delta)".to_string(),
-            is_target: false,
-        });
-    }
-
-    out
-}
-
-fn push_delta_preview_lines(
-    out: &mut Vec<FilePreviewLine>,
-    prefix: &str,
-    text: &str,
-    start_char_idx: usize,
-) {
-    if text.is_empty() {
-        out.push(FilePreviewLine {
-            line_number: start_char_idx,
-            text: format!("{prefix} <empty>"),
-            is_target: false,
-        });
-        return;
-    }
-
-    for (offset, line) in text.lines().enumerate() {
-        out.push(FilePreviewLine {
-            line_number: start_char_idx + offset,
-            text: format!("{prefix} {line}"),
-            is_target: true,
-        });
-    }
-    if text.ends_with('\n') {
-        out.push(FilePreviewLine {
-            line_number: start_char_idx + text.lines().count(),
-            text: format!("{prefix} <newline>"),
-            is_target: true,
-        });
-    }
+    let ins = edit.inserted_len_chars();
+    let del = edit.deleted_len_chars();
+    let delta = match (ins > 0, del > 0) {
+        (true, false) => format!("+{ins}"),
+        (false, true) => format!("-{del}"),
+        (true, true) => format!("+{ins} -{del}"),
+        (false, false) => "0".to_string(),
+    };
+    let step = if ordinal == 1 {
+        "latest".to_string()
+    } else {
+        format!("{ordinal} steps back")
+    };
+    format!("#{ordinal} · {step} · {delta} chars")
 }
 
 fn diff_preview_text(text: &str, max_chars: usize) -> String {

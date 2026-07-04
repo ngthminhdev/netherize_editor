@@ -1855,7 +1855,9 @@ fn save_does_not_write_previewed_history_state_back_to_disk() {
 
     assert!(app_state.begin_file_history_preview_session());
     assert!(app_state.preview_file_history_index(0));
-    assert_eq!(app_state.text_string(), "old");
+    // Previewing an older step must NOT mutate the live buffer — it only fills
+    // the preview pane. (This is the revert-on-save data-loss guard.)
+    assert_eq!(app_state.text_string(), "old new");
 
     let save = dispatch_command(&mut app_state, Command::SaveFile);
     assert!(save.success);

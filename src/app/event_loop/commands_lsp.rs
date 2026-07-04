@@ -24,6 +24,7 @@ impl AppShell {
             Command::AiAcceptInline | Command::AiAcceptInlineWord => {
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 if report.state_changed {
+                    
                     self.reconcile_highlight_spans_with_pending_edits();
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = true;

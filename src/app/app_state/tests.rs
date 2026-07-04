@@ -2097,7 +2097,7 @@ mod tests {
 
         let items = state.file_history_picker_items();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].label, "[+ alpha]");
+        assert_eq!(items[0].label, "Insert  \"alpha\"");
         assert_eq!(
             items[0].tone,
             crate::app::command_palette::CommandPaletteItemTone::Added
@@ -2105,15 +2105,162 @@ mod tests {
 
         assert!(state.begin_file_history_preview_session());
         assert!(state.preview_file_history_index(0));
-        let (_lines, preview_text) = state
+        // Preview shows the FILE as it was at that step, not a raw transaction blob.
+        let (lines, preview_text) = state
             .build_file_history_diff_preview()
-            .expect("delta preview");
-        assert!(preview_text.contains("+++ inserted"));
-        assert!(preview_text.contains("+ alpha"));
+            .expect("history preview");
+        assert_eq!(preview_text, "alpha");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].line_number, 1);
+        assert!(lines[0].is_target);
     }
 
     #[test]
-    fn file_history_preview_replays_on_temp_rope_without_rewriting_history() {
+    fn undo_survives_close_and_reopen_tab() {
+        let path = unique_temp_path("undo_reopen");
+        std::fs::write(&path, "base").unwrap();
+        let canon = path.canonicalize().unwrap();
+
+        let mut state = AppState::new(unique_temp_path("scratch"));
+        state.open_file(canon.clone()).expect("open");
+
+        assert!(state.insert_text_at_cursor("X"));
+        assert!(state.commit_transaction());
+        let edited = state.text_string();
+        assert_ne!(edited, "base");
+
+        // Close the tab, then reopen it.
+        assert!(state.close_current_buffer().expect("close"));
+        state.open_file(canon.clone()).expect("reopen");
+
+        assert_eq!(state.text_string(), edited, "content preserved on reopen");
+        assert!(state.undo(), "undo should still work after reopen");
+        assert_eq!(state.text_string(), "base", "undo reverts the edit");
+
+        let _ = std::fs::remove_file(&canon);
+    }
+
+    #[test]
+    fn undo_survives_save_close_and_reopen_tab() {
+        let path = unique_temp_path("undo_save_reopen");
+        std::fs::write(&path, "base").unwrap();
+        let canon = path.canonicalize().unwrap();
+
+        let mut state = AppState::new(unique_temp_path("scratch2"));
+        state.open_file(canon.clone()).expect("open");
+
+        assert!(state.insert_text_at_cursor("X"));
+        assert!(state.commit_transaction());
+        state.save_file().expect("save");
+        assert!(!state.dirty);
+
+        assert!(state.close_current_buffer().expect("close"));
+        state.open_file(canon.clone()).expect("reopen");
+
+        assert!(
+            state.undo(),
+            "undo should still work after save+close+reopen"
+        );
+        assert_eq!(state.text_string(), "base");
+
+        let _ = std::fs::remove_file(&canon);
+    }
+
+    #[test]
+    fn benign_mtime_change_keeps_undo_on_reopen() {
+        // The stale-snapshot guard must NOT drop undo history when only the mtime
+        // moved but the content is identical (format-on-save, touch, git). Regression
+        // guard for the reopen-loses-undo bug.
+        let path = unique_temp_path("benign_mtime");
+        std::fs::write(&path, "base").unwrap();
+        let canon = path.canonicalize().unwrap();
+
+        let mut state = AppState::new(unique_temp_path("scratch_b"));
+        state.open_file(canon.clone()).expect("open");
+        assert!(state.insert_text_at_cursor("X"));
+        assert!(state.commit_transaction());
+        state.save_file().expect("save"); // disk == "Xbase", clean
+        assert!(state.close_current_buffer().expect("close"));
+
+        // Force a stale cached mtime while the on-disk CONTENT is unchanged.
+        state
+            .closed_text_buffers
+            .get_mut(&canon)
+            .expect("cached buffer")
+            .last_known_modified_time = Some(std::time::UNIX_EPOCH);
+
+        state.open_file(canon.clone()).expect("reopen");
+        assert!(state.undo(), "benign mtime change must keep undo");
+        assert_eq!(state.text_string(), "base");
+
+        let _ = std::fs::remove_file(&canon);
+    }
+
+    #[test]
+    fn external_content_change_drops_stale_snapshot_on_reopen() {
+        // The other side of the guard: if the file was truly rewritten on disk
+        // while the tab was closed, show the disk content (stale cache dropped).
+        let path = unique_temp_path("ext_change");
+        std::fs::write(&path, "base").unwrap();
+        let canon = path.canonicalize().unwrap();
+
+        let mut state = AppState::new(unique_temp_path("scratch_e"));
+        state.open_file(canon.clone()).expect("open");
+        assert!(state.insert_text_at_cursor("X"));
+        assert!(state.commit_transaction());
+        state.save_file().expect("save");
+        assert!(state.close_current_buffer().expect("close"));
+
+        state
+            .closed_text_buffers
+            .get_mut(&canon)
+            .expect("cached buffer")
+            .last_known_modified_time = Some(std::time::UNIX_EPOCH);
+        // External tool rewrites the file.
+        std::fs::write(&canon, "external rewrite").unwrap();
+
+        state.open_file(canon.clone()).expect("reopen");
+        assert_eq!(state.text_string(), "external rewrite");
+
+        let _ = std::fs::remove_file(&canon);
+    }
+
+    #[test]
+    fn restore_to_history_index_is_non_destructive() {
+        let file_path = unique_temp_path("history_restore_keep_redo");
+        let mut state = AppState::new(file_path.clone());
+        state.active_file = Some(file_path);
+
+        for step in ["a", "b", "c"] {
+            assert!(state.insert_text_at_cursor(step));
+            assert!(state.commit_transaction());
+        }
+        assert_eq!(state.text_string(), "abc");
+        assert_eq!(state.history.undo_stack.len(), 3);
+
+        // Go back to the state after step 0 ("a") — steps "b"/"c" stay redoable.
+        assert!(state.restore_to_history_index(0));
+        assert_eq!(state.text_string(), "a");
+        assert_eq!(state.history.undo_stack.len(), 1);
+        assert_eq!(state.history.redo_stack.len(), 2);
+
+        // Redo replays the later steps: not truncated, fully reversible.
+        assert!(state.redo());
+        assert_eq!(state.text_string(), "ab");
+        assert!(state.redo());
+        assert_eq!(state.text_string(), "abc");
+
+        // Restoring to the newest entry is a no-op (already there).
+        assert!(!state.restore_to_history_index(2));
+        assert_eq!(state.text_string(), "abc");
+    }
+
+    #[test]
+    fn file_history_preview_never_touches_live_editor_state() {
+        // Data-loss repro: the preview session is a read-only cache for the
+        // preview pane. It must NOT mutate the live buffer, and ending it (what
+        // `:w` does via cancel) must never revert current edits to a stale
+        // snapshot. This is the bug that reverted saves to the un-edited file.
         let file_path = unique_temp_path("history_temp_preview");
         let mut state = AppState::new(file_path.clone());
         state.active_file = Some(file_path);
@@ -2126,16 +2273,26 @@ mod tests {
         assert_eq!(state.history.undo_stack.len(), 2);
 
         assert!(state.begin_file_history_preview_session());
+        // Previewing an older step reconstructs it for the PANE only...
         assert!(state.preview_file_history_index(0));
-
-        assert_eq!(state.text_string(), "old");
-        assert_eq!(state.history.undo_stack.len(), 2);
-        assert!(state.history.redo_stack.is_empty());
-
-        assert!(state.cancel_file_history_preview());
+        let (_lines, preview_text) = state
+            .build_file_history_diff_preview()
+            .expect("history preview");
+        assert_eq!(preview_text, "old");
+        // ...the live buffer is untouched.
         assert_eq!(state.text_string(), "old new");
         assert_eq!(state.history.undo_stack.len(), 2);
         assert!(state.history.redo_stack.is_empty());
+
+        // Keep editing while the session lingers, then end it (simulating :w).
+        assert!(state.insert_text_at_cursor(" more"));
+        assert!(state.commit_transaction());
+        assert_eq!(state.text_string(), "old new more");
+
+        assert!(state.cancel_file_history_preview());
+        // Current edits survive — no revert to the baseline snapshot.
+        assert_eq!(state.text_string(), "old new more");
+        assert_eq!(state.history.undo_stack.len(), 3);
     }
 
     // ── HTML auto-close tag ────────────────────────────────────────────────────

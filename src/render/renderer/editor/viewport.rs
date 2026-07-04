@@ -7,7 +7,7 @@ use crate::{
         ReferencesBufferState, SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
-    config::theme_config::{ThemeConfig, linear_rgba_to_srgb_u8, srgb_rgba_to_linear_f32},
+    config::theme_config::{ThemeConfig, linear_rgba_to_srgb_u8},
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance,
@@ -84,14 +84,17 @@ fn append_minimap_indicator(
     ));
 }
 
-/// Build a VSCode/Zed-style minimap: one strip on the right, each source line
-/// drawn as short colored segments taken straight from the syntax spans (no
-/// readable text). Returns the static quads (cached, re-appended on the caret
-/// fast path so the minimap doesn't blink on cursor moves) plus the layout used
-/// to recompute the scroll indicator each frame.
+/// Build a neominimap-style code map: one strip on the right, each source line
+/// drawn as a single dim bar sized by its indent + content extent (the "shape"
+/// of the code, no readable text, no syntax colors). Built from the WHOLE-FILE
+/// `text` — the syntax spans are only highlighted for the visible viewport, so
+/// using them here left everything off-screen blank on long files. A uniform
+/// soft color with row gaps also reads gentler than a wall of colored tokens.
+/// Returns the static quads (cached, re-appended on the caret fast path so the
+/// minimap doesn't blink on cursor moves) plus the layout used to recompute the
+/// scroll indicator each frame.
 fn build_minimap_quads(
     text: &str,
-    spans: &[StyledTextSpan],
     app_state: &AppState,
     center_bounds: [f32; 4],
     viewport_text_top: f32,
@@ -105,16 +108,42 @@ fn build_minimap_quads(
         return (quads, MinimapLayout::default());
     }
 
-    // Byte offset where each line starts — lets us map a span's global byte
-    // offset to (line, column) with a binary search instead of scanning.
-    let mut line_starts = Vec::with_capacity(256);
-    line_starts.push(0usize);
-    for (i, b) in text.bytes().enumerate() {
-        if b == b'\n' {
-            line_starts.push(i + 1);
+    // Per line, measure leading-indent width and the column just past the last
+    // non-whitespace char — that pair is all we need to draw the code's shape.
+    // Tabs expand to the next 4-col stop so indentation reads correctly.
+    let mut lines: Vec<(u32, u32)> = Vec::with_capacity(256);
+    let (mut indent, mut end, mut col, mut seen) = (0u32, 0u32, 0u32, false);
+    for b in text.bytes() {
+        match b {
+            b'\n' => {
+                lines.push((indent, end));
+                indent = 0;
+                end = 0;
+                col = 0;
+                seen = false;
+            }
+            b'\t' => {
+                let w = 4 - (col % 4);
+                if !seen {
+                    indent += w;
+                }
+                col += w;
+            }
+            b' ' => {
+                if !seen {
+                    indent += 1;
+                }
+                col += 1;
+            }
+            _ => {
+                seen = true;
+                col += 1;
+                end = col;
+            }
         }
     }
-    let line_count = line_starts.len().max(1);
+    lines.push((indent, end));
+    let line_count = lines.len().max(1);
 
     let strip_w = 200.0;
     let strip_x = center_bounds[0] + center_bounds[2] - strip_w - 8.0;
@@ -125,42 +154,32 @@ fn build_minimap_quads(
     const LINE_PX: f32 = 3.0;
     let step = (strip_h / line_count as f32).min(LINE_PX);
     let content_h = (line_count as f32 * step).min(strip_h);
-    let bar_h = step.clamp(1.0, 2.5);
-    // Columns beyond this map past the strip's right edge (like a hard wrap).
-    const MAX_COLS: f32 = 100.0;
+    // Bars sit shorter than their row so lines don't fuse into a solid block —
+    // the small gaps are what make it read soft rather than dense.
+    let bar_h = (step * 0.62).clamp(1.0, 2.0);
+    // Columns beyond this clamp to the strip's right edge.
+    const MAX_COLS: f32 = 110.0;
+    let col_scale = strip_w / MAX_COLS;
 
     // Faint backing panel so the strip reads as a distinct region.
     quads.push(RegionDrawInstance::new(
         [strip_x - 4.0, strip_y - 2.0, strip_w + 8.0, content_h + 4.0],
-        [fg[0], fg[1], fg[2], 0.04],
+        [fg[0], fg[1], fg[2], 0.03],
     ));
 
-    let base_len = quads.len();
-    for span in spans {
-        if span.end <= span.start {
-            continue;
+    for (i, &(ind, end)) in lines.iter().enumerate() {
+        if end == 0 {
+            continue; // blank line → leave a gap, don't draw
         }
-        // ponytail: hard cap on pathological files; sample per-line if this ever bites.
-        if quads.len() - base_len > 8000 {
-            break;
-        }
-        let li = line_starts
-            .partition_point(|&s| s <= span.start)
-            .saturating_sub(1);
-        let col = (span.start - line_starts[li]) as f32;
-        if col > MAX_COLS {
-            continue;
-        }
-        // ponytail: multi-line spans (block comments/strings) render only their
-        // first line — good enough for a minimap, split per line if needed.
-        let len_cols = (span.end - span.start) as f32;
-        let x = strip_x + (col / MAX_COLS).min(1.0) * strip_w;
-        let avail = (strip_x + strip_w - x).max(1.0);
-        let w = ((len_cols / MAX_COLS) * strip_w).clamp(1.0, avail);
-        let y = strip_y + li as f32 * step;
-        let mut c = srgb_rgba_to_linear_f32(span.color_rgba);
-        c[3] = 0.75;
-        quads.push(RegionDrawInstance::new([x, y, w, bar_h], c));
+        let start_c = (ind as f32).min(MAX_COLS);
+        let end_c = (end as f32).min(MAX_COLS);
+        let x = strip_x + start_c * col_scale;
+        let w = ((end_c - start_c) * col_scale).max(1.0);
+        let y = strip_y + i as f32 * step;
+        quads.push(RegionDrawInstance::new(
+            [x, y, w, bar_h],
+            [fg[0], fg[1], fg[2], 0.30],
+        ));
     }
 
     if let Some(statuses) = app_state.active_buffer_git_line_statuses() {
@@ -655,7 +674,6 @@ impl Renderer {
         // The caret fast path re-appends the same cache so it doesn't blink out.
         let (minimap, layout) = build_minimap_quads(
             text,
-            spans,
             app_state,
             center_bounds,
             geometry.viewport_text_top,

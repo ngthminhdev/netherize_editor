@@ -186,6 +186,18 @@ impl AppState {
         self.close_buffer_index(current_idx)
     }
 
+    /// Activate the already-open text buffer for `path`, if present. Used to
+    /// return to the source file after a center-pane picker (e.g. file history)
+    /// closes to an arbitrary adjacent buffer. No-op if the buffer isn't open.
+    pub fn activate_text_buffer_for_path(&mut self, path: &Path) -> bool {
+        let Some(idx) = self.buffers.iter().position(
+            |entry| matches!(&entry.content, BufferContent::Text(buffer) if buffer.path == path),
+        ) else {
+            return false;
+        };
+        self.activate_buffer_index(idx).is_ok()
+    }
+
     pub fn close_buffer_for_path(&mut self, path: &Path) -> Result<bool, String> {
         let Some(index) = self.buffers.iter().position(
             |entry| matches!(&entry.content, BufferContent::Text(buffer) if buffer.path == path),
