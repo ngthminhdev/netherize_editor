@@ -1986,10 +1986,10 @@ pub fn rerank_completion_items(
     let mut reordered = Vec::with_capacity(remaining.len());
 
     for label in ranked {
-        if let Some(slot) = remaining
-            .iter_mut()
-            .find(|slot| slot.as_ref().is_some_and(|entry| &entry.item.label == label))
-        {
+        if let Some(slot) = remaining.iter_mut().find(|slot| {
+            slot.as_ref()
+                .is_some_and(|entry| &entry.item.label == label)
+        }) {
             reordered.push(slot.take().expect("slot matched is Some"));
         }
     }
@@ -2705,7 +2705,9 @@ impl AppState {
         let lbase = clamped.floor() as usize;
         let lfrac = clamped.fract();
         // A logical line inside a fold collapses onto its marker (the fold start).
-        let visible = self.fold_marker_line_for_hidden_line(lbase).unwrap_or(lbase);
+        let visible = self
+            .fold_marker_line_for_hidden_line(lbase)
+            .unwrap_or(lbase);
         let hidden_before: usize = self
             .folded_ranges
             .iter()

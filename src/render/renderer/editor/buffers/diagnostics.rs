@@ -11,7 +11,7 @@ use crate::{
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance,
-        icon_pipeline::{canonical_icon_id, IconDrawInstance},
+        icon_pipeline::{IconDrawInstance, canonical_icon_id},
         region_pipeline::RegionDrawInstance,
         renderer::Renderer,
     },

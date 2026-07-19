@@ -4,8 +4,8 @@
 //! or the dirty flag — opening/closing the canvas leaves the editor untouched.
 
 use crate::canvas::{
-    BlockId, BlockOrigin, BlockRelation, BlockSnapshot, CARD_MAX_LINES, CARD_MIN_LINES, CanvasBlock,
-    CanvasInteraction, CanvasSpan, CanvasState, Dir, WorldRect,
+    BlockId, BlockOrigin, BlockRelation, BlockSnapshot, CARD_MAX_LINES, CARD_MIN_LINES,
+    CanvasBlock, CanvasInteraction, CanvasSpan, CanvasState, Dir, WorldRect,
 };
 
 use super::{AppState, CanvasEditSession};
@@ -65,7 +65,11 @@ impl AppState {
             .map(|l| {
                 let s = self.text.line_to_char(l);
                 let e = self.text.line_to_char((l + 1).min(total_lines));
-                self.text.slice(s..e).to_string().trim_end_matches('\n').to_string()
+                self.text
+                    .slice(s..e)
+                    .to_string()
+                    .trim_end_matches('\n')
+                    .to_string()
             })
             .collect();
         let snippet = raw_lines.join("\n");
@@ -149,7 +153,10 @@ impl AppState {
 
     /// Toggle pin on the focused card (P).
     pub fn canvas_toggle_pin(&mut self) -> bool {
-        self.canvas.as_mut().map(|c| c.toggle_pin()).unwrap_or(false)
+        self.canvas
+            .as_mut()
+            .map(|c| c.toggle_pin())
+            .unwrap_or(false)
     }
 
     /// Close the focused relation card (space x).
@@ -439,7 +446,11 @@ impl AppState {
         let Some(id) = state.focused else {
             return false;
         };
-        let base_w = if state.block_w > 0.0 { state.block_w } else { 400.0 };
+        let base_w = if state.block_w > 0.0 {
+            state.block_w
+        } else {
+            400.0
+        };
         let min_w = base_w * 0.5;
         let max_w = base_w * 2.5;
         let Some(b) = state.blocks.iter_mut().find(|b| b.id == id) else {
@@ -519,7 +530,11 @@ impl AppState {
         let Some(state) = self.canvas.as_mut() else {
             return false;
         };
-        let base_w = if state.block_w > 0.0 { state.block_w } else { 400.0 };
+        let base_w = if state.block_w > 0.0 {
+            state.block_w
+        } else {
+            400.0
+        };
         let min_w = base_w * 0.5;
         let max_w = base_w * 2.5;
 
@@ -530,8 +545,7 @@ impl AppState {
         };
         let max_rows = snapshot_lines.clamp(CARD_MIN_LINES, CANVAS_CARD_HARD_MAX);
         let clamped_rows = new_rows.map(|r| r.clamp(CARD_MIN_LINES, max_rows));
-        let new_h = clamped_rows
-            .and_then(|r| (line_h > 0.0).then(|| state.card_height_exact(r)));
+        let new_h = clamped_rows.and_then(|r| (line_h > 0.0).then(|| state.card_height_exact(r)));
 
         let Some(b) = state.blocks.iter_mut().find(|b| b.id == id) else {
             return false;
@@ -612,7 +626,11 @@ impl AppState {
         let Some(state) = self.canvas.as_mut() else {
             return false;
         };
-        let Some(b) = state.blocks.iter_mut().find(|b| b.relation == BlockRelation::Focal) else {
+        let Some(b) = state
+            .blocks
+            .iter_mut()
+            .find(|b| b.relation == BlockRelation::Focal)
+        else {
             return false;
         };
         b.snapshot = snapshot;
@@ -623,16 +641,17 @@ impl AppState {
     /// Everything `CanvasCardScopeResult` needs to re-source a card to its
     /// enclosing-definition scope: `(lsp_line, lsp_character, symbol_name)`.
     /// `None` when the card is gone / focal / canvas closed (stale result dropped).
-    pub fn canvas_card_scope_target(
-        &self,
-        card_id: BlockId,
-    ) -> Option<(u32, u32, String)> {
+    pub fn canvas_card_scope_target(&self, card_id: BlockId) -> Option<(u32, u32, String)> {
         let state = self.canvas.as_ref()?;
         let b = state.blocks.iter().find(|b| b.id == card_id)?;
         if b.relation == BlockRelation::Focal {
             return None;
         }
-        Some((b.origin.lsp_line, b.origin.lsp_character, b.origin.symbol_name.clone()))
+        Some((
+            b.origin.lsp_line,
+            b.origin.lsp_character,
+            b.origin.symbol_name.clone(),
+        ))
     }
 
     pub fn canvas_pan(&mut self, dx: f32, dy: f32) -> bool {
@@ -794,7 +813,12 @@ impl AppState {
     /// connector is drawn from the parent card rather than the editor caret.
     pub fn canvas_add_relations_with_parent(
         &mut self,
-        relations: Vec<(BlockRelation, BlockOrigin, BlockSnapshot, Option<(u32, u32)>)>,
+        relations: Vec<(
+            BlockRelation,
+            BlockOrigin,
+            BlockSnapshot,
+            Option<(u32, u32)>,
+        )>,
         parent: Option<BlockId>,
     ) -> bool {
         if relations.is_empty() {
@@ -1146,7 +1170,10 @@ mod tests {
 
     /// Snapshot whose `text` has exactly `n` lines.
     fn snap_lines(n: usize) -> BlockSnapshot {
-        let text = (0..n).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let text = (0..n)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         BlockSnapshot {
             title: "f.rs".into(),
             symbol: "s".into(),
@@ -1196,8 +1223,16 @@ mod tests {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         let added = app.canvas_add_relations(vec![
-            (BlockRelation::Definition, origin_at("/proj/src/def.rs", 10), snap("def")),
-            (BlockRelation::Caller, origin_at("/proj/src/caller.rs", 20), snap("caller")),
+            (
+                BlockRelation::Definition,
+                origin_at("/proj/src/def.rs", 10),
+                snap("def"),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/proj/src/caller.rs", 20),
+                snap("caller"),
+            ),
         ]);
         assert!(added);
         let canvas = app.canvas().unwrap();
@@ -1236,7 +1271,10 @@ mod tests {
             snap("c"),
         )]);
         let second_y = app.canvas().unwrap().blocks[2].world.y;
-        assert!(second_y > first_y, "second batch should stack below the first");
+        assert!(
+            second_y > first_y,
+            "second batch should stack below the first"
+        );
     }
 
     #[test]
@@ -1269,8 +1307,16 @@ mod tests {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(3)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(13)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(3),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(13),
+            ),
         ]);
         let canvas = app.canvas().unwrap();
         let short = &canvas.blocks[1];
@@ -1303,8 +1349,16 @@ mod tests {
         )]);
         // gopls `references` returns the declaration (a.rs:10) plus a real call site.
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(4)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(4)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(4),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(4),
+            ),
         ]);
         let canvas = app.canvas().unwrap();
         let non_focal: Vec<_> = canvas
@@ -1313,7 +1367,11 @@ mod tests {
             .filter(|b| b.relation != BlockRelation::Focal)
             .collect();
         // def(a.rs:10) + caller(b.rs:20): the duplicate declaration is dropped.
-        assert_eq!(non_focal.len(), 2, "declaration must not create a duplicate card");
+        assert_eq!(
+            non_focal.len(),
+            2,
+            "declaration must not create a duplicate card"
+        );
         let at_decl = non_focal
             .iter()
             .find(|b| b.origin.lsp_line == 10)
@@ -1327,8 +1385,16 @@ mod tests {
         app.open_canvas(VW, VH, LH);
         // References arrive first: declaration (a.rs:10) + a real caller (b.rs:20).
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(4)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(4)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(4),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(4),
+            ),
         ]);
         // Then the definition resolves to the same site — it supersedes the caller.
         app.canvas_add_relations(vec![(
@@ -1342,7 +1408,11 @@ mod tests {
             .iter()
             .filter(|b| b.relation != BlockRelation::Focal)
             .collect();
-        assert_eq!(non_focal.len(), 2, "definition must not duplicate an existing caller site");
+        assert_eq!(
+            non_focal.len(),
+            2,
+            "definition must not duplicate an existing caller site"
+        );
         let at_decl = non_focal
             .iter()
             .find(|b| b.origin.lsp_line == 10)
@@ -1362,13 +1432,20 @@ mod tests {
         let (fp, fl) = {
             let c = app.canvas().unwrap();
             let f = &c.blocks[0];
-            (f.origin.path.to_string_lossy().into_owned(), f.origin.lsp_line)
+            (
+                f.origin.path.to_string_lossy().into_owned(),
+                f.origin.lsp_line,
+            )
         };
         app.canvas_add_relations(vec![
             // A reference AT the focal location — already visible in the editor.
             (BlockRelation::Caller, origin_at(&fp, fl), snap("self")),
             // A real caller elsewhere — must still appear.
-            (BlockRelation::Caller, origin_at("/p/other.rs", 99), snap("other")),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/other.rs", 99),
+                snap("other"),
+            ),
         ]);
         let c = app.canvas().unwrap();
         let non_focal: Vec<_> = c
@@ -1376,7 +1453,11 @@ mod tests {
             .iter()
             .filter(|b| b.relation != BlockRelation::Focal)
             .collect();
-        assert_eq!(non_focal.len(), 1, "the focal-location reference should be skipped");
+        assert_eq!(
+            non_focal.len(),
+            1,
+            "the focal-location reference should be skipped"
+        );
         assert_eq!(non_focal[0].origin.lsp_line, 99);
     }
 
@@ -1386,8 +1467,16 @@ mod tests {
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
             // A 40-line snapshot: auto-shows the 30-row plateau, can grow beyond it.
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(40)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(5)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(40),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(5),
+            ),
         ]);
         // The first relation card is auto-focused.
         let focused = app.canvas().unwrap().focused.unwrap();
@@ -1409,7 +1498,11 @@ mod tests {
         assert!(app.canvas_change_focused_height(4));
         let c = app.canvas().unwrap();
         let fb = c.block(focused).unwrap();
-        assert_eq!(fb.height_rows, Some(CARD_MAX_LINES + 4), "grows past the auto plateau");
+        assert_eq!(
+            fb.height_rows,
+            Some(CARD_MAX_LINES + 4),
+            "grows past the auto plateau"
+        );
         // Focused card grew taller; WIDTH stays fixed (no box scaling).
         assert!(fb.world.h > fh0, "focused card should grow taller");
         assert!((fb.world.w - fw0).abs() < 1e-3, "width must stay fixed");
@@ -1422,7 +1515,12 @@ mod tests {
             .world;
         assert_eq!(
             (other_after.x, other_after.y, other_after.w, other_after.h),
-            (other_before.x, other_before.y, other_before.w, other_before.h),
+            (
+                other_before.x,
+                other_before.y,
+                other_before.w,
+                other_before.h
+            ),
             "a non-focused card must not move or resize on a =/-"
         );
     }
@@ -1468,10 +1566,20 @@ mod tests {
             spans: Vec::new(),
         };
         assert!(app.canvas_apply_card_scope(id, new_snap.clone(), Some((7, 9))));
-        let b = app.canvas().unwrap().blocks.iter().find(|b| b.id == id).unwrap();
+        let b = app
+            .canvas()
+            .unwrap()
+            .blocks
+            .iter()
+            .find(|b| b.id == id)
+            .unwrap();
         assert_eq!(b.snapshot.start_line, 8);
         assert_eq!(b.snapshot.text, "fn s() {\n  x\n}");
-        assert_eq!(b.scope_lines, Some((7, 9)), "scope range bounds the edit viewport");
+        assert_eq!(
+            b.scope_lines,
+            Some((7, 9)),
+            "scope range bounds the edit viewport"
+        );
     }
 
     #[test]
@@ -1495,11 +1603,17 @@ mod tests {
         assert!(app.canvas_apply_card_scope(id, snap, Some((7, 12))));
         // The 6-line scope is already fully shown → growing is a no-op (nothing
         // more to reveal), which is exactly what keeps Enter from reshrinking.
-        assert!(!app.canvas_change_focused_height(2), "cannot grow past the scope");
+        assert!(
+            !app.canvas_change_focused_height(2),
+            "cannot grow past the scope"
+        );
         // Shrink works (6 → 4), then growing back is capped at the 6-line scope —
         // never beyond, so the navigate box and edit viewport stay equal.
         assert!(app.canvas_change_focused_height(-2));
-        assert_eq!(app.canvas().unwrap().block(id).unwrap().height_rows, Some(4));
+        assert_eq!(
+            app.canvas().unwrap().block(id).unwrap().height_rows,
+            Some(4)
+        );
         for _ in 0..20 {
             app.canvas_change_focused_height(2);
         }
@@ -1545,13 +1659,19 @@ mod tests {
     #[test]
     fn edit_session_window_preserves_scope_snapshot_range() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_canvas_scope_edit_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
         let bar = dir.join("bar.rs");
         std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
-        let body = (0..20).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let body = (0..20)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         std::fs::write(&bar, body).unwrap();
 
         let mut app = AppState::new(foo.clone());
@@ -1564,9 +1684,11 @@ mod tests {
             text: "line 5\nline 6\nline 7".into(),
             spans: Vec::new(),
         };
-        app.canvas_add_relations(vec![
-            (BlockRelation::Definition, origin_at(bar.to_string_lossy().as_ref(), 5), scope_snap),
-        ]);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            origin_at(bar.to_string_lossy().as_ref(), 5),
+            scope_snap,
+        )]);
 
         assert!(app.canvas_begin_edit());
         let block = app.canvas_edit_session_block().unwrap();
@@ -1596,7 +1718,10 @@ mod tests {
         for _ in 0..40 {
             app.canvas_change_focused_height(-2);
         }
-        assert_eq!(app.canvas().unwrap().block(focused).unwrap().height_rows, Some(CARD_MIN_LINES));
+        assert_eq!(
+            app.canvas().unwrap().block(focused).unwrap().height_rows,
+            Some(CARD_MIN_LINES)
+        );
         assert!(!app.canvas_change_focused_height(-2)); // already at MIN -> false
         // Climbing can reveal the WHOLE 40-line snapshot (past the 30 plateau).
         for _ in 0..40 {
@@ -1627,7 +1752,10 @@ mod tests {
         // Shift+`+` widens the focused card in place.
         assert!(app.canvas_change_focused_width(80.0));
         let b = app.canvas().unwrap().block(focused).unwrap();
-        assert!((b.world.w - (w0 + 80.0)).abs() < 1e-3, "width grows by the step");
+        assert!(
+            (b.world.w - (w0 + 80.0)).abs() < 1e-3,
+            "width grows by the step"
+        );
         assert_eq!((b.world.x, b.world.y), (x0, y0), "top-left stays fixed");
         assert!(
             app.canvas().unwrap().user_arranged,
@@ -1637,7 +1765,10 @@ mod tests {
         for _ in 0..50 {
             app.canvas_change_focused_width(-80.0);
         }
-        assert!(!app.canvas_change_focused_width(-80.0), "no-op at min width");
+        assert!(
+            !app.canvas_change_focused_width(-80.0),
+            "no-op at min width"
+        );
     }
 
     #[test]
@@ -1645,14 +1776,25 @@ mod tests {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(5)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(5)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(5),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(5),
+            ),
         ]);
         let focused = app.canvas().unwrap().focused.unwrap();
         // Hand-place a card → freezes auto-arrange (a plain auto-arrange no-ops).
         assert!(app.canvas_move_focused(333.0, 222.0));
         assert!(app.canvas().unwrap().user_arranged);
-        assert!(!app.canvas_auto_arrange(VH), "plain auto-arrange respects the lock");
+        assert!(
+            !app.canvas_auto_arrange(VH),
+            "plain auto-arrange respects the lock"
+        );
         let moved = {
             let b = app.canvas().unwrap().block(focused).unwrap();
             (b.world.x, b.world.y)
@@ -1663,7 +1805,10 @@ mod tests {
             let b = app.canvas().unwrap().block(focused).unwrap();
             (b.world.x, b.world.y)
         };
-        assert_ne!(after, moved, "force arrange must re-position the moved card");
+        assert_ne!(
+            after, moved,
+            "force arrange must re-position the moved card"
+        );
     }
 
     #[test]
@@ -1682,14 +1827,23 @@ mod tests {
         // A card spawned FROM that card (in-card gd/gr) records its parent and
         // steals focus to the new card.
         app.canvas_add_relations_with_parent(
-            vec![(BlockRelation::Definition, origin_at("/p/b.rs", 20), snap("b"), None)],
+            vec![(
+                BlockRelation::Definition,
+                origin_at("/p/b.rs", 20),
+                snap("b"),
+                None,
+            )],
             Some(parent),
         );
         let c = app.canvas().unwrap();
         let focused = c.focused.unwrap();
         assert_ne!(focused, parent, "focus jumps to the spawned card");
         let new_block = c.block(focused).unwrap();
-        assert_eq!(new_block.parent, Some(parent), "new card records its parent");
+        assert_eq!(
+            new_block.parent,
+            Some(parent),
+            "new card records its parent"
+        );
         assert_eq!(new_block.origin.lsp_line, 20);
     }
 
@@ -1709,7 +1863,10 @@ mod tests {
         // Focused on the focal anchor → nothing to open as a tab.
         assert_eq!(app.canvas_focused_card_origin(), None);
         // Focal file = the gc-origin file; editor shows it → focal position available.
-        assert_eq!(app.canvas_focal_file().as_deref(), Some(focal_file.as_path()));
+        assert_eq!(
+            app.canvas_focal_file().as_deref(),
+            Some(focal_file.as_path())
+        );
         assert!(app.canvas_focal_position().is_some());
 
         // A relation card is focused → it is openable as a tab.
@@ -1718,7 +1875,9 @@ mod tests {
             origin_at("/p/a.rs", 10),
             snap("a"),
         )]);
-        let card = app.canvas_focused_card_origin().expect("focused card origin");
+        let card = app
+            .canvas_focused_card_origin()
+            .expect("focused card origin");
         assert_eq!(card.path, std::path::PathBuf::from("/p/a.rs"));
         assert_eq!(card.lsp_line, 10);
 
@@ -1739,7 +1898,10 @@ mod tests {
 
         assert!(app.open_canvas(VW, VH, LH));
         // Editor is on the focal (gc-origin) file → render.
-        assert_eq!(app.canvas_focal_file().as_deref(), Some(focal_file.as_path()));
+        assert_eq!(
+            app.canvas_focal_file().as_deref(),
+            Some(focal_file.as_path())
+        );
         assert!(app.canvas_should_render());
 
         // Stashed (a card opened as a tab via `o`) → never render; un-stash restores.
@@ -1761,7 +1923,10 @@ mod tests {
     #[test]
     fn end_edit_for_spawn_leaves_editcard_so_focus_lands_on_child() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_spawn_focus_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -1796,11 +1961,19 @@ mod tests {
 
         // In-card gd/gr spawns a child card (focus jumps to it in canvas state).
         app.canvas_add_relations_with_parent(
-            vec![(BlockRelation::Definition, origin_at("/p/child.rs", 20), snap("child"), None)],
+            vec![(
+                BlockRelation::Definition,
+                origin_at("/p/child.rs", 20),
+                snap("child"),
+                None,
+            )],
             Some(parent),
         );
         let child = app.canvas().unwrap().focused.unwrap();
-        assert_ne!(child, parent, "focus jumps to the spawned child in canvas state");
+        assert_ne!(
+            child, parent,
+            "focus jumps to the spawned child in canvas state"
+        );
 
         // Guard: a non-matching parent (user moved on) must NOT end the edit.
         assert!(!app.canvas_end_edit_for_spawn(child));
@@ -1851,7 +2024,11 @@ mod tests {
             .collect();
         xs.sort_unstable();
         xs.dedup();
-        assert!(xs.len() >= 2, "cards should wrap into >= 2 columns, got {} columns", xs.len());
+        assert!(
+            xs.len() >= 2,
+            "cards should wrap into >= 2 columns, got {} columns",
+            xs.len()
+        );
         // No vertical overlap within the first column.
         let col0 = xs[0];
         let mut col0_cards: Vec<(f32, f32)> = c
@@ -1898,13 +2075,25 @@ mod tests {
             .collect();
         // Column 0 (the FIRST-spawned cards) is the RIGHTMOST column, pinned at
         // base_x; no card ever sits to the right of it (nothing spills off-screen).
-        let rightmost = cards.iter().map(|b| b.world.x).fold(f32::NEG_INFINITY, f32::max);
-        assert!((rightmost - base_x).abs() < 1e-3, "column 0 must pin to base_x (right edge)");
+        let rightmost = cards
+            .iter()
+            .map(|b| b.world.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            (rightmost - base_x).abs() < 1e-3,
+            "column 0 must pin to base_x (right edge)"
+        );
         // The first relation card lives in that rightmost column.
-        assert!((cards[0].world.x - base_x).abs() < 1e-3, "first card is in the right column");
+        assert!(
+            (cards[0].world.x - base_x).abs() < 1e-3,
+            "first card is in the right column"
+        );
         // Overflow wrapped INWARD: at least one column sits LEFT of base_x, and
         // none to the right.
-        assert!(cards.iter().any(|b| b.world.x < base_x - 1.0), "overflow must wrap left");
+        assert!(
+            cards.iter().any(|b| b.world.x < base_x - 1.0),
+            "overflow must wrap left"
+        );
         assert!(
             cards.iter().all(|b| b.world.x <= base_x + 1.0),
             "no column may grow right past base_x (off-screen)"
@@ -1916,8 +2105,16 @@ mod tests {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(6)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(6)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(6),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(6),
+            ),
         ]);
         app.canvas_auto_arrange(VH);
         // Pane occupies [pane_top, pane_top+pane_h] of an 800px-tall window.
@@ -1933,7 +2130,10 @@ mod tests {
             .map(|b| b.world.x + b.world.w)
             .fold(f32::NEG_INFINITY, f32::max);
         let (rx, _) = cam.world_to_screen_point(right, 0.0);
-        assert!((rx - view_w * 0.95).abs() < 1.0, "right edge ~5% off the window right");
+        assert!(
+            (rx - view_w * 0.95).abs() < 1.0,
+            "right edge ~5% off the window right"
+        );
         // Topmost card sits ~5% of pane height below the pane's top — inside it.
         let top = c
             .blocks
@@ -1942,7 +2142,10 @@ mod tests {
             .map(|b| b.world.y)
             .fold(f32::INFINITY, f32::min);
         let (_, ty) = cam.world_to_screen_point(0.0, top);
-        assert!((ty - (pane_top + pane_h * 0.05)).abs() < 1.0, "top card just below the pane top");
+        assert!(
+            (ty - (pane_top + pane_h * 0.05)).abs() < 1.0,
+            "top card just below the pane top"
+        );
     }
 
     #[test]
@@ -1953,8 +2156,16 @@ mod tests {
         // The focal anchor never animates.
         assert_eq!(app.canvas().unwrap().blocks[0].spawned_at, None);
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(4)),
-            (BlockRelation::Caller, origin_at("/p/b.rs", 20), snap_lines(4)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(4),
+            ),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/b.rs", 20),
+                snap_lines(4),
+            ),
         ]);
         // Freshly-spawned relation cards carry a spawn timestamp.
         let spawned_at = {
@@ -1964,22 +2175,36 @@ mod tests {
                 .iter()
                 .filter(|b| b.relation != BlockRelation::Focal)
                 .collect();
-            assert!(rels.iter().all(|b| b.spawned_at.is_some()), "relation cards animate on spawn");
+            assert!(
+                rels.iter().all(|b| b.spawned_at.is_some()),
+                "relation cards animate on spawn"
+            );
             rels[0].spawned_at.unwrap()
         };
         let dur = Duration::from_millis(crate::canvas::CARD_SPAWN_MS);
         // Mid-animation: still revealing (the loop keeps requesting frames).
         assert!(app.canvas_tick_spawn_anim(spawned_at + dur / 2, dur));
         assert!(
-            app.canvas().unwrap().blocks.iter().any(|b| b.spawned_at.is_some()),
+            app.canvas()
+                .unwrap()
+                .blocks
+                .iter()
+                .any(|b| b.spawned_at.is_some()),
             "cards still mid-reveal keep their timer"
         );
         // Past the window (a hair beyond, since the two cards carry near-but-not-
         // equal stamps): one settling frame, then all timers are cleared.
         let past = spawned_at + dur + Duration::from_millis(10);
-        assert!(app.canvas_tick_spawn_anim(past, dur), "settling frame still redraws");
         assert!(
-            app.canvas().unwrap().blocks.iter().all(|b| b.spawned_at.is_none()),
+            app.canvas_tick_spawn_anim(past, dur),
+            "settling frame still redraws"
+        );
+        assert!(
+            app.canvas()
+                .unwrap()
+                .blocks
+                .iter()
+                .all(|b| b.spawned_at.is_none()),
             "settled cards drop their timer (full height)"
         );
         // Nothing left to animate → no more frames requested.
@@ -1989,7 +2214,10 @@ mod tests {
     #[test]
     fn edit_card_round_trip_keeps_main_editor_on_origin() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_canvas_edit_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -2049,7 +2277,10 @@ mod tests {
     #[test]
     fn reentering_clean_card_edit_restores_last_cursor_position() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_canvas_cursor_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -2100,7 +2331,10 @@ mod tests {
     #[test]
     fn card_lsp_target_only_for_a_card_we_must_register() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_card_lsp_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -2143,7 +2377,10 @@ mod tests {
     #[test]
     fn card_lsp_target_is_none_when_file_already_open() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_card_lsp_open_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -2186,7 +2423,10 @@ mod tests {
     #[test]
     fn card_completion_context_extracts_identifier_prefix() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_card_ctx_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -2214,8 +2454,7 @@ mod tests {
 
         // Line 0 = "fn helper() {"; cursor at col 5 → identifier prefix "he",
         // starting at col 3.
-        let (line, col, start, prefix) =
-            app.canvas_edit_session_completion_context().expect("ctx");
+        let (line, col, start, prefix) = app.canvas_edit_session_completion_context().expect("ctx");
         assert_eq!(line, 0);
         assert_eq!(col, 5);
         assert_eq!(start, 3);
@@ -2227,7 +2466,10 @@ mod tests {
     #[test]
     fn card_edit_swap_isolates_main_buffer_and_saves_card_file() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_canvas_swap_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let foo = dir.join("foo.rs");
@@ -2272,20 +2514,45 @@ mod tests {
         app.put_canvas_edit_session(session);
 
         // The MAIN buffer + cursor are byte-for-byte unchanged.
-        assert_eq!(app.text_string(), main_before, "card edit must not touch the main buffer");
-        assert_eq!(app.cursor_char_idx(), main_cursor_before, "main cursor unmoved");
+        assert_eq!(
+            app.text_string(),
+            main_before,
+            "card edit must not touch the main buffer"
+        );
+        assert_eq!(
+            app.cursor_char_idx(),
+            main_cursor_before,
+            "main cursor unmoved"
+        );
         // The MAIN editor's folds, jump list, and search query survive the card
         // edit (would be cleared/overwritten if these weren't in the scoped swap).
-        assert_eq!(app.folded_ranges, vec![(0, 1)], "card edit must not clear the main editor's folds");
-        assert_eq!(app.jump_back_stack, vec![(foo.clone(), 5, 2)], "main jump list preserved");
-        assert_eq!(app.last_search_query, "needle", "main search query preserved");
+        assert_eq!(
+            app.folded_ranges,
+            vec![(0, 1)],
+            "card edit must not clear the main editor's folds"
+        );
+        assert_eq!(
+            app.jump_back_stack,
+            vec![(foo.clone(), 5, 2)],
+            "main jump list preserved"
+        );
+        assert_eq!(
+            app.last_search_query, "needle",
+            "main search query preserved"
+        );
 
         // ⌘S in the card writes the edit to the CARD file (not the main file).
         assert!(app.canvas_save_edit_session());
         let bar_after = std::fs::read_to_string(&bar).unwrap();
-        assert!(bar_after.starts_with('Z'), "card save writes the edit to the card file: {bar_after:?}");
+        assert!(
+            bar_after.starts_with('Z'),
+            "card save writes the edit to the card file: {bar_after:?}"
+        );
         let foo_after = std::fs::read_to_string(&foo).unwrap();
-        assert_eq!(foo_after, main_before, "the origin file on disk is untouched");
+        assert_eq!(
+            foo_after, main_before,
+            "the origin file on disk is untouched"
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -2387,8 +2654,16 @@ mod tests {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
         app.canvas_add_relations(vec![
-            (BlockRelation::Caller, origin_at("/p/a.rs", 10), snap_lines(4)),
-            (BlockRelation::Callee, origin_at("/p/b.rs", 20), snap_lines(4)),
+            (
+                BlockRelation::Caller,
+                origin_at("/p/a.rs", 10),
+                snap_lines(4),
+            ),
+            (
+                BlockRelation::Callee,
+                origin_at("/p/b.rs", 20),
+                snap_lines(4),
+            ),
         ]);
         let ids: Vec<_> = app
             .canvas()

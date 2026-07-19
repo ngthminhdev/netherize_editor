@@ -692,7 +692,10 @@ impl UiConfig {
                 let fb = fallback.animation;
                 AnimationConfig {
                     enabled: raw.animation.enabled.unwrap_or(fb.enabled),
-                    dock_duration_ms: raw.animation.dock_duration_ms.unwrap_or(fb.dock_duration_ms),
+                    dock_duration_ms: raw
+                        .animation
+                        .dock_duration_ms
+                        .unwrap_or(fb.dock_duration_ms),
                     overlay_duration_ms: raw
                         .animation
                         .overlay_duration_ms
@@ -1262,9 +1265,18 @@ mod animation_config_tests {
     #[test]
     fn motion_scroll_duration_for_buckets() {
         let m = UiConfig::builtin().motion;
-        assert_eq!(m.scroll_duration_for(1.0), std::time::Duration::from_millis(80));
-        assert_eq!(m.scroll_duration_for(15.0), std::time::Duration::from_millis(120));
-        assert_eq!(m.scroll_duration_for(120.0), std::time::Duration::from_millis(130));
+        assert_eq!(
+            m.scroll_duration_for(1.0),
+            std::time::Duration::from_millis(80)
+        );
+        assert_eq!(
+            m.scroll_duration_for(15.0),
+            std::time::Duration::from_millis(120)
+        );
+        assert_eq!(
+            m.scroll_duration_for(120.0),
+            std::time::Duration::from_millis(130)
+        );
     }
 
     #[test]

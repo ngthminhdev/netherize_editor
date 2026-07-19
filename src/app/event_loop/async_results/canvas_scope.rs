@@ -47,8 +47,14 @@ mod tests {
             name: name.into(),
             kind: kind.into(),
             range: LspRange {
-                start: LspPosition { line: s, character: 0 },
-                end: LspPosition { line: e, character: 0 },
+                start: LspPosition {
+                    line: s,
+                    character: 0,
+                },
+                end: LspPosition {
+                    line: e,
+                    character: 0,
+                },
             },
             ancestors: Vec::new(),
         }
@@ -57,7 +63,11 @@ mod tests {
     #[test]
     fn picks_deepest_enclosing_function_or_method() {
         // class [0..50] contains method [10..20]; line 12 → the method, not the class.
-        let symbols = vec![sym("Class", 0, 50), sym("Method", 10, 20), sym("Function", 30, 40)];
+        let symbols = vec![
+            sym("Class", 0, 50),
+            sym("Method", 10, 20),
+            sym("Function", 30, 40),
+        ];
         let r = enclosing_definition(&symbols, 12).expect("enclosing");
         assert_eq!((r.range.start.line, r.range.end.line), (10, 20));
     }

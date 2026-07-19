@@ -534,8 +534,14 @@ mod tests {
 
     #[test]
     fn recent_projects_passes_vim_mode_label_through() {
-        assert_eq!(recent_projects_vim_mode_status(Some("NORMAL")), Some("NORMAL"));
-        assert_eq!(recent_projects_vim_mode_status(Some("INSERT")), Some("INSERT"));
+        assert_eq!(
+            recent_projects_vim_mode_status(Some("NORMAL")),
+            Some("NORMAL")
+        );
+        assert_eq!(
+            recent_projects_vim_mode_status(Some("INSERT")),
+            Some("INSERT")
+        );
         assert_eq!(recent_projects_vim_mode_status(None), None);
     }
 }

@@ -1317,7 +1317,11 @@ impl CommandPalette {
             cyan_color: theme.ui.cyan.as_f32(),
             amber_color: theme.ui.amber.as_f32(),
             item_tones: self.results.iter().map(|entry| entry.tone).collect(),
-            item_icons: self.results.iter().map(|entry| entry.icon.clone()).collect(),
+            item_icons: self
+                .results
+                .iter()
+                .map(|entry| entry.icon.clone())
+                .collect(),
             item_preview_colors: self
                 .results
                 .iter()

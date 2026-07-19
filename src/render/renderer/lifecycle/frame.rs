@@ -97,7 +97,11 @@ impl Renderer {
         // Pointer-hover handle highlight — drawn on top of EVERYTHING (incl.
         // the canvas) so the accent band always sits above dock edges / cards.
         let hover_start = canvas_start + canvas_count;
-        let hover_count = if self.pointer_hover_highlight.is_some() { 1u32 } else { 0u32 };
+        let hover_count = if self.pointer_hover_highlight.is_some() {
+            1u32
+        } else {
+            0u32
+        };
 
         // Build the flat merged Vec (immutable borrows all end here before upload).
         let total = (hover_start + hover_count) as usize;

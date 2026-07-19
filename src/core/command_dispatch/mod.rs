@@ -507,7 +507,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown
         | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),
-        Command::ToggleFold | Command::ToggleFoldAll | Command::ToggleCollapseExpand => session::dispatch(&mut ctx, command),
+        Command::ToggleFold | Command::ToggleFoldAll | Command::ToggleCollapseExpand => {
+            session::dispatch(&mut ctx, command)
+        }
         Command::NewLeetCodeFile => {
             // Open the picker; the AppShell repopulates it with MRU-sorted
             // language items right after this dispatch returns.

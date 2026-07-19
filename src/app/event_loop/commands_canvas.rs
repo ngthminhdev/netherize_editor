@@ -89,7 +89,8 @@ impl AppShell {
                 if reflowed {
                     let w = self.window_size.width as f32;
                     let (pane_top, pane_h) = self.canvas_pane_metrics();
-                    self.app_state.canvas_anchor_cards_right(w, pane_top, pane_h);
+                    self.app_state
+                        .canvas_anchor_cards_right(w, pane_top, pane_h);
                 }
                 reflowed
             }
@@ -97,17 +98,19 @@ impl AppShell {
             // `=`/`-`: resize the focused card's HEIGHT (visible rows) in place.
             // Cards already show only their scope, so this is a pure visual resize
             // — it no longer re-sources extra file context.
-            Command::CanvasContextExpand => {
-                self.app_state.canvas_change_focused_height(CANVAS_HEIGHT_STEP)
-            }
-            Command::CanvasContextShrink => {
-                self.app_state.canvas_change_focused_height(-CANVAS_HEIGHT_STEP)
-            }
+            Command::CanvasContextExpand => self
+                .app_state
+                .canvas_change_focused_height(CANVAS_HEIGHT_STEP),
+            Command::CanvasContextShrink => self
+                .app_state
+                .canvas_change_focused_height(-CANVAS_HEIGHT_STEP),
             // Shift+`+`/`-`: widen / narrow the focused card (horizontal clip).
-            Command::CanvasWidthExpand => self.app_state.canvas_change_focused_width(CANVAS_WIDTH_STEP),
-            Command::CanvasWidthShrink => {
-                self.app_state.canvas_change_focused_width(-CANVAS_WIDTH_STEP)
-            }
+            Command::CanvasWidthExpand => self
+                .app_state
+                .canvas_change_focused_width(CANVAS_WIDTH_STEP),
+            Command::CanvasWidthShrink => self
+                .app_state
+                .canvas_change_focused_width(-CANVAS_WIDTH_STEP),
             // hjkl move the focused card; Shift+hjkl pan the camera.
             Command::CanvasMoveLeft => self.app_state.canvas_move_focused(-CANVAS_MOVE_STEP, 0.0),
             Command::CanvasMoveRight => self.app_state.canvas_move_focused(CANVAS_MOVE_STEP, 0.0),
@@ -125,13 +128,13 @@ impl AppShell {
         Some(changed)
     }
 
-
     /// Mouse click on a canvas card: focus it and enter edit (= F8 → Enter), so
     /// keyboard typing goes straight into the card. Clicking a card while editing a
     /// DIFFERENT one closes that one first; clicking the focal anchor (the live
     /// editor's own symbol — not editable in-card) returns focus to the main editor.
     pub(crate) fn focus_canvas_card_for_click(&mut self, id: crate::canvas::BlockId) -> bool {
-        if let Some(CanvasInteraction::EditCard { block, .. }) = self.app_state.canvas_interaction() {
+        if let Some(CanvasInteraction::EditCard { block, .. }) = self.app_state.canvas_interaction()
+        {
             if block == id {
                 return false; // already editing this exact card
             }
@@ -214,7 +217,8 @@ impl AppShell {
             .and_then(|e| e.to_str())
             .unwrap_or_default()
             .to_string();
-        let spans = super::super::async_results::canvas_snapshot_spans(&self.theme, &text, &extension);
+        let spans =
+            super::super::async_results::canvas_snapshot_spans(&self.theme, &text, &extension);
         self.app_state.canvas_update_edit_card(
             block_id,
             start0 as u32 + 1,
@@ -412,16 +416,14 @@ impl AppShell {
             scope.range.end.line,
             scope.name.clone(),
         );
-        if let Some((_o, snap)) =
-            super::async_results::build_canvas_relation_snapshot_range(
-                &self.theme,
-                &active_path,
-                s_start,
-                s_end,
-                col as u32,
-                &s_name,
-            )
-        {
+        if let Some((_o, snap)) = super::async_results::build_canvas_relation_snapshot_range(
+            &self.theme,
+            &active_path,
+            s_start,
+            s_end,
+            col as u32,
+            &s_name,
+        ) {
             self.app_state
                 .canvas_apply_focal_scope(snap, Some((s_start, s_end)));
         }

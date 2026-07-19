@@ -1,4 +1,7 @@
-use std::{path::PathBuf, time::{Duration, Instant}};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
@@ -1199,8 +1202,7 @@ fn repeated_j_in_palette_normal_dispatches_vim_input() {
 
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context =
-        KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    let mut context = KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
     context.palette_vim_mode = Some(PaletteVimMode::Normal);
 
     let repeated =
@@ -1224,8 +1226,7 @@ fn repeated_k_in_palette_normal_dispatches_vim_input() {
 
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context =
-        KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    let mut context = KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
     context.palette_vim_mode = Some(PaletteVimMode::Normal);
 
     let repeated =
@@ -2356,7 +2357,10 @@ fn canvas_navigate_enter_edits_and_esc_backgrounds() {
     );
     // First Esc pushes the canvas to the background (does NOT close it).
     assert_eq!(
-        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        map.translate(
+            &named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+            context
+        ),
         Some(Command::CanvasEnterBackground),
     );
 }
@@ -2373,7 +2377,10 @@ fn canvas_edit_card_normal_esc_exits_edit() {
         cursor_col: 0,
     });
     assert_eq!(
-        map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context),
+        map.translate(
+            &named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+            context
+        ),
         Some(Command::CanvasExitEdit),
     );
 }
@@ -2389,7 +2396,10 @@ fn canvas_edit_card_insert_esc_falls_through_to_editor() {
         cursor_line: 3,
         cursor_col: 0,
     });
-    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context);
+    let cmd = map.translate(
+        &named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+        context,
+    );
     assert_ne!(cmd, Some(Command::CanvasExitEdit));
     assert_ne!(cmd, Some(Command::CanvasClose));
 }
@@ -2405,9 +2415,16 @@ fn canvas_background_normal_esc_keeps_normal_editor_meaning() {
     // closed with F8/F10, not Esc.
     let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
     context.canvas_interaction = Some(CanvasInteraction::Background);
-    let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), context);
+    let cmd = map.translate(
+        &named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+        context,
+    );
     assert_eq!(cmd, Some(Command::ClearSearchHighlights));
-    assert_ne!(cmd, Some(Command::CanvasClose), "Esc must not close the floating canvas");
+    assert_ne!(
+        cmd,
+        Some(Command::CanvasClose),
+        "Esc must not close the floating canvas"
+    );
 }
 
 #[test]
@@ -2454,7 +2471,11 @@ fn canvas_open_is_ge_and_gc_is_free_for_comment() {
         t0 + Duration::from_millis(2),
     ) {
         Some(InputRouteOutcome::Dispatch(t)) => {
-            assert_eq!(t.command, Command::ToggleLineComment, "gcc must comment again")
+            assert_eq!(
+                t.command,
+                Command::ToggleLineComment,
+                "gcc must comment again"
+            )
         }
         other => panic!("expected gcc -> ToggleLineComment, got {other:?}"),
     }
@@ -2546,7 +2567,11 @@ fn canvas_does_not_hijack_esc_from_other_panels() {
     let mut ctx = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
     ctx.canvas_interaction = Some(CanvasInteraction::Background);
     let cmd = map.translate(&named_input(NamedKey::Escape, Some(KeyCode::Escape)), ctx);
-    assert_ne!(cmd, Some(Command::CanvasClose), "Esc on a focused panel must not close the canvas");
+    assert_ne!(
+        cmd,
+        Some(Command::CanvasClose),
+        "Esc on a focused panel must not close the canvas"
+    );
     assert_ne!(cmd, Some(Command::CanvasExitEdit));
 
     // S2 with the Explorer focused: Esc must not exit the edit either.
@@ -2569,11 +2594,11 @@ fn canvas_navigate_keys_press_and_hold_repeat() {
     context.canvas_interaction = Some(CanvasInteraction::Navigate);
 
     // Helper: a held key must keep dispatching its canvas command (not stall).
-    let mut held = |input: NormalizedInput, expected: Command| {
-        match handler.route_repeated_normalized_input(input, &map, context) {
-            Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, expected),
-            other => panic!("expected repeated {expected:?}, got {other:?}"),
-        }
+    let mut held = |input: NormalizedInput, expected: Command| match handler
+        .route_repeated_normalized_input(input, &map, context)
+    {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, expected),
+        other => panic!("expected repeated {expected:?}, got {other:?}"),
     };
 
     // hjkl glide the focused card.
@@ -2588,8 +2613,17 @@ fn canvas_navigate_keys_press_and_hold_repeat() {
     };
     held(shift_h, Command::CanvasPanLeft);
     // Arrows sweep focus between cards.
-    held(named_input(NamedKey::ArrowDown, None), Command::CanvasFocusDown);
+    held(
+        named_input(NamedKey::ArrowDown, None),
+        Command::CanvasFocusDown,
+    );
     // `+`/`-` ramp the focused card's context.
-    held(char_input('+', KeyCode::Equal), Command::CanvasContextExpand);
-    held(char_input('-', KeyCode::Minus), Command::CanvasContextShrink);
+    held(
+        char_input('+', KeyCode::Equal),
+        Command::CanvasContextExpand,
+    );
+    held(
+        char_input('-', KeyCode::Minus),
+        Command::CanvasContextShrink,
+    );
 }

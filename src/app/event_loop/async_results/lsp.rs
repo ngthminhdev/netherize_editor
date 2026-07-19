@@ -584,7 +584,11 @@ pub(super) fn handle_lsp_result(
             }
             app.request_redraw();
         }
-        WorkerResultPayload::CanvasCardScopeResult { card_id, uri, symbols } => {
+        WorkerResultPayload::CanvasCardScopeResult {
+            card_id,
+            uri,
+            symbols,
+        } => {
             // Progressive scope refine for a spawned def/caller card whose target
             // file wasn't the active file (so symbols weren't cached at spawn).
             // Stale results are harmlessly dropped: `canvas_card_scope_target`
@@ -592,8 +596,7 @@ pub(super) fn handle_lsp_result(
             let Some(path) = lsp_uri_to_path(&uri) else {
                 return;
             };
-            let Some((line, character, _symbol)) =
-                app.app_state.canvas_card_scope_target(card_id)
+            let Some((line, character, _symbol)) = app.app_state.canvas_card_scope_target(card_id)
             else {
                 return;
             };
@@ -609,15 +612,13 @@ pub(super) fn handle_lsp_result(
             };
             // Title the card by the TARGET symbol it lands in, not the canvas's
             // focal symbol (see bug-021).
-            let (s_start, s_end, s_name) =
-                (scope.range.start.line, scope.range.end.line, scope.name.clone());
+            let (s_start, s_end, s_name) = (
+                scope.range.start.line,
+                scope.range.end.line,
+                scope.name.clone(),
+            );
             let Some((_o, snap)) = build_canvas_relation_snapshot_range(
-                &app.theme,
-                &path,
-                s_start,
-                s_end,
-                character,
-                &s_name,
+                &app.theme, &path, s_start, s_end, character, &s_name,
             ) else {
                 return;
             };
@@ -718,8 +719,7 @@ pub(super) fn handle_lsp_result(
                     return;
                 }
                 let language_id = app.app_state.canvas_edit_session_path().and_then(|p| {
-                    crate::lsp::registry::language_profile_for_path(&p)
-                        .map(|pr| pr.key.to_string())
+                    crate::lsp::registry::language_profile_for_path(&p).map(|pr| pr.key.to_string())
                 });
                 let completion = crate::app::app_state::CompletionState::from_lsp_items(
                     items,
@@ -969,7 +969,10 @@ pub(crate) fn build_canvas_relation_snapshot(
         return None;
     }
     let text = lines.join("\n");
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
     let spans = canvas_snapshot_spans(theme, &text, extension);
     let file = path
         .file_name()
@@ -1020,7 +1023,10 @@ pub(crate) fn build_canvas_relation_snapshot_range(
         lines.push(format!("    \u{2026} +{} more", total - MAX_LINES));
     }
     let text = lines.join("\n");
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
     let spans = canvas_snapshot_spans(theme, &text, extension);
     let file = path
         .file_name()
@@ -1056,7 +1062,11 @@ fn attach_canvas_relations(
     parent: Option<crate::canvas::BlockId>,
 ) {
     use crate::canvas::BlockRelation;
-    let cap = if relation == BlockRelation::Caller { 6 } else { 1 };
+    let cap = if relation == BlockRelation::Caller {
+        6
+    } else {
+        1
+    };
     let context = app.app_state.canvas_context_lines();
     // Snapshot the ids present before the spawn so we can identify the newly-added
     // cards (for progressive scope resolution) without poking the private next_id.
@@ -1101,14 +1111,9 @@ fn attach_canvas_relations(
             }
         }
         // Fallback: ±N window (will be refined async for uncached files).
-        if let Some((origin, snapshot)) = build_canvas_relation_snapshot(
-            &app.theme,
-            &path,
-            loc.line,
-            loc.character,
-            "",
-            context,
-        ) {
+        if let Some((origin, snapshot)) =
+            build_canvas_relation_snapshot(&app.theme, &path, loc.line, loc.character, "", context)
+        {
             rels.push((relation, origin, snapshot, None));
         }
     }
@@ -1175,12 +1180,7 @@ fn attach_canvas_relations(
                         scope.name.clone(),
                     );
                     if let Some((_o, snap)) = build_canvas_relation_snapshot_range(
-                        &app.theme,
-                        &path,
-                        s_start,
-                        s_end,
-                        character,
-                        &s_name,
+                        &app.theme, &path, s_start, s_end, character, &s_name,
                     ) {
                         app.app_state
                             .canvas_apply_card_scope(id, snap, Some((s_start, s_end)));
@@ -1194,10 +1194,7 @@ fn attach_canvas_relations(
                 app.submit(RequestSpec {
                     revision_id: 0,
                     topic: RequestTopic::LspRequest,
-                    payload: WorkerRequestPayload::CanvasCardScopeRequest {
-                        card_id: id,
-                        uri,
-                    },
+                    payload: WorkerRequestPayload::CanvasCardScopeRequest { card_id: id, uri },
                 });
             }
         }
@@ -1343,11 +1340,17 @@ mod tests {
     #[test]
     fn snapshot_range_reads_exact_lines_and_clamps() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("netherize_scope_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("a.rs");
-        let body = (0..100).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        let body = (0..100)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         std::fs::write(&f, body).unwrap();
 
         let theme = crate::config::theme_config::ThemeConfig::builtin_dark();
@@ -1357,7 +1360,10 @@ mod tests {
         assert_eq!(snap.start_line, 11); // 1-based
         let n = snap.text.split('\n').count();
         assert!(n <= 61, "clamped to <=60 lines + marker, got {n}");
-        assert!(snap.text.contains("+") && snap.text.contains("more"), "has +N more marker");
+        assert!(
+            snap.text.contains("+") && snap.text.contains("more"),
+            "has +N more marker"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

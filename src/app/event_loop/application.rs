@@ -345,9 +345,7 @@ impl AppShell {
     /// Cheaper than calling `current_{left,right,bottom}_*_bounds()` separately —
     /// those each recompute the whole layout, so the pointer hover/press paths use
     /// this to avoid three layout computes per `CursorMoved`.
-    fn current_dock_bounds(
-        &self,
-    ) -> (Option<[f32; 4]>, Option<[f32; 4]>, Option<[f32; 4]>) {
+    fn current_dock_bounds(&self) -> (Option<[f32; 4]>, Option<[f32; 4]>, Option<[f32; 4]>) {
         let layout = self
             .layout_engine
             .compute(self.window_size, &self.panel_state);
@@ -389,8 +387,8 @@ impl AppShell {
     /// canvas card targets; for now it covers panel splitters only.)
     fn begin_pointer_drag(&mut self) -> bool {
         use crate::workbench::pointer_drag::{
-            resolve_press_target, splitter_hit_test, ActiveDrag, DragAnchor, DragTarget,
-            PanelSide, SPLITTER_BAND_PX,
+            ActiveDrag, DragAnchor, DragTarget, PanelSide, SPLITTER_BAND_PX, resolve_press_target,
+            splitter_hit_test,
         };
         let Some(cursor) = self.last_cursor_position else {
             return false;
@@ -451,7 +449,7 @@ impl AppShell {
     /// state changed (and thus a redraw is needed).
     fn update_pointer_drag(&mut self, cursor: (f32, f32)) -> bool {
         use crate::workbench::pointer_drag::{
-            apply_panel_drag, past_deadzone, DragAnchor, DragTarget, PanelSide, DRAG_DEADZONE_PX,
+            DRAG_DEADZONE_PX, DragAnchor, DragTarget, PanelSide, apply_panel_drag, past_deadzone,
         };
         let Some(drag) = self.active_drag else {
             return false;
@@ -492,7 +490,9 @@ impl AppShell {
                 self.app_state.canvas_pointer_move_block(id, wx, wy)
             }
             (DragTarget::CardResize(id, zone), DragAnchor::CardResize) => {
-                use crate::canvas::interaction::{resize_height_rows, resize_width_world, CardZone};
+                use crate::canvas::interaction::{
+                    CardZone, resize_height_rows, resize_width_world,
+                };
                 // Copy out the card's fixed screen top-left + zoom + line height
                 // BEFORE the mutable resize call (ends the immutable borrow).
                 let geom = self.app_state.canvas().and_then(|c| {
@@ -505,9 +505,7 @@ impl AppShell {
                     return false;
                 };
                 let (new_w, new_rows) = match zone {
-                    CardZone::ResizeRight => {
-                        (Some(resize_width_world(sx, cursor.0, zoom)), None)
-                    }
+                    CardZone::ResizeRight => (Some(resize_width_world(sx, cursor.0, zoom)), None),
                     CardZone::ResizeBottom => {
                         (None, Some(resize_height_rows(sy, cursor.1, zoom, line_h)))
                     }
@@ -517,7 +515,8 @@ impl AppShell {
                     ),
                     CardZone::Body => (None, None),
                 };
-                self.app_state.canvas_pointer_resize_block(id, new_w, new_rows)
+                self.app_state
+                    .canvas_pointer_resize_block(id, new_w, new_rows)
             }
             _ => false,
         }
@@ -532,10 +531,10 @@ impl AppShell {
     /// the stored hover target (used for the highlight in the renderer). Returns
     /// whether the hover target changed (so the caller can redraw the highlight).
     fn update_hover_affordance(&mut self, cursor: (f32, f32)) -> bool {
-        use crate::canvas::interaction::{CardZone, CARD_RESIZE_BAND_PX, CARD_RESIZE_CORNER_PX};
+        use crate::canvas::interaction::{CARD_RESIZE_BAND_PX, CARD_RESIZE_CORNER_PX, CardZone};
         use crate::workbench::pointer_drag::{
-            resolve_press_target, splitter_hit_test, DragTarget, HoverTarget, PanelSide,
-            SPLITTER_BAND_PX,
+            DragTarget, HoverTarget, PanelSide, SPLITTER_BAND_PX, resolve_press_target,
+            splitter_hit_test,
         };
         use winit::window::CursorIcon;
 
@@ -753,9 +752,10 @@ impl AppShell {
         let layout = self
             .layout_engine
             .compute(self.window_size, &self.panel_state);
-        let in_center = layout.model.find(RegionId::Center).is_some_and(|b| {
-            x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
-        });
+        let in_center = layout
+            .model
+            .find(RegionId::Center)
+            .is_some_and(|b| x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height);
         if in_center && self.app_state.is_canvas_active() && !self.panel_state.overlay_visible {
             return self.focus_main_editor_from_canvas();
         }
@@ -1763,8 +1763,8 @@ impl AppShell {
     /// Returns `true` when it changed `current_scroll_y` (→ relayout the editor).
     pub(super) fn advance_scroll_anim(&mut self, now: Instant) -> bool {
         use crate::workbench::motion::{
-            clamp_scroll_start, ease_fraction, plan_scroll_retarget, scroll_far_clamp_lines,
-            ScrollRetarget,
+            ScrollRetarget, clamp_scroll_start, ease_fraction, plan_scroll_retarget,
+            scroll_far_clamp_lines,
         };
 
         self.last_scroll_animation_tick = now;
@@ -1837,7 +1837,9 @@ impl AppShell {
         let (frac, done) = ease_fraction(started_at, now, self.scroll_anim_duration, curve);
 
         // Scroll eased in *visual* line space (smooth across folds), back to logical.
-        let v_start = self.app_state.logical_scroll_to_visual(self.scroll_anim_start);
+        let v_start = self
+            .app_state
+            .logical_scroll_to_visual(self.scroll_anim_start);
         let v_target = self.app_state.logical_scroll_to_visual(target);
         let v_value = v_start + (v_target - v_start) * frac;
         let value = self.app_state.visual_scroll_to_logical(v_value);
@@ -2039,14 +2041,17 @@ impl AppShell {
         if let Some(tr) = &self.panel_transition {
             tr.sample(now)
         } else {
-            self.layout_engine.compute(self.window_size, &self.panel_state)
+            self.layout_engine
+                .compute(self.window_size, &self.panel_state)
         }
     }
 
     /// Capture the current on-screen layout as `from`, compute the new target as
     /// `to`, and install a transition (or snap instantly if animations are off).
     pub(super) fn begin_layout_transition(&mut self, now: Instant) {
-        let to = self.layout_engine.compute(self.window_size, &self.panel_state);
+        let to = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
         let anim = self.ui_config.animation;
         if !anim.enabled {
             self.panel_transition = None;
@@ -3270,7 +3275,12 @@ impl AppShell {
             // `gc`) shows it again.
             let render_canvas = self.app_state.canvas_should_render();
             if let Some(canvas) = self.app_state.canvas().filter(|_| render_canvas) {
-                renderer.update_canvas_content(canvas, canvas_mode, card_completion, canvas_pending);
+                renderer.update_canvas_content(
+                    canvas,
+                    canvas_mode,
+                    card_completion,
+                    canvas_pending,
+                );
             } else {
                 renderer.clear_canvas();
             }

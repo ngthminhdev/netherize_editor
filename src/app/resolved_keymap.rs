@@ -952,7 +952,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         MOVE_WORD_BACKWARD,
     );
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyE), MOVE_WORD_END);
-    km.insert(Some("terminal_normal"), ph(KeyCode::KeyT), TOGGLE_COLLAPSE_EXPAND);
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyT),
+        TOGGLE_COLLAPSE_EXPAND,
+    );
     km.insert(
         Some("terminal_normal"),
         ph(KeyCode::Digit0),

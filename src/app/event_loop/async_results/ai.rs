@@ -134,13 +134,10 @@ pub(super) fn handle_ai_result(app: &mut AppShell, payload: WorkerResultPayload)
             // the typed prefix must be unchanged AND the user must not have moved
             // the selection (which bumps `current_revision`). Otherwise drop it —
             // a re-rank must never yank a selection the user has already acted on.
-            let still_current = app
-                .app_state
-                .completion()
-                .is_some_and(|completion| {
-                    completion.typed_prefix == prefix_token
-                        && completion.current_revision == completion_revision
-                });
+            let still_current = app.app_state.completion().is_some_and(|completion| {
+                completion.typed_prefix == prefix_token
+                    && completion.current_revision == completion_revision
+            });
             if !still_current {
                 return;
             }

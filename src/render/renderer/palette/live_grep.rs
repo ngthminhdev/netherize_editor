@@ -17,9 +17,9 @@ use super::super::{
     },
 };
 use super::{
+    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
     palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
     render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
-    PaletteFooterAction, PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
 };
 
 struct LiveGrepGroupHeaderParts {

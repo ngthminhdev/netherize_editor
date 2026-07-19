@@ -212,8 +212,7 @@ pub(super) async fn execute_ai_rerank_request(
     let content = extract_non_streaming_suggestion(&json);
     // Keep only labels the server actually proposed: the model is instructed not
     // to invent, but a defensive filter guarantees membership can never change.
-    let allowed: std::collections::HashSet<&str> =
-        candidates.iter().map(String::as_str).collect();
+    let allowed: std::collections::HashSet<&str> = candidates.iter().map(String::as_str).collect();
     let ranked = parse_rerank_response(&content)
         .into_iter()
         .filter(|label| allowed.contains(label.as_str()))

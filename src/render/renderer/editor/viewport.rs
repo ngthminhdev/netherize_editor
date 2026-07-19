@@ -10,7 +10,8 @@ use crate::{
     config::theme_config::{ThemeConfig, linear_rgba_to_srgb_u8},
     core::mode::EditorMode,
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance,
+        glyph_instance::GlyphInstance,
+        region_pipeline::RegionDrawInstance,
         renderer::{MinimapLayout, Renderer},
     },
     text::layout_sync::{
@@ -714,8 +715,11 @@ impl Renderer {
         app_state.canvas_focal_position().map(|(fl, fc)| {
             let folds = app_state.folded_ranges();
             let cursor_line = app_state.cursor_line_col().0;
-            let visual_cursor_y =
-                visual_y_for_logical_scroll_with_folds(&self.text_system, cursor_line as f32, folds);
+            let visual_cursor_y = visual_y_for_logical_scroll_with_folds(
+                &self.text_system,
+                cursor_line as f32,
+                folds,
+            );
             let visual_focal_y =
                 visual_y_for_logical_scroll_with_folds(&self.text_system, fl as f32, folds);
             let focal_top = caret_top + (visual_focal_y - visual_cursor_y);

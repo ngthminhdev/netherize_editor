@@ -77,6 +77,28 @@ fn topbar_tab_asset_icon(
     canonical_icon_id(raw)
 }
 
+fn topbar_visible_tab_x(
+    positions: &[f32],
+    idx: usize,
+    first_visible: usize,
+    tab_start_x: f32,
+) -> f32 {
+    tab_start_x + positions[idx] - positions[first_visible]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visible_tab_x_positions_are_rebased_to_tab_start_when_scrolled() {
+        let positions = vec![100.0, 201.0, 302.0, 403.0];
+
+        assert_eq!(topbar_visible_tab_x(&positions, 2, 2, 100.0), 100.0);
+        assert_eq!(topbar_visible_tab_x(&positions, 3, 2, 100.0), 201.0);
+    }
+}
+
 struct BundledLogo {
     width: u32,
     height: u32,
@@ -335,7 +357,11 @@ impl Renderer {
                 let icon_size = (content_h * 0.72).min(font_size * 1.15);
                 let icon_id = topbar_tab_asset_icon(&tab.kind, &self.theme);
                 let icon_w = icon_id.map(|_| icon_size).unwrap_or(0.0);
-                let icon_gap_eff = if icon_id.is_some() { TOPBAR_TAB_ICON_GAP } else { 0.0 };
+                let icon_gap_eff = if icon_id.is_some() {
+                    TOPBAR_TAB_ICON_GAP
+                } else {
+                    0.0
+                };
                 let content_width = icon_w + icon_gap_eff + label_width + dirty_extra_width;
                 let tab_min_w = bounds[2] * 0.10;
                 let tab_max_w = bounds[2] * 0.15;
@@ -361,7 +387,9 @@ impl Renderer {
             }
 
             let visible_width = (available_right - tab_x).max(0.0);
-            let active_idx = active_buffer_index.unwrap_or(0).min(tabs.len().saturating_sub(1));
+            let active_idx = active_buffer_index
+                .unwrap_or(0)
+                .min(tabs.len().saturating_sub(1));
             let total_tabs_width = positions
                 .last()
                 .zip(geoms.last())
@@ -391,8 +419,8 @@ impl Renderer {
             // clipped out.
             let mut last_visible = tabs.len().saturating_sub(1);
             loop {
-                let used_width = positions[last_visible] + geoms[last_visible].width
-                    - positions[first_visible];
+                let used_width =
+                    positions[last_visible] + geoms[last_visible].width - positions[first_visible];
                 let overflow_count = tabs.len().saturating_sub(last_visible + 1);
                 let indicator_w = if overflow_count > 0 {
                     estimate_monospace_width(&format!("+{overflow_count}"), font_size)
@@ -427,7 +455,7 @@ impl Renderer {
                 let tab = &tabs[idx];
                 let is_active = active_buffer_index == Some(idx);
                 let tab_width = geoms[idx].width;
-                let tab_x = positions[idx];
+                let tab_x = topbar_visible_tab_x(&positions, idx, first_visible, tab_x);
                 let icon_size = geoms[idx].icon_size;
                 let icon_id = geoms[idx].icon_id;
                 let icon_w = icon_id.map(|_| icon_size).unwrap_or(0.0);
@@ -553,7 +581,9 @@ impl Renderer {
             //    sits immediately to its left.
             if overflow_count > 0 {
                 let indicator_x =
-                    positions[last_visible] + geoms[last_visible].width + geoms[last_visible].separator;
+                    topbar_visible_tab_x(&positions, last_visible, first_visible, tab_x)
+                        + geoms[last_visible].width
+                        + geoms[last_visible].separator;
                 let indicator_text_w = estimate_monospace_width(&overflow_label, font_size);
                 let indicator_text_x = indicator_x
                     + ((overflow_width - indicator_text_w) / 2.0).max(TOPBAR_TAB_PADDING_X);

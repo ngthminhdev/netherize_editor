@@ -898,8 +898,7 @@ impl AppShell {
             // Card completion (Phase 3 in-card LSP) uses a separate menu state, so
             // the keymap must treat completion as visible for either one to route
             // Tab/Enter/Ctrl-n-p to CompletionAccept/Next/Prev.
-            completion_visible: self.app_state.has_completion()
-                || self.canvas_completion.is_some(),
+            completion_visible: self.app_state.has_completion() || self.canvas_completion.is_some(),
             inline_suggestion_visible: self.app_state.inline_suggestion().is_some(),
             hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),

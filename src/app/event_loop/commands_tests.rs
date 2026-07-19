@@ -82,13 +82,14 @@ fn move_to_first_line_uses_viewport_layout_path() {
 #[test]
 fn canvas_open_toggles_off_when_canvas_has_navigation_focus() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let path = std::env::temp_dir().join(format!(
-        "netherize_canvas_toggle_{}.rs",
-        std::process::id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("netherize_canvas_toggle_{}.rs", std::process::id()));
     std::fs::write(&path, "fn main() {}\n").expect("write canvas fixture");
     shell.app_state = AppState::new(path.clone());
-    shell.app_state.open_file(path.clone()).expect("open canvas fixture");
+    shell
+        .app_state
+        .open_file(path.clone())
+        .expect("open canvas fixture");
     let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
     assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
     assert_eq!(
@@ -116,7 +117,10 @@ fn closing_last_relation_card_closes_canvas() {
     ));
     std::fs::write(&path, "fn main() {}\n").expect("write canvas fixture");
     shell.app_state = AppState::new(path.clone());
-    shell.app_state.open_file(path.clone()).expect("open canvas fixture");
+    shell
+        .app_state
+        .open_file(path.clone())
+        .expect("open canvas fixture");
     let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
     assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
 
@@ -198,13 +202,14 @@ fn f8_on_a_different_file_opens_fresh_canvas_here_not_old_focal() {
 #[test]
 fn canvas_definition_defers_until_lsp_ready_instead_of_loading_forever() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let path = std::env::temp_dir().join(format!(
-        "netherize_canvas_defer_{}.rs",
-        std::process::id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("netherize_canvas_defer_{}.rs", std::process::id()));
     std::fs::write(&path, "fn main() {}\n").expect("write canvas fixture");
     shell.app_state = AppState::new(path.clone());
-    shell.app_state.open_file(path.clone()).expect("open canvas fixture");
+    shell
+        .app_state
+        .open_file(path.clone())
+        .expect("open canvas fixture");
     let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
     assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
 
@@ -287,7 +292,10 @@ fn background_canvas_with_stashed_session_lets_main_editor_move() {
     // `j` in the Background must move the MAIN editor, not the hidden card.
     assert!(shell.handle_command(Command::MoveDown));
     let (line_after, _) = shell.app_state.cursor_line_col();
-    assert_eq!(line_after, 1, "main editor cursor must advance — not the card");
+    assert_eq!(
+        line_after, 1,
+        "main editor cursor must advance — not the card"
+    );
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -300,8 +308,8 @@ fn shell_with_background_canvas_card() -> (AppShell, std::path::PathBuf, crate::
     // one test's teardown `remove_dir_all` can't yank files out from under another.
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir()
-        .join(format!("netherize_canvas_click_{}_{n}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("netherize_canvas_click_{}_{n}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let foo = dir.join("foo.rs");
     let bar = dir.join("bar.rs");
@@ -385,9 +393,20 @@ fn stale_canvas_completion_accept_never_edits_the_main_buffer() {
 
     let handled = shell.handle_canvas_completion_command(&Command::CompletionAccept);
 
-    assert_eq!(handled, Some(false), "accept is swallowed, not routed to the editor");
-    assert!(shell.canvas_completion.is_none(), "stale completion dropped");
-    assert_eq!(shell.app_state.text_string(), before, "main buffer untouched");
+    assert_eq!(
+        handled,
+        Some(false),
+        "accept is swallowed, not routed to the editor"
+    );
+    assert!(
+        shell.canvas_completion.is_none(),
+        "stale completion dropped"
+    );
+    assert_eq!(
+        shell.app_state.text_string(),
+        before,
+        "main buffer untouched"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1095,8 +1114,7 @@ fn clicking_focused_bottom_terminal_restores_terminal_mode_after_drift() {
     let bounds = shell
         .current_bottom_panel_bounds()
         .expect("bottom panel bounds");
-    shell.last_cursor_position =
-        Some((bounds[0] + bounds[2] * 0.5, bounds[1] + bounds[3] * 0.75));
+    shell.last_cursor_position = Some((bounds[0] + bounds[2] * 0.5, bounds[1] + bounds[3] * 0.75));
     shell.handle_click_focus();
 
     assert_eq!(

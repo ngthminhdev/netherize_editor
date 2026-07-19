@@ -1,8 +1,8 @@
 //! Pure pointer hit-testing and resize math for canvas cards. No GPU/winit.
 
 use crate::canvas::model::{
-    BlockId, BlockRelation, CanvasBlock, Camera, CARD_BOTTOM_LINES, CARD_HEADER_LINES,
-    CARD_MIN_LINES,
+    BlockId, BlockRelation, CARD_BOTTOM_LINES, CARD_HEADER_LINES, CARD_MIN_LINES, Camera,
+    CanvasBlock,
 };
 
 /// Screen-pixel thickness of a card's right/bottom resize bands.
@@ -86,7 +86,7 @@ pub fn resize_height_rows(card_screen_y: f32, cursor_y: f32, zoom: f32, line_h: 
 mod tests {
     use super::*;
     use crate::canvas::model::{
-        BlockId, BlockOrigin, BlockRelation, BlockSnapshot, CanvasBlock, Camera, WorldRect,
+        BlockId, BlockOrigin, BlockRelation, BlockSnapshot, Camera, CanvasBlock, WorldRect,
     };
     use std::path::PathBuf;
 
@@ -116,7 +116,11 @@ mod tests {
     #[test]
     fn body_hit_is_inside_rect() {
         let cam = Camera::default(); // zoom 1, offset 0 → world == screen
-        let blocks = vec![card(1, BlockRelation::Caller, WorldRect::new(0.0, 0.0, 100.0, 100.0))];
+        let blocks = vec![card(
+            1,
+            BlockRelation::Caller,
+            WorldRect::new(0.0, 0.0, 100.0, 100.0),
+        )];
         assert_eq!(
             card_pointer_hit_test(&blocks, &cam, (50.0, 50.0)),
             Some((1, CardZone::Body))
@@ -126,7 +130,11 @@ mod tests {
     #[test]
     fn corner_beats_edges() {
         let cam = Camera::default();
-        let blocks = vec![card(1, BlockRelation::Caller, WorldRect::new(0.0, 0.0, 100.0, 100.0))];
+        let blocks = vec![card(
+            1,
+            BlockRelation::Caller,
+            WorldRect::new(0.0, 0.0, 100.0, 100.0),
+        )];
         // bottom-right corner zone
         assert_eq!(
             card_pointer_hit_test(&blocks, &cam, (98.0, 98.0)),
@@ -137,7 +145,11 @@ mod tests {
     #[test]
     fn right_and_bottom_edges() {
         let cam = Camera::default();
-        let blocks = vec![card(1, BlockRelation::Caller, WorldRect::new(0.0, 0.0, 100.0, 100.0))];
+        let blocks = vec![card(
+            1,
+            BlockRelation::Caller,
+            WorldRect::new(0.0, 0.0, 100.0, 100.0),
+        )];
         assert_eq!(
             card_pointer_hit_test(&blocks, &cam, (98.0, 50.0)),
             Some((1, CardZone::ResizeRight))
@@ -152,8 +164,16 @@ mod tests {
     fn miss_returns_none_and_focal_is_skipped() {
         let cam = Camera::default();
         let blocks = vec![
-            card(1, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 100.0, 100.0)),
-            card(2, BlockRelation::Caller, WorldRect::new(200.0, 200.0, 50.0, 50.0)),
+            card(
+                1,
+                BlockRelation::Focal,
+                WorldRect::new(0.0, 0.0, 100.0, 100.0),
+            ),
+            card(
+                2,
+                BlockRelation::Caller,
+                WorldRect::new(200.0, 200.0, 50.0, 50.0),
+            ),
         ];
         // Inside the focal rect → skipped (focal is never a draggable card).
         assert_eq!(card_pointer_hit_test(&blocks, &cam, (50.0, 50.0)), None);
@@ -170,8 +190,16 @@ mod tests {
     fn topmost_card_wins_on_overlap() {
         let cam = Camera::default();
         let blocks = vec![
-            card(1, BlockRelation::Caller, WorldRect::new(0.0, 0.0, 100.0, 100.0)),
-            card(2, BlockRelation::Callee, WorldRect::new(50.0, 50.0, 100.0, 100.0)),
+            card(
+                1,
+                BlockRelation::Caller,
+                WorldRect::new(0.0, 0.0, 100.0, 100.0),
+            ),
+            card(
+                2,
+                BlockRelation::Callee,
+                WorldRect::new(50.0, 50.0, 100.0, 100.0),
+            ),
         ];
         // Overlap region (60,60): the later block (id 2, drawn on top) wins.
         assert_eq!(
@@ -188,7 +216,11 @@ mod tests {
             zoom: 2.0,
         };
         // World rect 0..50 → screen 0..100 at zoom 2.
-        let blocks = vec![card(1, BlockRelation::Caller, WorldRect::new(0.0, 0.0, 50.0, 50.0))];
+        let blocks = vec![card(
+            1,
+            BlockRelation::Caller,
+            WorldRect::new(0.0, 0.0, 50.0, 50.0),
+        )];
         assert_eq!(
             card_pointer_hit_test(&blocks, &cam, (40.0, 40.0)),
             Some((1, CardZone::Body))

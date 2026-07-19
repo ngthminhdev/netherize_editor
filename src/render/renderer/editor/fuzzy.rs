@@ -12,7 +12,7 @@ use crate::{
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance,
-        icon_pipeline::{canonical_icon_id, IconDrawInstance},
+        icon_pipeline::{IconDrawInstance, canonical_icon_id},
         region_pipeline::RegionDrawInstance,
         renderer::Renderer,
     },
@@ -127,15 +127,24 @@ impl Renderer {
         let (vim_tag, vim_color): (&str, Option<[f32; 4]>) = match editor_mode {
             crate::core::mode::EditorMode::Insert => (
                 mode_display_label(crate::core::mode::EditorMode::Insert),
-                Some(mode_pill_color(crate::core::mode::EditorMode::Insert, &self.theme)),
+                Some(mode_pill_color(
+                    crate::core::mode::EditorMode::Insert,
+                    &self.theme,
+                )),
             ),
             crate::core::mode::EditorMode::Normal => (
                 mode_display_label(crate::core::mode::EditorMode::Normal),
-                Some(mode_pill_color(crate::core::mode::EditorMode::Normal, &self.theme)),
+                Some(mode_pill_color(
+                    crate::core::mode::EditorMode::Normal,
+                    &self.theme,
+                )),
             ),
             crate::core::mode::EditorMode::Visual | crate::core::mode::EditorMode::VisualBlock => (
                 mode_display_label(crate::core::mode::EditorMode::Visual),
-                Some(mode_pill_color(crate::core::mode::EditorMode::Visual, &self.theme)),
+                Some(mode_pill_color(
+                    crate::core::mode::EditorMode::Visual,
+                    &self.theme,
+                )),
             ),
             _ => ("", None),
         };
@@ -496,11 +505,7 @@ impl Renderer {
                         format!("{} {}", indicator, file_name)
                     };
                     glyphs.extend(layout_panel_text_bold(
-                        &clamp_monospace_text(
-                            &header_label,
-                            left_text_width * 0.50,
-                            font_size,
-                        ),
+                        &clamp_monospace_text(&header_label, left_text_width * 0.50, font_size),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,

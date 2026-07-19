@@ -170,11 +170,17 @@ impl Default for Camera {
 
 impl Camera {
     pub fn world_to_screen_point(&self, wx: f32, wy: f32) -> (f32, f32) {
-        ((wx - self.offset_x) * self.zoom, (wy - self.offset_y) * self.zoom)
+        (
+            (wx - self.offset_x) * self.zoom,
+            (wy - self.offset_y) * self.zoom,
+        )
     }
 
     pub fn screen_to_world_point(&self, sx: f32, sy: f32) -> (f32, f32) {
-        (sx / self.zoom + self.offset_x, sy / self.zoom + self.offset_y)
+        (
+            sx / self.zoom + self.offset_x,
+            sy / self.zoom + self.offset_y,
+        )
     }
 
     /// Project a world rect to a screen rect `[x, y, w, h]` (pixels).
@@ -340,8 +346,11 @@ impl CanvasState {
         let Some(from) = self.block(from_id).map(|b| b.world.center()) else {
             return false;
         };
-        let centers: Vec<(BlockId, (f32, f32))> =
-            self.blocks.iter().map(|b| (b.id, b.world.center())).collect();
+        let centers: Vec<(BlockId, (f32, f32))> = self
+            .blocks
+            .iter()
+            .map(|b| (b.id, b.world.center()))
+            .collect();
         match navigation::nearest_in_direction(&centers, from, from_id, dir) {
             Some(target) => self.focus(target),
             None => false,
@@ -548,7 +557,11 @@ mod tests {
     fn toggle_pin_blocks_move_focused() {
         let mut st = CanvasState::new();
         let id = st.alloc_id();
-        st.push(block(id, BlockRelation::Caller, WorldRect::new(10.0, 10.0, 5.0, 5.0)));
+        st.push(block(
+            id,
+            BlockRelation::Caller,
+            WorldRect::new(10.0, 10.0, 5.0, 5.0),
+        ));
         // Unpinned: move works.
         assert!(st.move_focused(4.0, -2.0));
         assert_eq!(st.block(id).unwrap().world.x, 14.0);
@@ -568,11 +581,23 @@ mod tests {
     fn close_focused_removes_relation_and_refocuses_but_not_focal() {
         let mut st = CanvasState::new();
         let focal = st.alloc_id();
-        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            focal,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 5.0, 5.0),
+        ));
         let a = st.alloc_id();
-        st.push(block(a, BlockRelation::Caller, WorldRect::new(20.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            a,
+            BlockRelation::Caller,
+            WorldRect::new(20.0, 0.0, 5.0, 5.0),
+        ));
         let b = st.alloc_id();
-        st.push(block(b, BlockRelation::Caller, WorldRect::new(20.0, 20.0, 5.0, 5.0)));
+        st.push(block(
+            b,
+            BlockRelation::Caller,
+            WorldRect::new(20.0, 20.0, 5.0, 5.0),
+        ));
         st.focus(a);
         assert!(st.close_focused());
         assert!(st.block(a).is_none());
@@ -587,9 +612,17 @@ mod tests {
     fn interaction_state_machine_transitions() {
         let mut st = CanvasState::new();
         let focal = st.alloc_id();
-        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            focal,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 5.0, 5.0),
+        ));
         let a = st.alloc_id();
-        st.push(block(a, BlockRelation::Caller, WorldRect::new(20.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            a,
+            BlockRelation::Caller,
+            WorldRect::new(20.0, 0.0, 5.0, 5.0),
+        ));
         // Default is Navigate.
         assert_eq!(st.interaction, CanvasInteraction::Navigate);
         // S1 → S3 background and back; idempotent at each end.
@@ -624,7 +657,11 @@ mod tests {
     fn cannot_edit_the_focal_anchor() {
         let mut st = CanvasState::new();
         let focal = st.alloc_id();
-        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            focal,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 5.0, 5.0),
+        ));
         st.focus(focal);
         assert!(st.begin_edit().is_none());
         assert_eq!(st.interaction, CanvasInteraction::Navigate);
@@ -634,9 +671,17 @@ mod tests {
     fn focus_navigate_does_not_force_exit_an_edit() {
         let mut st = CanvasState::new();
         let focal = st.alloc_id();
-        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            focal,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 5.0, 5.0),
+        ));
         let a = st.alloc_id();
-        st.push(block(a, BlockRelation::Caller, WorldRect::new(20.0, 0.0, 5.0, 5.0)));
+        st.push(block(
+            a,
+            BlockRelation::Caller,
+            WorldRect::new(20.0, 0.0, 5.0, 5.0),
+        ));
         st.focus(a);
         st.begin_edit().unwrap();
         // gc (focus_navigate) must NOT yank you out of an active edit.
@@ -691,9 +736,17 @@ mod tests {
     fn first_pushed_block_takes_focus() {
         let mut st = CanvasState::new();
         let id0 = st.alloc_id();
-        st.push(block(id0, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 10.0, 10.0)));
+        st.push(block(
+            id0,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 10.0, 10.0),
+        ));
         let id1 = st.alloc_id();
-        st.push(block(id1, BlockRelation::Caller, WorldRect::new(50.0, 0.0, 10.0, 10.0)));
+        st.push(block(
+            id1,
+            BlockRelation::Caller,
+            WorldRect::new(50.0, 0.0, 10.0, 10.0),
+        ));
         assert_eq!(st.focused, Some(id0));
     }
 
@@ -701,11 +754,23 @@ mod tests {
     fn focus_direction_moves_to_nearest_block() {
         let mut st = CanvasState::new();
         let focal = st.alloc_id();
-        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 20.0, 20.0)));
+        st.push(block(
+            focal,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 20.0, 20.0),
+        ));
         let right = st.alloc_id();
-        st.push(block(right, BlockRelation::Callee, WorldRect::new(100.0, 0.0, 20.0, 20.0)));
+        st.push(block(
+            right,
+            BlockRelation::Callee,
+            WorldRect::new(100.0, 0.0, 20.0, 20.0),
+        ));
         let left = st.alloc_id();
-        st.push(block(left, BlockRelation::Caller, WorldRect::new(-100.0, 0.0, 20.0, 20.0)));
+        st.push(block(
+            left,
+            BlockRelation::Caller,
+            WorldRect::new(-100.0, 0.0, 20.0, 20.0),
+        ));
         assert!(st.focus_direction(Dir::Right));
         assert_eq!(st.focused, Some(right));
         assert!(st.focus_direction(Dir::Left));
@@ -716,11 +781,23 @@ mod tests {
     fn focus_cycle_wraps() {
         let mut st = CanvasState::new();
         let focal = st.alloc_id();
-        st.push(block(focal, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 10.0, 10.0)));
+        st.push(block(
+            focal,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 10.0, 10.0),
+        ));
         let a = st.alloc_id();
-        st.push(block(a, BlockRelation::Caller, WorldRect::new(40.0, 0.0, 10.0, 10.0)));
+        st.push(block(
+            a,
+            BlockRelation::Caller,
+            WorldRect::new(40.0, 0.0, 10.0, 10.0),
+        ));
         let b = st.alloc_id();
-        st.push(block(b, BlockRelation::Callee, WorldRect::new(80.0, 0.0, 10.0, 10.0)));
+        st.push(block(
+            b,
+            BlockRelation::Callee,
+            WorldRect::new(80.0, 0.0, 10.0, 10.0),
+        ));
         st.focus(a);
         assert!(st.focus_cycle(true));
         assert_eq!(st.focused, Some(b));
@@ -732,9 +809,21 @@ mod tests {
     #[test]
     fn focus_cycle_skips_focal_block() {
         let mut st = CanvasState::default();
-        let focal = st.push(block(1, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 20.0, 20.0)));
-        let c1 = st.push(block(2, BlockRelation::Caller, WorldRect::new(100.0, 0.0, 20.0, 20.0)));
-        let c2 = st.push(block(3, BlockRelation::Callee, WorldRect::new(100.0, 40.0, 20.0, 20.0)));
+        let focal = st.push(block(
+            1,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 20.0, 20.0),
+        ));
+        let c1 = st.push(block(
+            2,
+            BlockRelation::Caller,
+            WorldRect::new(100.0, 0.0, 20.0, 20.0),
+        ));
+        let c2 = st.push(block(
+            3,
+            BlockRelation::Callee,
+            WorldRect::new(100.0, 40.0, 20.0, 20.0),
+        ));
 
         st.focus(c1);
         assert!(st.focus_cycle(true));
@@ -752,7 +841,11 @@ mod tests {
     #[test]
     fn focus_cycle_focal_only_is_noop() {
         let mut st = CanvasState::default();
-        st.push(block(1, BlockRelation::Focal, WorldRect::new(0.0, 0.0, 20.0, 20.0)));
+        st.push(block(
+            1,
+            BlockRelation::Focal,
+            WorldRect::new(0.0, 0.0, 20.0, 20.0),
+        ));
         assert!(!st.focus_cycle(true));
     }
 }

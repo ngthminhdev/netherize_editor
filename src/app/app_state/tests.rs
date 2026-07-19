@@ -1788,9 +1788,7 @@ mod tests {
         fuzzy.results = vec![
             CommandPaletteItem::search_match(
                 "src/games/arcade/result/model-builder/2998/type-arcade-2998.ts".to_string(),
-                Some(
-                    "src/games/arcade/result/model-builder/2998/type-arcade-2998.ts".to_string(),
-                ),
+                Some("src/games/arcade/result/model-builder/2998/type-arcade-2998.ts".to_string()),
                 path.clone(),
                 149,
                 1,
@@ -2692,13 +2690,21 @@ mod tests {
         st.set_target_scroll_line(10);
         st.snap_current_scroll_to_target();
         st.auto_scroll_to_cursor(viewport);
-        assert_eq!(st.scroll_line(), 10, "cursor inside the margin must not scroll");
+        assert_eq!(
+            st.scroll_line(),
+            10,
+            "cursor inside the margin must not scroll"
+        );
         // Cursor one line past the bottom margin → advance by exactly one line.
         st.jump_to_line_and_column(47, 0);
         st.set_target_scroll_line(10);
         st.snap_current_scroll_to_target();
         st.auto_scroll_to_cursor(viewport);
-        assert_eq!(st.scroll_line(), 11, "edge crossing must advance exactly one line");
+        assert_eq!(
+            st.scroll_line(),
+            11,
+            "edge crossing must advance exactly one line"
+        );
     }
 
     #[test]
@@ -2833,7 +2839,8 @@ mod tests {
     #[test]
     fn insert_line_above_matches_current_line_indent() {
         // `O` should land at the current line's indent, not column 0.
-        let mut state = AppState::from_text(unique_temp_path("o_above_indent"), "        logger();");
+        let mut state =
+            AppState::from_text(unique_temp_path("o_above_indent"), "        logger();");
         assert!(state.insert_line_above());
         assert_eq!(state.text_string(), "        \n        logger();");
         assert_eq!(state.cursor_line_col(), (0, 8));

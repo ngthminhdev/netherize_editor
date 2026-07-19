@@ -766,7 +766,10 @@ impl AppState {
         }
         let clamped_line = line_idx.min(self.text.len_lines().saturating_sub(1));
         let line_text = self.text.line(clamped_line).to_string();
-        matches!(line_text.trim_end().chars().next_back(), Some('{' | '(' | '['))
+        matches!(
+            line_text.trim_end().chars().next_back(),
+            Some('{' | '(' | '[')
+        )
     }
 
     /// Indent string of the first non-blank line that follows `line_idx` and is
@@ -2083,7 +2086,11 @@ pub(super) fn build_completion_display_items_with_cache(
     // buries the LSP's context-aware items under workspace-wide noise. Enriched
     // LSP items are unaffected — this only bounds the *extra* entries we add.
     if workspace_items.len() > MAX_STANDALONE_WORKSPACE_COMPLETIONS {
-        workspace_items.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.item.label.cmp(&b.item.label)));
+        workspace_items.sort_by(|a, b| {
+            b.score
+                .cmp(&a.score)
+                .then_with(|| a.item.label.cmp(&b.item.label))
+        });
         workspace_items.truncate(MAX_STANDALONE_WORKSPACE_COMPLETIONS);
     }
 

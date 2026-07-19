@@ -15,9 +15,9 @@ use super::helpers::{
     mode_pill_color,
 };
 use crate::canvas::{BlockRelation, CARD_HEADER_LINES, CARD_SPAWN_MS, CanvasSpan, CanvasState};
-use crate::core::mode::EditorMode;
 use crate::codegraph::edges::elbow;
 use crate::codegraph::layout::PillRect;
+use crate::core::mode::EditorMode;
 use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
 use crate::render::region_pipeline::RegionDrawInstance;
 use crate::text::text_system::StyledTextSpan;
@@ -155,8 +155,10 @@ impl Renderer {
             // Editing a card (v2) does NOT switch the active buffer, so the main
             // editor keeps showing the gc-origin file — it must stay VISIBLE
             // behind the cards (no heavy edit scrim).
-            self.canvas_chrome_instances
-                .push(RegionDrawInstance::new([ax, ay, aw, ah], [0.0, 0.0, 0.0, 0.35]));
+            self.canvas_chrome_instances.push(RegionDrawInstance::new(
+                [ax, ay, aw, ah],
+                [0.0, 0.0, 0.0, 0.35],
+            ));
         }
 
         // ── Connectors: elbow from the editor's focal symbol → each card, drawn
@@ -251,7 +253,8 @@ impl Renderer {
             }
         }
 
-        self.canvas_text_system.set_metrics(Metrics::new(fs, line_height));
+        self.canvas_text_system
+            .set_metrics(Metrics::new(fs, line_height));
         // Shape tabs at a known width so the edit caret's tab-expansion matches.
         self.canvas_text_system.set_tab_width(CARD_TAB_WIDTH as u16);
 
@@ -275,8 +278,7 @@ impl Renderer {
             let sh = match block.spawned_at {
                 Some(t) => {
                     let secs = (CARD_SPAWN_MS as f32 / 1000.0).max(0.001);
-                    let p =
-                        (now.saturating_duration_since(t).as_secs_f32() / secs).clamp(0.0, 1.0);
+                    let p = (now.saturating_duration_since(t).as_secs_f32() / secs).clamp(0.0, 1.0);
                     sh * EaseCurve::EaseOutCubic.apply(p)
                 }
                 None => sh,
@@ -298,15 +300,18 @@ impl Renderer {
             // S3 (background): the editor is primary, so the focused card gets a
             // FLAT, thin dim-cyan border only (no halo lift, no header underline)
             // — just enough to make mouse click-to-focus visible while coding.
-            let bg_focused =
-                background && edit_block.is_none() && canvas.focused == Some(block.id);
+            let bg_focused = background && edit_block.is_none() && canvas.focused == Some(block.id);
             // The card being edited rings in the ACTIVE MODE's color (NORMAL/
             // INSERT/VISUAL); a merely navigation-focused card rings cyan; a
             // background-focused card gets a dim cyan border; the rest are dim.
             // App-global modes (palette/terminal/…) fall back to cyan focus
             // because the card isn't really being edited in those.
             let ring_color = if is_edit_target {
-                if card_mode.is_some() { mode_color } else { border_focus }
+                if card_mode.is_some() {
+                    mode_color
+                } else {
+                    border_focus
+                }
             } else if focused {
                 border_focus
             } else if bg_focused {
@@ -345,7 +350,8 @@ impl Renderer {
             self.canvas_chrome_instances
                 .push(RegionDrawInstance::new([sx, sy, sw, sh], card_bg).with_radius(radius));
             self.canvas_chrome_instances.push(
-                RegionDrawInstance::new([sx, sy, sw, title_h.min(sh)], header_bg).with_radius(radius),
+                RegionDrawInstance::new([sx, sy, sw, title_h.min(sh)], header_bg)
+                    .with_radius(radius),
             );
             self.canvas_chrome_instances.push(RegionDrawInstance::new(
                 [sx, sy + title_h - 1.0, sw, 1.0],
@@ -502,13 +508,22 @@ impl Renderer {
                     .map(|(cl, cc)| {
                         let row = cl as i64 - (block.snapshot.start_line as i64 - 1);
                         let cur_line = if row >= 0 {
-                            block.snapshot.text.split('\n').nth(row as usize).unwrap_or("")
+                            block
+                                .snapshot
+                                .text
+                                .split('\n')
+                                .nth(row as usize)
+                                .unwrap_or("")
                         } else {
                             ""
                         };
                         let mut v = 0usize;
                         for ch in cur_line.chars().take(cc as usize) {
-                            v += if ch == '\t' { CARD_TAB_WIDTH - (v % CARD_TAB_WIDTH) } else { 1 };
+                            v += if ch == '\t' {
+                                CARD_TAB_WIDTH - (v % CARD_TAB_WIDTH)
+                            } else {
+                                1
+                            };
                         }
                         let cursor_vx = v as f32 * char_w;
                         (cursor_vx - (visible_px - char_w * 6.0)).max(0.0)
@@ -526,7 +541,9 @@ impl Renderer {
             // edit-target card the band follows the LIVE caret (the transient
             // edit cursor) — `origin.lsp_line` stays pinned to the source site.
             let band_line = if is_edit_target {
-                edit_cursor.map(|(cl, _)| cl).unwrap_or(block.origin.lsp_line)
+                edit_cursor
+                    .map(|(cl, _)| cl)
+                    .unwrap_or(block.origin.lsp_line)
             } else {
                 block.origin.lsp_line
             };
@@ -654,7 +671,8 @@ impl Renderer {
                 if clipped.is_empty() {
                     continue;
                 }
-                let styled = line_styled_spans(&block.snapshot.spans, line_byte_start, clipped.len());
+                let styled =
+                    line_styled_spans(&block.snapshot.spans, line_byte_start, clipped.len());
                 self.canvas_glyph_instances.extend(
                     layout_panel_rich_text(
                         &clipped,
@@ -678,12 +696,15 @@ impl Renderer {
             //    edit-target card. The cursor row equals the active-line band
             //    (origin.lsp_line tracks the cursor line while editing), so the
             //    caret rides the highlighted line.
-            if is_edit_target
-                && let Some((cl, cc)) = edit_cursor
-            {
+            if is_edit_target && let Some((cl, cc)) = edit_cursor {
                 let row = cl as i64 - (block.snapshot.start_line as i64 - 1);
                 if row >= 0 && (row as usize) < capacity {
-                    let line = block.snapshot.text.split('\n').nth(row as usize).unwrap_or("");
+                    let line = block
+                        .snapshot
+                        .text
+                        .split('\n')
+                        .nth(row as usize)
+                        .unwrap_or("");
                     // Exact caret X: shape the cursor prefix with the SAME text
                     // system + tab width the body uses, so the caret lands on the
                     // glyph under the cursor (handles tabs / proportional drift).
@@ -759,7 +780,8 @@ impl Renderer {
             let t_fs = (ah * 0.022).clamp(15.0, 26.0);
             let s_fs = (t_fs * 0.72).max(12.0);
             let row_gap = t_fs * 0.55;
-            self.canvas_text_system.set_metrics(Metrics::new(t_fs, t_fs * 1.3));
+            self.canvas_text_system
+                .set_metrics(Metrics::new(t_fs, t_fs * 1.3));
             self.canvas_text_system.set_size(None, None);
             let t_w = estimate_monospace_width(title, t_fs);
             let s_w = estimate_monospace_width(subtitle, s_fs);
@@ -783,7 +805,12 @@ impl Renderer {
             let dot = t_fs * 0.34;
             self.canvas_chrome_instances.push(
                 RegionDrawInstance::new(
-                    [box_x + box_pad, box_y + box_pad * 0.8 + (t_fs - dot) * 0.5, dot, dot],
+                    [
+                        box_x + box_pad,
+                        box_y + box_pad * 0.8 + (t_fs - dot) * 0.5,
+                        dot,
+                        dot,
+                    ],
                     accent,
                 )
                 .with_radius(dot * 0.5),
@@ -799,7 +826,8 @@ impl Renderer {
                 t_y,
                 title_fg,
             ));
-            self.canvas_text_system.set_metrics(Metrics::new(s_fs, s_fs * 1.3));
+            self.canvas_text_system
+                .set_metrics(Metrics::new(s_fs, s_fs * 1.3));
             let s_x = box_x + (box_w - s_w) * 0.5;
             let s_y = t_y + t_fs * 1.3 + row_gap;
             self.canvas_glyph_instances.extend(layout_panel_text(
@@ -924,9 +952,11 @@ impl Renderer {
         let popup_glyph_start = self.canvas_glyph_instances.len();
         let mut popup_rect: Option<[f32; 4]> = None;
         if let (Some(anchor), Some(lines)) = (overlay_anchor, canvas.card_hover.as_ref()) {
-            popup_rect = self.draw_card_hover(lines, anchor, fs, line_height, char_w, [wx, wy, ww, wh]);
+            popup_rect =
+                self.draw_card_hover(lines, anchor, fs, line_height, char_w, [wx, wy, ww, wh]);
         }
-        if let (Some([caret_x, below_y, _, _]), Some(completion)) = (overlay_anchor, card_completion)
+        if let (Some([caret_x, below_y, _, _]), Some(completion)) =
+            (overlay_anchor, card_completion)
         {
             use super::editor::completion::{
                 CompletionMenuGeom, MenuRenderTargets, draw_completion_menu,
@@ -968,12 +998,18 @@ impl Renderer {
             self.canvas_glyph_instances.extend(popup_glyphs);
         }
 
-        self.canvas_text_pipeline
-            .upload_instances(&self.device, &self.queue, &self.canvas_glyph_instances);
+        self.canvas_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.canvas_glyph_instances,
+        );
         self.canvas_icon_pipeline.upload_instances(
             &self.device,
             &self.canvas_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
     }
 
@@ -1016,7 +1052,12 @@ impl Renderer {
         if rows.is_empty() {
             return None;
         }
-        let widest = rows.iter().map(|t| t.chars().count()).max().unwrap_or(0).max(8);
+        let widest = rows
+            .iter()
+            .map(|t| t.chars().count())
+            .max()
+            .unwrap_or(0)
+            .max(8);
         let box_w = (widest as f32 * char_w + pad * 2.0).min(aw * 0.7).max(60.0);
         let box_h = rows.len() as f32 * line_height + pad * 2.0;
 
@@ -1033,8 +1074,9 @@ impl Renderer {
             )
             .with_radius(radius + 1.0),
         );
-        self.canvas_chrome_instances
-            .push(RegionDrawInstance::new([box_x, box_y, box_w, box_h], popup_bg).with_radius(radius));
+        self.canvas_chrome_instances.push(
+            RegionDrawInstance::new([box_x, box_y, box_w, box_h], popup_bg).with_radius(radius),
+        );
 
         let text_x = box_x + pad;
         for (i, text) in rows.iter().enumerate() {
@@ -1064,12 +1106,18 @@ impl Renderer {
         self.canvas_chrome_instances.clear();
         self.canvas_glyph_instances.clear();
         self.canvas_icon_instances.clear();
-        self.canvas_text_pipeline
-            .upload_instances(&self.device, &self.queue, &self.canvas_glyph_instances);
+        self.canvas_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.canvas_glyph_instances,
+        );
         self.canvas_icon_pipeline.upload_instances(
             &self.device,
             &self.canvas_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
     }
 }

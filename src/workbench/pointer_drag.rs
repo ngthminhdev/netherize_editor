@@ -158,9 +158,15 @@ mod tests {
             Some(PanelSide::Left)
         );
         // Outside the band → miss.
-        assert_eq!(splitter_hit_test(left, None, None, 6.0, (200.0, 500.0)), None);
+        assert_eq!(
+            splitter_hit_test(left, None, None, 6.0, (200.0, 500.0)),
+            None
+        );
         // Outside the dock's vertical span → miss.
-        assert_eq!(splitter_hit_test(left, None, None, 6.0, (240.0, 1500.0)), None);
+        assert_eq!(
+            splitter_hit_test(left, None, None, 6.0, (240.0, 1500.0)),
+            None
+        );
     }
 
     #[test]
@@ -194,11 +200,20 @@ mod tests {
     fn apply_panel_drag_directions() {
         let vp = (2000.0, 2000.0);
         // Left grows with +dx.
-        assert_eq!(apply_panel_drag(PanelSide::Left, 240.0, 30.0, 0.0, vp), 270.0);
+        assert_eq!(
+            apply_panel_drag(PanelSide::Left, 240.0, 30.0, 0.0, vp),
+            270.0
+        );
         // Right grows with -dx.
-        assert_eq!(apply_panel_drag(PanelSide::Right, 240.0, 30.0, 0.0, vp), 210.0);
+        assert_eq!(
+            apply_panel_drag(PanelSide::Right, 240.0, 30.0, 0.0, vp),
+            210.0
+        );
         // Bottom grows with -dy.
-        assert_eq!(apply_panel_drag(PanelSide::Bottom, 300.0, 0.0, -50.0, vp), 350.0);
+        assert_eq!(
+            apply_panel_drag(PanelSide::Bottom, 300.0, 0.0, -50.0, vp),
+            350.0
+        );
     }
 
     #[test]

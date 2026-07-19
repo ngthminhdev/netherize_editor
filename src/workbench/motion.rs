@@ -436,17 +436,26 @@ mod tests {
             Duration::from_millis(100),
             EaseCurve::Linear,
         );
-        assert_eq!(tr.sample(t0).model.find(RegionId::Center).unwrap().width, 100.0);
+        assert_eq!(
+            tr.sample(t0).model.find(RegionId::Center).unwrap().width,
+            100.0
+        );
         assert!(!tr.is_done(t0));
         let end = t0 + Duration::from_millis(100);
-        assert_eq!(tr.sample(end).model.find(RegionId::Center).unwrap().width, 60.0);
+        assert_eq!(
+            tr.sample(end).model.find(RegionId::Center).unwrap().width,
+            60.0
+        );
         assert!(tr.is_done(end));
     }
 
     #[test]
     fn lerp_layout_uses_target_shape_when_id_missing() {
         let mut from = layout(100.0);
-        from.model.root.children.retain(|c| c.id == RegionId::Center);
+        from.model
+            .root
+            .children
+            .retain(|c| c.id == RegionId::Center);
         let to = layout(60.0);
         let mid = lerp_layout(&from, &to, 0.5);
         assert_eq!(mid.model.find(RegionId::LeftSidebar).unwrap().width, 40.0);
@@ -489,8 +498,7 @@ mod tests {
         assert!((v1 - 50.0).abs() < 1e-4);
         assert!(d1);
         // Past the end stays done at target.
-        let (v2, d2) =
-            ease_scroll(10.0, 50.0, t0, t0 + dur * 2, dur, EaseCurve::EaseOutCubic);
+        let (v2, d2) = ease_scroll(10.0, 50.0, t0, t0 + dur * 2, dur, EaseCurve::EaseOutCubic);
         assert!((v2 - 50.0).abs() < 1e-4);
         assert!(d2);
     }
@@ -499,7 +507,17 @@ mod tests {
     fn ease_scroll_is_monotonic_ease_out() {
         let t0 = Instant::now();
         let dur = Duration::from_millis(100);
-        let sample = |ms: u64| ease_scroll(0.0, 100.0, t0, t0 + Duration::from_millis(ms), dur, EaseCurve::EaseOutCubic).0;
+        let sample = |ms: u64| {
+            ease_scroll(
+                0.0,
+                100.0,
+                t0,
+                t0 + Duration::from_millis(ms),
+                dur,
+                EaseCurve::EaseOutCubic,
+            )
+            .0
+        };
         let a = sample(10);
         let b = sample(50);
         let c = sample(90);

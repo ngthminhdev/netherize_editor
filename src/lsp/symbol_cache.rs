@@ -701,7 +701,8 @@ pub fn extract_ts_js_exports_from_text(
     let is_declaration_file = file_path.to_str().is_some_and(|path| {
         path.ends_with(".d.ts") || path.ends_with(".d.cts") || path.ends_with(".d.mts")
     });
-    if let Some(default_line) = whole_module_default_line.filter(|_| !has_named_default && !is_declaration_file)
+    if let Some(default_line) =
+        whole_module_default_line.filter(|_| !has_named_default && !is_declaration_file)
     {
         if let Some(default_name) = default_import_name_from_path(file_path) {
             // Skip only if an *importable* same-named symbol already exists. A
@@ -2156,12 +2157,13 @@ module.exports = TelegramClient;
             "const x = 1;\nlet seft = module.exports = exports = {\n  logInfo: () => {},\n  logError: () => {},\n};\n",
         );
         assert!(
+            symbols.iter().any(|symbol| symbol.name == "logger"
+                && symbol.export_kind.as_deref() == Some("default")),
+            "chained module.exports object should be importable by file name; got {:?}",
             symbols
                 .iter()
-                .any(|symbol| symbol.name == "logger"
-                    && symbol.export_kind.as_deref() == Some("default")),
-            "chained module.exports object should be importable by file name; got {:?}",
-            symbols.iter().map(|symbol| &symbol.name).collect::<Vec<_>>()
+                .map(|symbol| &symbol.name)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -2201,7 +2203,8 @@ module.exports = TelegramClient;
         assert!(
             symbols
                 .iter()
-                .any(|symbol| symbol.name == "cache" && symbol.export_kind.as_deref() == Some("default")),
+                .any(|symbol| symbol.name == "cache"
+                    && symbol.export_kind.as_deref() == Some("default")),
             "anonymous ESM default export must be indexed under the file name"
         );
     }
@@ -2210,11 +2213,8 @@ module.exports = TelegramClient;
     fn index_file_default_uses_parent_dir_name() {
         let root = PathBuf::from("/proj");
         let file = root.join("src/store/index.js");
-        let symbols = extract_ts_js_exports_from_text(
-            &file,
-            &root,
-            "module.exports = createStore();\n",
-        );
+        let symbols =
+            extract_ts_js_exports_from_text(&file, &root, "module.exports = createStore();\n");
         assert!(
             symbols.iter().any(|symbol| symbol.name == "store"),
             "index.js whole-module default should be named after its directory"

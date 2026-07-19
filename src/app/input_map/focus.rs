@@ -7,10 +7,7 @@ use crate::app::command_palette::PaletteVimMode;
 impl InputMap {
     /// NetherCanvas: hjkl/arrows move focus between blocks, Tab cycles, Enter
     /// spawns relations, +/- zoom, Esc closes.
-    pub(super) fn resolve_canvas_focus(
-        &self,
-        input: &NormalizedInput,
-    ) -> Option<KeybindingMatch> {
+    pub(super) fn resolve_canvas_focus(&self, input: &NormalizedInput) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
         // `gc`-prefix (a second-stage after `g`+`c`): `gca` = auto-arrange cards.
@@ -145,25 +142,41 @@ impl InputMap {
         let shift = input.modifiers.shift_key();
         if input.physical_key == Some(KeyH) {
             return Some(KeybindingMatch {
-                command: if shift { Command::CanvasPanLeft } else { Command::CanvasMoveLeft },
+                command: if shift {
+                    Command::CanvasPanLeft
+                } else {
+                    Command::CanvasMoveLeft
+                },
                 reason: "canvas: h move card / ⇧ pan left",
             });
         }
         if input.physical_key == Some(KeyL) {
             return Some(KeybindingMatch {
-                command: if shift { Command::CanvasPanRight } else { Command::CanvasMoveRight },
+                command: if shift {
+                    Command::CanvasPanRight
+                } else {
+                    Command::CanvasMoveRight
+                },
                 reason: "canvas: l move card / ⇧ pan right",
             });
         }
         if input.physical_key == Some(KeyK) {
             return Some(KeybindingMatch {
-                command: if shift { Command::CanvasPanUp } else { Command::CanvasMoveUp },
+                command: if shift {
+                    Command::CanvasPanUp
+                } else {
+                    Command::CanvasMoveUp
+                },
                 reason: "canvas: k move card / ⇧ pan up",
             });
         }
         if input.physical_key == Some(KeyJ) {
             return Some(KeybindingMatch {
-                command: if shift { Command::CanvasPanDown } else { Command::CanvasMoveDown },
+                command: if shift {
+                    Command::CanvasPanDown
+                } else {
+                    Command::CanvasMoveDown
+                },
                 reason: "canvas: j move card / ⇧ pan down",
             });
         }

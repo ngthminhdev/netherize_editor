@@ -59,9 +59,14 @@ impl CanvasEditSession {
         let line_start = text.line_to_char(l);
         // Content length excludes the trailing newline so the cursor can't land
         // past the line end.
-        let content_len = text.line(l).len_chars().saturating_sub(
-            if text.line(l).to_string().ends_with('\n') { 1 } else { 0 },
-        );
+        let content_len =
+            text.line(l)
+                .len_chars()
+                .saturating_sub(if text.line(l).to_string().ends_with('\n') {
+                    1
+                } else {
+                    0
+                });
         let clamped_col = col.min(content_len);
         let cursor = (line_start + clamped_col).min(text.len_chars());
         Self {
@@ -96,7 +101,6 @@ impl CanvasEditSession {
             last_search_query: String::new(),
         }
     }
-
 }
 
 impl AppState {
@@ -128,11 +132,20 @@ impl AppState {
         std::mem::swap(&mut self.target_scroll_y, &mut s.target_scroll_y);
         std::mem::swap(&mut self.current_scroll_y, &mut s.current_scroll_y);
         std::mem::swap(&mut self.scroll_column, &mut s.scroll_column);
-        std::mem::swap(&mut self.pending_highlight_edits, &mut s.pending_highlight_edits);
+        std::mem::swap(
+            &mut self.pending_highlight_edits,
+            &mut s.pending_highlight_edits,
+        );
         std::mem::swap(&mut self.search_highlights, &mut s.search_highlights);
         std::mem::swap(&mut self.folded_ranges, &mut s.folded_ranges);
-        std::mem::swap(&mut self.foldable_ranges_cache, &mut s.foldable_ranges_cache);
-        std::mem::swap(&mut self.auto_folded_long_lines, &mut s.auto_folded_long_lines);
+        std::mem::swap(
+            &mut self.foldable_ranges_cache,
+            &mut s.foldable_ranges_cache,
+        );
+        std::mem::swap(
+            &mut self.auto_folded_long_lines,
+            &mut s.auto_folded_long_lines,
+        );
         std::mem::swap(&mut self.matched_bracket_pos, &mut s.matched_bracket_pos);
         std::mem::swap(&mut self.bracket_ripple_pos, &mut s.bracket_ripple_pos);
         std::mem::swap(&mut self.bracket_ripple_start, &mut s.bracket_ripple_start);
@@ -194,7 +207,9 @@ impl AppState {
     /// submit `gd`/`gr` from the card cursor so results spawn new cards.
     pub(crate) fn canvas_edit_session_cursor(&self) -> Option<(usize, usize)> {
         let s = self.canvas_edit_session.as_ref()?;
-        let line = s.text.char_to_line(s.cursor_char_idx.min(s.text.len_chars()));
+        let line = s
+            .text
+            .char_to_line(s.cursor_char_idx.min(s.text.len_chars()));
         let col = s.cursor_char_idx.saturating_sub(s.text.line_to_char(line));
         Some((line, col))
     }
@@ -202,7 +217,9 @@ impl AppState {
     /// The active session's full text — the `didOpen`/`didChange` payload that
     /// registers the card file with the LSP server (Phase 1 in-card LSP).
     pub(crate) fn canvas_edit_session_text(&self) -> Option<String> {
-        self.canvas_edit_session.as_ref().map(|s| s.text.to_string())
+        self.canvas_edit_session
+            .as_ref()
+            .map(|s| s.text.to_string())
     }
 
     /// Completion context at the session cursor: `(cursor_line, cursor_col,
@@ -245,9 +262,10 @@ impl AppState {
         if self.active_file().is_some_and(matches) {
             return None;
         }
-        let already_open_buffer = self.buffers.iter().any(|entry| {
-            matches!(&entry.content, BufferContent::Text(buf) if matches(&buf.path))
-        });
+        let already_open_buffer = self
+            .buffers
+            .iter()
+            .any(|entry| matches!(&entry.content, BufferContent::Text(buf) if matches(&buf.path)));
         if already_open_buffer {
             return None;
         }
@@ -313,7 +331,9 @@ impl AppState {
     ) -> Option<(Vec<String>, usize, usize, usize)> {
         let s = self.canvas_edit_session.as_ref()?;
         let total = s.text.len_lines().max(1);
-        let cursor_line = s.text.char_to_line(s.cursor_char_idx.min(s.text.len_chars()));
+        let cursor_line = s
+            .text
+            .char_to_line(s.cursor_char_idx.min(s.text.len_chars()));
         let line_start = s.text.line_to_char(cursor_line);
         let cursor_col = s.cursor_char_idx.saturating_sub(line_start);
         let start = cursor_line.saturating_sub(context);
@@ -322,7 +342,11 @@ impl AppState {
             .map(|l| {
                 let a = s.text.line_to_char(l);
                 let b = s.text.line_to_char((l + 1).min(total));
-                s.text.slice(a..b).to_string().trim_end_matches('\n').to_string()
+                s.text
+                    .slice(a..b)
+                    .to_string()
+                    .trim_end_matches('\n')
+                    .to_string()
             })
             .collect();
         Some((lines, start, cursor_line, cursor_col))
@@ -371,7 +395,9 @@ impl AppState {
         let state = self.canvas.as_ref()?;
         let block = state.block(block_id)?;
         let total = s.text.len_lines().max(1);
-        let cursor_line = s.text.char_to_line(s.cursor_char_idx.min(s.text.len_chars()));
+        let cursor_line = s
+            .text
+            .char_to_line(s.cursor_char_idx.min(s.text.len_chars()));
         let line_start = s.text.line_to_char(cursor_line);
         let cursor_col = s.cursor_char_idx.saturating_sub(line_start);
 
@@ -412,7 +438,11 @@ impl AppState {
             .map(|l| {
                 let a = s.text.line_to_char(l);
                 let b = s.text.line_to_char((l + 1).min(total));
-                s.text.slice(a..b).to_string().trim_end_matches('\n').to_string()
+                s.text
+                    .slice(a..b)
+                    .to_string()
+                    .trim_end_matches('\n')
+                    .to_string()
             })
             .collect();
         Some((lines, start, cursor_line, cursor_col))
@@ -586,7 +616,11 @@ mod clamp_scope_tests {
         // which still resolves to line 2 (never spills past the scope).
         let clamped = clamp_char_to_line_range(&t, 2, 2, 99);
         assert_eq!(clamped, t.len_chars());
-        assert_eq!(t.char_to_line(clamped), 2, "clamp must keep cursor on line hi");
+        assert_eq!(
+            t.char_to_line(clamped),
+            2,
+            "clamp must keep cursor on line hi"
+        );
     }
 
     #[test]

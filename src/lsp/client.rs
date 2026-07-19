@@ -1033,9 +1033,12 @@ pub async fn spawn_lsp_server(
     // resolves against the same Python the user runs in their terminal (e.g.
     // Homebrew) instead of its own auto-detection, which can pick an old system
     // Python and then mis-resolve imports and the language version.
-    let resolved_interpreter: Option<PathBuf> = interpreter_path
-        .map(Path::to_path_buf)
-        .or_else(|| is_python_server.then(resolve_default_python_interpreter).flatten());
+    let resolved_interpreter: Option<PathBuf> =
+        interpreter_path.map(Path::to_path_buf).or_else(|| {
+            is_python_server
+                .then(resolve_default_python_interpreter)
+                .flatten()
+        });
 
     if let Some(interpreter) = resolved_interpreter {
         let source = if interpreter_path.is_some() {

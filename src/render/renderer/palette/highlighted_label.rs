@@ -10,8 +10,8 @@ use crate::{
 use crate::{config::theme_config::linear_rgba_to_srgb_u8, text::text_system::StyledTextSpan};
 
 use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
+    layout_panel_rich_text, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
 };
 
 impl Renderer {

@@ -61,9 +61,18 @@ mod tests {
             (3, (0.0, 200.0)),  // down
             (4, (-100.0, 0.0)), // left
         ];
-        assert_eq!(nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Right), Some(1));
-        assert_eq!(nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Down), Some(3));
-        assert_eq!(nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Left), Some(4));
+        assert_eq!(
+            nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Right),
+            Some(1)
+        );
+        assert_eq!(
+            nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Down),
+            Some(3)
+        );
+        assert_eq!(
+            nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Left),
+            Some(4)
+        );
         assert_eq!(nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Up), None);
     }
 
@@ -72,7 +81,13 @@ mod tests {
         // A block up-and-slightly-right should NOT be reachable via Right
         // (vertical displacement dominates).
         let centers = [(0, (0.0, 0.0)), (1, (10.0, 200.0))];
-        assert_eq!(nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Right), None);
-        assert_eq!(nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Down), Some(1));
+        assert_eq!(
+            nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Right),
+            None
+        );
+        assert_eq!(
+            nearest_in_direction(&centers, (0.0, 0.0), 0, Dir::Down),
+            Some(1)
+        );
     }
 }

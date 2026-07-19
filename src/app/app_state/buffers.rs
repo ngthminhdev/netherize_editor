@@ -112,7 +112,8 @@ impl AppState {
             return;
         };
         let text = self.text.to_string();
-        let symbols = crate::lsp::extract_ts_js_exports_from_text(saved_path, &workspace_root, &text);
+        let symbols =
+            crate::lsp::extract_ts_js_exports_from_text(saved_path, &workspace_root, &text);
         self.workspace_symbol_cache()
             .upsert_file_symbols(profile.key, saved_path, symbols);
     }

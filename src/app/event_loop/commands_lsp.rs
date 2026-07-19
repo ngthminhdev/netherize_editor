@@ -24,7 +24,6 @@ impl AppShell {
             Command::AiAcceptInline | Command::AiAcceptInlineWord => {
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 if report.state_changed {
-                    
                     self.reconcile_highlight_spans_with_pending_edits();
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = true;
@@ -1192,9 +1191,7 @@ impl AppShell {
     /// `workspace/didChangeConfiguration`).
     pub(super) fn handle_lsp_restart(&mut self) -> bool {
         let Some(desired) = self.desired_lsp_server_for_active_file() else {
-            self.show_transient_toast(
-                "Restart LSP: no language server for this file".to_string(),
-            );
+            self.show_transient_toast("Restart LSP: no language server for this file".to_string());
             return false;
         };
 

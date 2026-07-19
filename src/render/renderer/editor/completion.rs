@@ -145,8 +145,10 @@ pub(crate) fn draw_completion_menu(
         ],
         [0.0, 0.0, 0.0, 0.45],
     ));
-    t.chrome
-        .push(RegionDrawInstance::new([popup_x, popup_y, popup_w, popup_h], border));
+    t.chrome.push(RegionDrawInstance::new(
+        [popup_x, popup_y, popup_w, popup_h],
+        border,
+    ));
     t.chrome.push(RegionDrawInstance::new(
         [popup_x + 1.0, popup_y + 1.0, popup_w - 2.0, popup_h - 2.0],
         bg,
@@ -172,10 +174,14 @@ pub(crate) fn draw_completion_menu(
         let is_selected = item_idx == completion.selected_index;
         let row_y = popup_y + pad_y + row_idx as f32 * row_h;
         if is_selected {
-            t.chrome
-                .push(RegionDrawInstance::new([popup_x, row_y, list_w, row_h0], sel_bg));
-            t.chrome
-                .push(RegionDrawInstance::new([popup_x, row_y, 2.0, row_h0], sel_accent));
+            t.chrome.push(RegionDrawInstance::new(
+                [popup_x, row_y, list_w, row_h0],
+                sel_bg,
+            ));
+            t.chrome.push(RegionDrawInstance::new(
+                [popup_x, row_y, 2.0, row_h0],
+                sel_accent,
+            ));
         }
 
         // Kind badge (rounded chip + icon).
@@ -273,11 +279,12 @@ pub(crate) fn draw_completion_menu(
     if total > visible_rows {
         let sx = popup_x + list_w - scrollbar_w;
         let sy = popup_y + pad_y;
-        t.chrome
-            .push(RegionDrawInstance::new([sx, sy, scrollbar_w, rows_h], border));
+        t.chrome.push(RegionDrawInstance::new(
+            [sx, sy, scrollbar_w, rows_h],
+            border,
+        ));
         let thumb_h = (rows_h * (visible_rows as f32 / total as f32)).max(8.0);
-        let progress =
-            completion.selected_index as f32 / (total.saturating_sub(1).max(1) as f32);
+        let progress = completion.selected_index as f32 / (total.saturating_sub(1).max(1) as f32);
         t.chrome.push(RegionDrawInstance::new(
             [sx, sy + (rows_h - thumb_h) * progress, scrollbar_w, thumb_h],
             sel_accent,
