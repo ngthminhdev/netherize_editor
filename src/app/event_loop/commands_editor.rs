@@ -278,6 +278,7 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        let is_save_command = matches!(&command, Command::SaveFile);
         let should_notify_did_open = matches!(
             &command,
             Command::BufferNext
@@ -381,6 +382,12 @@ impl AppShell {
             let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
             dispatch_command_with_clipboard_count(app_state, command, repeat_count, Some(clipboard))
         };
+        let save_failure_toast = if is_save_command && !report.success {
+            self.show_transient_toast_kind(report.message.clone(), ToastKind::Error);
+            true
+        } else {
+            false
+        };
         self.reconcile_highlight_spans_with_pending_edits();
         if report.success && should_notify_did_open {
             self.close_completion_popup();
@@ -442,7 +449,7 @@ impl AppShell {
             self.ensure_document_symbol_breadcrumbs(true);
         }
 
-        report.request_redraw
+        report.request_redraw || save_failure_toast
     }
 
     pub(super) fn normalize_leap_target(target: char) -> char {

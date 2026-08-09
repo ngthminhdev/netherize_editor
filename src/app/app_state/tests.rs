@@ -1,5 +1,42 @@
 use super::*;
 
+#[test]
+fn opening_a_file_larger_than_the_interactive_limit_is_rejected_before_reading() {
+    let path =
+        std::env::temp_dir().join(format!("netherize-large-file-{}.txt", std::process::id()));
+    let file = std::fs::File::create(&path).expect("create large file fixture");
+    file.set_len(10 * 1024 * 1024 + 1)
+        .expect("make sparse large file fixture");
+    let mut state = AppState::new(PathBuf::new());
+
+    let error = state
+        .open_file(path.clone())
+        .expect_err("large file must be rejected");
+
+    assert!(error.contains("10 MiB"), "unexpected error: {error}");
+    assert!(
+        state.buffers().is_empty(),
+        "a rejected file must not leave a dead tab behind"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn opening_invalid_utf8_reports_the_actual_encoding_error() {
+    let path =
+        std::env::temp_dir().join(format!("netherize-invalid-utf8-{}.txt", std::process::id()));
+    std::fs::write(&path, [0xff, 0xfe, 0xfd]).expect("write invalid UTF-8 fixture");
+    let mut state = AppState::new(PathBuf::new());
+
+    let error = state
+        .open_file(path.clone())
+        .expect_err("invalid UTF-8 must be rejected");
+
+    assert!(error.contains("valid UTF-8"), "unexpected error: {error}");
+    assert!(state.buffers().is_empty());
+    let _ = std::fs::remove_file(path);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -24,6 +61,20 @@ mod tests {
             .expect("clock drift")
             .as_nanos();
         std::env::temp_dir().join(format!("netherize_phase4_{suffix}_{nanos}.txt"))
+    }
+
+    #[test]
+    fn dirty_untitled_text_is_counted_and_recoverable() {
+        let save_path = unique_temp_path("untitled_recovery");
+        let mut state = AppState::from_text(save_path.clone(), "draft");
+        assert!(state.insert_text_at_cursor("!"));
+        assert_eq!(state.active_buffer_index(), None);
+
+        assert_eq!(state.dirty_buffer_count(), 1);
+        let recovery = state.dirty_recovery_buffers();
+        assert_eq!(recovery.len(), 1);
+        assert_eq!(recovery[0].path, save_path);
+        assert_eq!(recovery[0].text.to_string(), "!draft");
     }
     fn make_diagnostic(line: u32, message: &str) -> crate::async_runtime::message::LspDiagnostic {
         use crate::async_runtime::message::{LspDiagnostic, LspPosition, LspRange};
@@ -564,6 +615,39 @@ mod tests {
         assert_eq!(state.text_string(), "alpha\ndirty");
         assert!(state.is_dirty());
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn panic_recovery_snapshot_includes_active_and_inactive_dirty_buffers() {
+        let mut state = AppState::new(unique_temp_path("panic_recovery"));
+        let root = unique_temp_dir("panic_recovery");
+        fs::create_dir_all(&root).expect("create root");
+        let file_a = root.join("a.rs");
+        let file_b = root.join("b.rs");
+        fs::write(&file_a, "alpha").expect("write a");
+        fs::write(&file_b, "beta").expect("write b");
+
+        state.open_file(file_a).expect("open a");
+        state.cursor_char_idx = state.text.len_chars();
+        assert!(state.insert_text_at_cursor("-dirty-a"));
+        state.open_file(file_b).expect("open b");
+        state.cursor_char_idx = state.text.len_chars();
+        assert!(state.insert_text_at_cursor("-dirty-b"));
+
+        let snapshots = state.dirty_recovery_buffers();
+
+        assert_eq!(snapshots.len(), 2);
+        assert!(
+            snapshots
+                .iter()
+                .any(|item| item.text.to_string() == "alpha-dirty-a")
+        );
+        assert!(
+            snapshots
+                .iter()
+                .any(|item| item.text.to_string() == "beta-dirty-b")
+        );
         let _ = fs::remove_dir_all(root);
     }
 

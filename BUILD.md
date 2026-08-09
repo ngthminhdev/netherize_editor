@@ -18,6 +18,11 @@ cargo run --release
 ./scripts/bundle_macos.sh
 ```
 
+The bundler packages the repository config beside the executable without
+overwriting `~/.config/netherize` or legacy user overrides. It also verifies
+that the copied executable hash matches the release binary before signing, then
+verifies the signature before producing the zip, preventing stale local bundles.
+
 **Binary location:** `target/release/netherize_editor`
 
 ### Linux

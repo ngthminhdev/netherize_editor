@@ -163,6 +163,50 @@ fn leader_space_f_f_maps_to_open_file_picker() {
 }
 
 #[test]
+fn leader_r_r_enters_resize_from_outline_right_and_bottom_docks() {
+    let map = make_map();
+    let t0 = Instant::now();
+
+    for focus in [
+        InputFocusContext::Outline,
+        InputFocusContext::Inspector,
+        InputFocusContext::BottomPanel,
+    ] {
+        let mut handler = InputHandler::new();
+        let context = KeybindingContext::with_focus(EditorMode::Normal, focus);
+
+        let start = handler.route_normalized_input(
+            named_input(NamedKey::Space, Some(KeyCode::Space)),
+            &map,
+            context,
+            t0,
+        );
+        assert!(
+            matches!(start, Some(InputRouteOutcome::NoDispatch { .. })),
+            "focus={focus:?}"
+        );
+
+        let follow =
+            handler.route_normalized_input(char_input('r', KeyCode::KeyR), &map, context, t0);
+        assert!(
+            matches!(follow, Some(InputRouteOutcome::NoDispatch { .. })),
+            "focus={focus:?}"
+        );
+
+        let resolved =
+            handler.route_normalized_input(char_input('r', KeyCode::KeyR), &map, context, t0);
+        match resolved {
+            Some(InputRouteOutcome::Dispatch(translated)) => assert_eq!(
+                translated.command,
+                Command::SwitchMode(ModeEvent::EnterResize),
+                "focus={focus:?}"
+            ),
+            other => panic!("focus={focus:?}: expected resize dispatch, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn leader_space_f_w_maps_to_search_in_files() {
     let mut handler = InputHandler::new();
     let map = make_map();

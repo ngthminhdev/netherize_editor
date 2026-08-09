@@ -219,9 +219,12 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
     }
 
     let named = match token.to_ascii_lowercase().as_str() {
-        "escape" => Some(NamedKey::Escape),
+        "esc" | "escape" => Some(NamedKey::Escape),
         "backspace" => Some(NamedKey::Backspace),
+        "delete" => Some(NamedKey::Delete),
         "enter" => Some(NamedKey::Enter),
+        "home" => Some(NamedKey::Home),
+        "end" => Some(NamedKey::End),
         "space" => Some(NamedKey::Space),
         "arrowup" => Some(NamedKey::ArrowUp),
         "arrowdown" => Some(NamedKey::ArrowDown),
@@ -1194,10 +1197,20 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
         ENTER_RESIZE,
     );
-    // Resize mode is reachable from the explorer and terminal too, so panels can
-    // be resized while they hold focus.
+    // Resize mode is reachable from either sidebar, the bottom panel, and the
+    // terminal too, so docks can be resized while they hold focus.
     km.insert_sequence(
         Some("explorer"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
+        ENTER_RESIZE,
+    );
+    km.insert_sequence(
+        Some("inspector"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
+        ENTER_RESIZE,
+    );
+    km.insert_sequence(
+        Some("bottom_panel"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
         ENTER_RESIZE,
     );
@@ -1328,6 +1341,28 @@ pub fn resolve_global_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::keymap_config::KeymapFile;
+
+    #[test]
+    fn default_keymap_has_no_duplicate_bindings_in_the_same_scope() {
+        let keymap: KeymapFile = toml::from_str(include_str!("../../config/keymaps/default.toml"))
+            .expect("default keymap should parse");
+        let mut seen = HashMap::new();
+
+        for binding in keymap.bindings {
+            let sequence = parse_key_sequence(&binding.key)
+                .unwrap_or_else(|| panic!("default keymap has invalid key: {}", binding.key));
+            let scope = binding.mode.map(|mode| mode.to_ascii_lowercase());
+            let identity = (scope.clone(), sequence);
+
+            if let Some(previous) = seen.insert(identity, binding.command.clone()) {
+                panic!(
+                    "default keymap duplicates key {:?} in scope {:?}: {previous} and {}",
+                    binding.key, scope, binding.command
+                );
+            }
+        }
+    }
 
     #[test]
     fn parse_named_keys() {
@@ -1342,6 +1377,16 @@ mod tests {
         assert_eq!(
             parse_key_spec("ArrowUp"),
             Some(KeySpec::Named(NamedKey::ArrowUp))
+        );
+        assert_eq!(
+            parse_key_spec("esc"),
+            Some(KeySpec::Named(NamedKey::Escape))
+        );
+        assert_eq!(parse_key_spec("Home"), Some(KeySpec::Named(NamedKey::Home)));
+        assert_eq!(parse_key_spec("End"), Some(KeySpec::Named(NamedKey::End)));
+        assert_eq!(
+            parse_key_spec("Delete"),
+            Some(KeySpec::Named(NamedKey::Delete))
         );
     }
 

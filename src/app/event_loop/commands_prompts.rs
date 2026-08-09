@@ -74,6 +74,12 @@ impl AppShell {
                     .unwrap_or_else(|| "current buffer".to_string());
                 Some(format!("Save changes to {label} before closing? (y/n)"))
             }
+            PendingConfirmationAction::QuitDirtyBuffers { count } => {
+                let noun = if *count == 1 { "file" } else { "files" };
+                Some(format!(
+                    "Save changes to {count} {noun} before quitting? (y/n)"
+                ))
+            }
             PendingConfirmationAction::ExternalOverwrite { path } => {
                 let label = path
                     .file_name()
@@ -143,6 +149,69 @@ impl AppShell {
             return false;
         }
         true
+    }
+
+    pub(in crate::app::event_loop) fn begin_dirty_window_quit_confirmation(
+        &mut self,
+        count: usize,
+    ) -> bool {
+        if count == 0 {
+            self.exit_requested = true;
+            return true;
+        }
+        self.pending_confirmation = Some(PendingConfirmation {
+            action: PendingConfirmationAction::QuitDirtyBuffers { count },
+            return_focus: self.focus_manager.current(),
+        });
+        let prompt = self.pending_confirmation_prompt().unwrap_or_default();
+        if !self.open_prompt_overlay(CommandPaletteMode::BufferCloseConfirm) {
+            self.pending_confirmation = None;
+            return false;
+        }
+        if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
+            eprintln!("[AppShell] dirty quit confirmation prompt failed: {err}");
+            self.pending_confirmation = None;
+            let _ = self.app_state.close_command_palette();
+            let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            return false;
+        }
+        true
+    }
+
+    fn save_all_dirty_buffers_for_quit(&mut self) -> Result<usize, String> {
+        let mut saved = 0usize;
+        if self.app_state.canvas_edit_session_is_dirty()
+            && self
+                .app_state
+                .canvas_save_edit_session()
+                .map_err(|err| format!("canvas edit: {err}"))?
+        {
+            saved = saved.saturating_add(1);
+        }
+        if self.app_state.active_buffer_index().is_none() && self.app_state.is_dirty() {
+            let _ = self.handle_command(Command::SaveFile);
+            if self.app_state.is_dirty() {
+                return Err("untitled buffer remained dirty after save".to_string());
+            }
+            saved = saved.saturating_add(1);
+        }
+        let buffer_count = self.app_state.buffers().len();
+        for index in 0..buffer_count {
+            if self.app_state.is_dirty() {
+                let _ = self.handle_command(Command::SaveFile);
+                if self.app_state.is_dirty() {
+                    return Err(format!(
+                        "buffer {} remained dirty after save",
+                        index.saturating_add(1)
+                    ));
+                }
+                saved = saved.saturating_add(1);
+            }
+            if buffer_count > 1 {
+                let _ = self.handle_command(Command::BufferNext);
+            }
+        }
+        Ok(saved)
     }
 
     pub(in crate::app::event_loop) fn begin_external_overwrite_confirmation(
@@ -673,6 +742,27 @@ impl AppShell {
                 }
                 changed | self.close_current_buffer_now()
             }
+            PendingConfirmationAction::QuitDirtyBuffers { .. } => {
+                if confirmed {
+                    match self.save_all_dirty_buffers_for_quit() {
+                        Ok(saved_count) => {
+                            if saved_count > 0 {
+                                self.submit_workspace_git_status_refresh();
+                                self.submit_active_buffer_git_baseline_refresh();
+                            }
+                        }
+                        Err(err) => {
+                            self.show_transient_toast_kind(
+                                format!("Quit cancelled\nCould not save: {err}"),
+                                ToastKind::Error,
+                            );
+                            return true;
+                        }
+                    }
+                }
+                self.exit_requested = true;
+                true
+            }
             PendingConfirmationAction::ExternalOverwrite { path } => {
                 let active_matches = self.app_state.active_file().is_some_and(|active| {
                     if active == path.as_path() {
@@ -709,5 +799,12 @@ impl AppShell {
                 changed
             }
         }
+    }
+
+    pub(in crate::app::event_loop) fn cancel_pending_confirmation(&mut self) -> bool {
+        let Some(pending) = self.pending_confirmation.take() else {
+            return false;
+        };
+        self.close_pending_confirmation_overlay(pending.return_focus)
     }
 }

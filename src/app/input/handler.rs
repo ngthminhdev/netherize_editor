@@ -377,15 +377,18 @@ impl InputHandler {
         // can always restore the normal layout regardless of current focus.
         let terminal_raw_focus = context.focus == InputFocusContext::Terminal
             && context.mode == EditorMode::TerminalFocus;
-        let zen_mode_allows_leader = context.zen_mode_active
-            && !terminal_raw_focus
-            && (normalized.named_key == Some(NamedKey::Space)
-                || self.pending_input.as_ref().is_some_and(|pending| {
-                    pending.sequence.as_ref().is_some_and(|sequence| {
-                        sequence.steps.first()
-                            == Some(&crate::app::resolved_keymap::KeySpec::Leader)
-                    })
-                }));
+        let leader_sequence_input = normalized.named_key == Some(NamedKey::Space)
+            || self.pending_input.as_ref().is_some_and(|pending| {
+                pending.sequence.as_ref().is_some_and(|sequence| {
+                    sequence.steps.first() == Some(&crate::app::resolved_keymap::KeySpec::Leader)
+                })
+            });
+        let zen_mode_allows_leader =
+            context.zen_mode_active && !terminal_raw_focus && leader_sequence_input;
+        // Outline is a navigation surface, not a text field. Let its declared
+        // leader chords reach the keymap instead of being swallowed by j/k routing.
+        let outline_allows_leader =
+            context.focus == InputFocusContext::Outline && leader_sequence_input;
 
         // Cmd/Super shortcuts are GUI-global: a chord carrying the command
         // modifier (Cmd on macOS) must trigger its bound command regardless of
@@ -423,7 +426,10 @@ impl InputHandler {
         }
 
         // Outline panel: j/k to move highlights and jump editor cursor, Enter to focus editor.
-        if context.focus == InputFocusContext::Outline && !zen_mode_allows_leader {
+        if context.focus == InputFocusContext::Outline
+            && !zen_mode_allows_leader
+            && !outline_allows_leader
+        {
             return self.route_outline_input(normalized, input_debug, context, now);
         }
 

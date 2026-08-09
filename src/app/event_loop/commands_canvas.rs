@@ -233,12 +233,18 @@ impl AppShell {
     /// the card is not a `self.buffers` slot, so the generic save would corrupt
     /// the main editor's buffer). Returns whether a save happened.
     pub(crate) fn canvas_save_edit_card(&mut self) -> bool {
-        let saved = self.app_state.canvas_save_edit_session();
-        if saved {
-            self.canvas_sync_edit_card();
-            self.request_redraw();
+        match self.app_state.canvas_save_edit_session() {
+            Ok(true) => {
+                self.canvas_sync_edit_card();
+                self.request_redraw();
+                true
+            }
+            Ok(false) => false,
+            Err(err) => {
+                self.show_transient_toast_kind(err, ToastKind::Error);
+                true
+            }
         }
-        saved
     }
 
     /// Run an editor command against the **card's** edit session via a scoped

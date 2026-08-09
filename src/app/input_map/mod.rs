@@ -100,6 +100,7 @@ impl InputFocusContext {
                 | Self::FuzzyPicker
                 | Self::SettingsTab
                 | Self::Outline
+                | Self::BottomPanel
         )
     }
 }
@@ -608,12 +609,16 @@ impl InputMap {
 
     fn command_allowed_in_context(command: &Command, context: KeybindingContext) -> bool {
         if matches!(command, Command::SwitchMode(ModeEvent::EnterResize)) {
-            // Resize mode can be entered while the editor, the explorer, or the
-            // terminal hold focus, so the focused panel can be resized in place.
+            // Resize mode can be entered while the editor, either sidebar, the
+            // bottom panel, or the terminal holds focus, so the focused dock can
+            // be resized in place.
             return matches!(
                 context.focus,
                 InputFocusContext::Editor
                     | InputFocusContext::Explorer
+                    | InputFocusContext::Inspector
+                    | InputFocusContext::BottomPanel
+                    | InputFocusContext::Outline
                     | InputFocusContext::Terminal
             );
         }

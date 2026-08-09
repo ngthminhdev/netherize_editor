@@ -256,7 +256,8 @@ impl AiConfig {
         }
         let text = toml::to_string_pretty(self)
             .map_err(|err| format!("serialize ai config failed: {err}"))?;
-        fs::write(&path, text).map_err(|err| format!("write ai config failed: {err}"))
+        crate::app::persistence::atomic_write(&path, text)
+            .map_err(|err| format!("write ai config failed: {err}"))
     }
 }
 

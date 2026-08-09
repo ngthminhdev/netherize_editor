@@ -95,6 +95,9 @@ pub enum TopbarTabKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TopbarTab {
+    /// Stable identity of the underlying buffer at the time this tab was drawn.
+    /// Mouse hit-testing validates it before dispatching a cached index.
+    pub identity: u64,
     pub label: String,
     pub kind: TopbarTabKind,
     pub is_dirty: bool,
@@ -318,6 +321,7 @@ pub struct Renderer {
     pub(super) topbar_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) topbar_scissor: Option<[u32; 4]>,
     pub(super) topbar_text_batches: Vec<TextScissorBatch>,
+    pub(super) topbar_tab_hitboxes: Vec<(usize, u64, [f32; 4])>,
     pub(super) last_topbar_layout_key: Option<TopbarLayoutKey>,
     pub(super) topbar_logo_image_pipeline: ImagePipeline,
     pub(super) topbar_logo_scissor: Option<[u32; 4]>,

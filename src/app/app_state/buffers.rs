@@ -2,6 +2,68 @@ use super::overlays::load_image_buffer;
 use super::*;
 
 impl AppState {
+    pub fn dirty_buffer_count(&self) -> usize {
+        let active_index = self.active_buffer_index;
+        let tab_buffers = self
+            .buffers
+            .iter()
+            .enumerate()
+            .filter(|(index, buffer)| buffer.is_dirty(Some(*index) == active_index, self.dirty))
+            .count();
+        let untabbed_editor = usize::from(active_index.is_none() && self.dirty);
+        let canvas_session = usize::from(
+            self.canvas_edit_session
+                .as_ref()
+                .is_some_and(CanvasEditSession::is_dirty),
+        );
+        tab_buffers + untabbed_editor + canvas_session
+    }
+
+    pub(crate) fn dirty_recovery_buffers(&self) -> Vec<crate::app::persistence::RecoveryBuffer> {
+        let active_index = self.active_buffer_index;
+        let mut recovery = self
+            .buffers
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let BufferContent::Text(buffer) = &entry.content else {
+                    return None;
+                };
+                let is_active = active_index == Some(index);
+                if !(buffer.dirty || (is_active && self.dirty)) {
+                    return None;
+                }
+                let text = if is_active {
+                    self.text.clone()
+                } else {
+                    buffer.in_memory_text.clone()?
+                };
+                Some(crate::app::persistence::RecoveryBuffer {
+                    path: buffer.path.clone(),
+                    text,
+                })
+            })
+            .collect::<Vec<_>>();
+        if active_index.is_none() && self.dirty {
+            let path = self
+                .active_file
+                .clone()
+                .unwrap_or_else(|| self.default_save_path.clone());
+            recovery.push(crate::app::persistence::RecoveryBuffer {
+                path,
+                text: self.text.clone(),
+            });
+        }
+        if let Some(session) = self
+            .canvas_edit_session
+            .as_ref()
+            .filter(|session| session.is_dirty())
+        {
+            recovery.push(session.recovery_buffer());
+        }
+        recovery
+    }
+
     pub fn open_file(&mut self, path: PathBuf) -> Result<(), String> {
         let canonical_path = path
             .canonicalize()
@@ -23,8 +85,10 @@ impl AppState {
             self.activate_buffer_index(active_idx)?;
             return Ok(());
         }
+        super::overlays::ensure_interactive_text_file_size(&canonical_path)?;
         let language_id = crate::lsp::registry::language_profile_for_path(&canonical_path)
             .map(|profile| profile.language_id.to_string());
+        let mut inserted = false;
         let active_idx = match self
             .buffers
             .iter()
@@ -38,10 +102,16 @@ impl AppState {
                         EditorBuffer::new(canonical_path.clone(), language_id)
                     })),
                 });
+                inserted = true;
                 self.buffers.len().saturating_sub(1)
             }
         };
-        self.activate_buffer_index(active_idx)?;
+        if let Err(err) = self.activate_buffer_index(active_idx) {
+            if inserted {
+                self.buffers.remove(active_idx);
+            }
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -68,7 +138,7 @@ impl AppState {
             .clone()
             .unwrap_or_else(|| self.default_save_path.clone());
 
-        fs::write(&path, self.text.to_string())
+        crate::app::persistence::atomic_write(&path, self.text.to_string())
             .map_err(|err| format!("save file {:?} failed: {err}", path))?;
 
         let canonical_path = path

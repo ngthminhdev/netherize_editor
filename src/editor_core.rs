@@ -501,7 +501,7 @@ impl EditorBuffer {
             .clone()
             .ok_or_else(|| "save failed: active file is not set".to_string())?;
 
-        fs::write(&path, self.text.to_string())
+        crate::app::persistence::atomic_write(&path, self.text.to_string())
             .map_err(|err| format!("save file {:?} failed: {err}", path))?;
         self.file_dirty = false;
         Ok(path)
@@ -509,7 +509,7 @@ impl EditorBuffer {
 
     pub fn save_file_as(&mut self, path: impl AsRef<Path>) -> Result<PathBuf, String> {
         let path = path.as_ref().to_path_buf();
-        fs::write(&path, self.text.to_string())
+        crate::app::persistence::atomic_write(&path, self.text.to_string())
             .map_err(|err| format!("save file {:?} failed: {err}", path))?;
         self.active_file = Some(path.clone());
         self.file_dirty = false;

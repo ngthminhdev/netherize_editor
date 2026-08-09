@@ -20,6 +20,8 @@ impl AppShell {
         scheduler: AsyncScheduler,
         rx: std::sync::mpsc::Receiver<crate::async_runtime::message::WorkerMessage>,
     ) -> Result<Self, String> {
+        #[cfg(target_os = "macos")]
+        super::application::warm_macos_titlebar_preferences();
         let save_path = PathBuf::new();
         let cwd = std::env::current_dir().unwrap_or_default();
         let now = Instant::now();
@@ -154,6 +156,8 @@ impl AppShell {
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
             last_cursor_position: None,
+            last_titlebar_click: None,
+            titlebar_drag_origin: None,
             bottom_terminal_wheel_accum: 0.0,
             right_terminal_wheel_accum: 0.0,
             active_drag: None,
@@ -189,6 +193,9 @@ impl AppShell {
             pending_paste_source_path: None,
             pending_paste_target_dir: None,
             pending_confirmation: None,
+            exit_requested: false,
+            window_geometry_dirty: false,
+            last_window_geometry_change: None,
             workspace_git_branch,
             active_lsp_server: None,
             pending_lsp_server: None,

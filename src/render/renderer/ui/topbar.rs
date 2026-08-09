@@ -56,6 +56,23 @@ const TOPBAR_ACTIVE_BORDER_HEIGHT: f32 = 2.0;
 const TOPBAR_DIRTY_DOT: &str = "●";
 const TOPBAR_TAB_ICON_GAP: f32 = 6.0;
 
+fn macos_traffic_light_space(runtime_scale: f32, bounds_width: f32) -> f32 {
+    (TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS * runtime_scale.max(0.5)).min(bounds_width)
+}
+
+fn topbar_tab_at_position(
+    position: (f32, f32),
+    hitboxes: &[(usize, u64, [f32; 4])],
+) -> Option<(usize, u64)> {
+    hitboxes.iter().find_map(|(index, identity, bounds)| {
+        let inside = position.0 >= bounds[0]
+            && position.0 <= bounds[0] + bounds[2]
+            && position.1 >= bounds[1]
+            && position.1 <= bounds[1] + bounds[3];
+        inside.then_some((*index, *identity))
+    })
+}
+
 fn topbar_tab_asset_icon(
     kind: &TopbarTabKind,
     theme: &crate::config::theme_config::ThemeConfig,
@@ -96,6 +113,31 @@ mod tests {
 
         assert_eq!(topbar_visible_tab_x(&positions, 2, 2, 100.0), 100.0);
         assert_eq!(topbar_visible_tab_x(&positions, 3, 2, 100.0), 201.0);
+    }
+
+    #[test]
+    fn macos_traffic_light_space_scales_with_runtime_scale() {
+        assert_eq!(macos_traffic_light_space(1.0, 900.0), 150.0);
+        assert_eq!(macos_traffic_light_space(2.0, 900.0), 300.0);
+        assert_eq!(macos_traffic_light_space(2.0, 200.0), 200.0);
+    }
+
+    #[test]
+    fn tab_hit_testing_returns_the_rendered_buffer_index() {
+        let hitboxes = vec![
+            (2, 20, [200.0, 0.0, 100.0, 36.0]),
+            (3, 30, [301.0, 0.0, 90.0, 36.0]),
+        ];
+
+        assert_eq!(
+            topbar_tab_at_position((250.0, 18.0), &hitboxes),
+            Some((2, 20))
+        );
+        assert_eq!(
+            topbar_tab_at_position((350.0, 18.0), &hitboxes),
+            Some((3, 30))
+        );
+        assert_eq!(topbar_tab_at_position((100.0, 18.0), &hitboxes), None);
     }
 }
 
@@ -143,6 +185,7 @@ impl Renderer {
             );
             self.topbar_chrome_instances.clear();
             self.topbar_text_batches.clear();
+            self.topbar_tab_hitboxes.clear();
             self.last_topbar_layout_key = None;
             self.topbar_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
@@ -163,6 +206,7 @@ impl Renderer {
         }
 
         self.topbar_scissor = rect_to_scissor(bounds);
+        self.topbar_tab_hitboxes.clear();
 
         let line_h = self.statusbar_line_height;
         let font_size = self.statusbar_font_size;
@@ -198,7 +242,7 @@ impl Renderer {
         let available_right = logo_x - item_gap;
         let dirty_gap = self.topbar_dirty_gap;
         let topbar_start_x = if cfg!(target_os = "macos") {
-            TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS.min(bounds[2])
+            macos_traffic_light_space(self.ui_scale, bounds[2])
         } else {
             0.0
         };
@@ -463,6 +507,11 @@ impl Renderer {
                 let label_width = geoms[idx].label_width;
                 let dirty_extra_width = geoms[idx].dirty_extra_width;
                 let content_width = icon_w + icon_gap_eff + label_width + dirty_extra_width;
+                self.topbar_tab_hitboxes.push((
+                    idx,
+                    tab.identity,
+                    [tab_x, content_y, tab_width, content_h],
+                ));
 
                 if is_active {
                     chrome.push(RegionDrawInstance::new(
@@ -634,5 +683,9 @@ impl Renderer {
         self.topbar_chrome_instances = chrome;
         self.last_topbar_layout_key = Some(layout_key);
         self.topbar_chrome_instances.clone()
+    }
+
+    pub fn topbar_tab_at_position(&self, position: (f32, f32)) -> Option<(usize, u64)> {
+        topbar_tab_at_position(position, &self.topbar_tab_hitboxes)
     }
 }

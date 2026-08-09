@@ -8,7 +8,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use winit::{
     application::ApplicationHandler,
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{Ime, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     window::{Fullscreen, Window, WindowId},
@@ -22,7 +22,10 @@ use crate::{
         command_palette::{CommandPaletteAction, CommandPaletteMode},
         input::{InputHandler, InputRouteOutcome, LeapState},
         input_map::{InputFocusContext, InputMap, KeybindingContext},
-        persistence::AppPersistentState,
+        persistence::{
+            AppPersistentState, WindowGeometry, install_panic_recovery_hook,
+            replace_panic_recovery_snapshot,
+        },
     },
     async_runtime::{
         message::{
@@ -98,6 +101,11 @@ pub struct AppShell {
     right_terminal_needs_layout: bool,
     last_right_terminal_bounds: Option<[f32; 4]>,
     last_cursor_position: Option<(f32, f32)>,
+    /// Previous press in the GPU-drawn titlebar, used to recognize the native
+    /// double-click-to-zoom gesture without treating content clicks as chrome.
+    last_titlebar_click: Option<(Instant, (f32, f32))>,
+    /// A titlebar press that has not yet crossed the native-drag threshold.
+    titlebar_drag_origin: Option<(f32, f32)>,
     /// Fractional mouse-wheel carry for the bottom-dock terminal scrollback.
     /// Wheels (esp. trackpads) emit many sub-line pixel deltas; we scale them
     /// down for gentler scrolling and carry the remainder so slow scrolls still
@@ -158,6 +166,11 @@ pub struct AppShell {
     pending_paste_source_path: Option<PathBuf>,
     pending_paste_target_dir: Option<PathBuf>,
     pending_confirmation: Option<PendingConfirmation>,
+    /// Set after a clean close request or an explicit save/discard response.
+    /// `about_to_wait` performs the actual event-loop exit after state is flushed.
+    exit_requested: bool,
+    window_geometry_dirty: bool,
+    last_window_geometry_change: Option<Instant>,
     workspace_git_branch: Option<String>,
     active_lsp_server: Option<ActiveLspServer>,
     pending_lsp_server: Option<ActiveLspServer>,
@@ -435,6 +448,9 @@ enum PendingConfirmationAction {
     CloseDirtyBuffer {
         path: Option<PathBuf>,
     },
+    QuitDirtyBuffers {
+        count: usize,
+    },
     ExternalOverwrite {
         path: PathBuf,
     },
@@ -586,6 +602,7 @@ impl TerminalTab {
 }
 
 pub fn run() -> Result<(), winit::error::EventLoopError> {
+    install_panic_recovery_hook();
     let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let event_proxy = event_loop.create_proxy();

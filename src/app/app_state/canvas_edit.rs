@@ -16,6 +16,9 @@ pub struct CanvasEditSession {
     pub block: BlockId,
     pub path: PathBuf,
     text: Rope,
+    /// Snapshot of the source buffer when this session was created or last
+    /// saved. Used to detect independent edits in another tab for the same file.
+    base_text: Rope,
     active_file: Option<PathBuf>,
     cursor_char_idx: usize,
     target_col: usize,
@@ -73,6 +76,7 @@ impl CanvasEditSession {
             block,
             active_file: Some(path.clone()),
             path,
+            base_text: text.clone(),
             text,
             cursor_char_idx: cursor,
             target_col: clamped_col,
@@ -99,6 +103,17 @@ impl CanvasEditSession {
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             last_search_query: String::new(),
+        }
+    }
+
+    pub(super) fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub(super) fn recovery_buffer(&self) -> crate::app::persistence::RecoveryBuffer {
+        crate::app::persistence::RecoveryBuffer {
+            path: self.path.clone(),
+            text: self.text.clone(),
         }
     }
 }
@@ -170,6 +185,12 @@ impl AppState {
     /// The block id of the active in-card edit session, if any.
     pub fn canvas_edit_session_block(&self) -> Option<BlockId> {
         self.canvas_edit_session.as_ref().map(|s| s.block)
+    }
+
+    pub(crate) fn canvas_edit_session_is_dirty(&self) -> bool {
+        self.canvas_edit_session
+            .as_ref()
+            .is_some_and(CanvasEditSession::is_dirty)
     }
 
     /// Clamp the **swapped-in** card cursor (`self.cursor_char_idx`/`self.text`
@@ -279,17 +300,58 @@ impl AppState {
     /// (`active_buffer_index` points at the main editor). If the card file is
     /// also an open buffer/tab, its in-memory copy is kept in sync. Returns
     /// whether a save happened.
-    pub(crate) fn canvas_save_edit_session(&mut self) -> bool {
-        let Some(session) = self.canvas_edit_session.as_mut() else {
-            return false;
+    pub(crate) fn canvas_save_edit_session(&mut self) -> Result<bool, String> {
+        let Some(session) = self.canvas_edit_session.as_ref() else {
+            return Ok(false);
         };
         let path = session.path.clone();
-        let content = session.text.to_string();
-        if std::fs::write(&path, &content).is_err() {
-            return false;
-        }
-        session.dirty = false;
         let saved = session.text.clone();
+        let base = session.base_text.clone();
+        let tab_conflict = self
+            .buffers
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let BufferContent::Text(buffer) = &entry.content else {
+                    return None;
+                };
+                crate::app::app_state::overlays::path_matches(&buffer.path, &path)
+                    .then_some((index, buffer))
+            })
+            .any(|(index, buffer)| {
+                let is_active = self.active_buffer_index == Some(index);
+                let is_dirty = if is_active { self.dirty } else { buffer.dirty };
+                if !is_dirty {
+                    return false;
+                }
+                let current = if is_active {
+                    Some(&self.text)
+                } else {
+                    buffer.in_memory_text.as_ref()
+                };
+                current.is_none_or(|text| text != &base)
+            });
+        let untabbed_conflict = self.active_buffer_index.is_none()
+            && self.dirty
+            && self
+                .active_file()
+                .is_some_and(|active| crate::app::app_state::overlays::path_matches(active, &path))
+            && self.text != base;
+        if tab_conflict || untabbed_conflict {
+            return Err(format!(
+                "save canvas file {:?} conflict: another dirty editor view changed independently",
+                path
+            ));
+        }
+
+        let content = saved.to_string();
+        crate::app::persistence::atomic_write(&path, &content)
+            .map_err(|err| format!("save canvas file {:?} failed: {err}", path))?;
+        let Some(session) = self.canvas_edit_session.as_mut() else {
+            return Ok(false);
+        };
+        session.dirty = false;
+        session.base_text = saved.clone();
         for entry in self.buffers.iter_mut() {
             if let BufferContent::Text(ref mut buf) = entry.content
                 && crate::app::app_state::overlays::path_matches(&buf.path, &path)
@@ -310,7 +372,7 @@ impl AppState {
             self.cached_line_starts = None;
             self.bump_revision();
         }
-        true
+        Ok(true)
     }
 
     /// Whether `block` currently has a stashed (dirty) edit session — used to

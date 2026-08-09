@@ -1,10 +1,45 @@
 use super::*;
+use crate::app::app_state::BufferEntry;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
     event::{ElementState, MouseButton, MouseScrollDelta},
     keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
 };
+
+fn topbar_buffer_identity(buffer: &BufferEntry) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    match &buffer.content {
+        BufferContent::Text(state) => (0_u8, &state.path).hash(&mut hasher),
+        BufferContent::Image(state) => (1_u8, &state.path).hash(&mut hasher),
+        BufferContent::Terminal(state) => {
+            (2_u8, state.session_id, &state.title, &state.working_dir).hash(&mut hasher)
+        }
+        BufferContent::References(state) => {
+            (3_u8, &state.title, &state.origin_path, state.origin_line).hash(&mut hasher)
+        }
+        BufferContent::Diagnostics(_) => 4_u8.hash(&mut hasher),
+        BufferContent::MarkdownPreview(state) => (5_u8, &state.source_path).hash(&mut hasher),
+        BufferContent::FuzzyPicker(_) => 6_u8.hash(&mut hasher),
+        BufferContent::SettingsTab(_) => 7_u8.hash(&mut hasher),
+        BufferContent::Help(state) => (8_u8, &state.title).hash(&mut hasher),
+        BufferContent::ExtensionsManager(state) => (9_u8, &state.title).hash(&mut hasher),
+    }
+    hasher.finish()
+}
+
+fn resolve_topbar_tab_index(
+    buffers: &[BufferEntry],
+    rendered_index: usize,
+    rendered_identity: u64,
+) -> Option<usize> {
+    buffers
+        .get(rendered_index)
+        .filter(|buffer| topbar_buffer_identity(buffer) == rendered_identity)
+        .map(|_| rendered_index)
+}
 
 const FOCUS_RING_THICKNESS: f32 = 1.0;
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
@@ -30,6 +65,285 @@ fn editor_text_cache_key(app_state: &AppState) -> (u64, usize, Option<std::path:
 /// Delay before the which-key overlay appears for a pending chord — long
 /// enough that fast chords never flash it, short enough to help a stuck user.
 const WHICHKEY_DELAY: Duration = Duration::from_millis(300);
+const TITLEBAR_DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(500);
+const TITLEBAR_DOUBLE_CLICK_DISTANCE_PX: f32 = 8.0;
+const TITLEBAR_DRAG_THRESHOLD_PX: f32 = 5.0;
+const WINDOW_GEOMETRY_SAVE_DELAY: Duration = Duration::from_millis(500);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TitlebarPressAction {
+    None,
+    ArmDrag,
+    ToggleMaximize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacosDoubleClickAction {
+    Maximize,
+    Minimize,
+    None,
+}
+
+fn parse_macos_double_click_action(value: &str) -> MacosDoubleClickAction {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "minimize" => MacosDoubleClickAction::Minimize,
+        "none" => MacosDoubleClickAction::None,
+        _ => MacosDoubleClickAction::Maximize,
+    }
+}
+
+fn titlebar_drag_threshold_reached(origin: (f32, f32), current: (f32, f32)) -> bool {
+    let dx = current.0 - origin.0;
+    let dy = current.1 - origin.1;
+    dx.mul_add(dx, dy * dy) >= TITLEBAR_DRAG_THRESHOLD_PX * TITLEBAR_DRAG_THRESHOLD_PX
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScreenRect {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+type TitlebarClickTiming = Option<(Instant, Option<(Instant, (f32, f32))>)>;
+
+fn titlebar_press_action(
+    position: (f32, f32),
+    topbar_bounds: [f32; 4],
+    timing: TitlebarClickTiming,
+    double_click_interval: Duration,
+) -> TitlebarPressAction {
+    if !point_in_bounds(position, topbar_bounds) {
+        return TitlebarPressAction::None;
+    }
+    let Some((now, previous)) = timing else {
+        return TitlebarPressAction::ArmDrag;
+    };
+    let Some((previous_at, previous_position)) = previous else {
+        return TitlebarPressAction::ArmDrag;
+    };
+    let close_in_time = now.saturating_duration_since(previous_at) <= double_click_interval;
+    let dx = position.0 - previous_position.0;
+    let dy = position.1 - previous_position.1;
+    let close_in_space = dx.mul_add(dx, dy * dy)
+        <= TITLEBAR_DOUBLE_CLICK_DISTANCE_PX * TITLEBAR_DOUBLE_CLICK_DISTANCE_PX;
+    if close_in_time && close_in_space {
+        TitlebarPressAction::ToggleMaximize
+    } else {
+        TitlebarPressAction::ArmDrag
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_global_default(key: &str) -> Option<String> {
+    std::process::Command::new("/usr/bin/defaults")
+        .args(["read", "-g", key])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_double_click_interval() -> Duration {
+    static INTERVAL: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *INTERVAL.get_or_init(|| {
+        macos_global_default("com.apple.mouse.doubleClickThreshold")
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
+            .map(Duration::from_secs_f64)
+            .unwrap_or(TITLEBAR_DOUBLE_CLICK_INTERVAL)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_double_click_action() -> MacosDoubleClickAction {
+    static ACTION: std::sync::OnceLock<MacosDoubleClickAction> = std::sync::OnceLock::new();
+    *ACTION.get_or_init(|| {
+        macos_global_default("AppleActionOnDoubleClick")
+            .as_deref()
+            .map(parse_macos_double_click_action)
+            .unwrap_or(MacosDoubleClickAction::Maximize)
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn warm_macos_titlebar_preferences() {
+    let _ = macos_double_click_interval();
+    let _ = macos_double_click_action();
+}
+
+fn window_geometry_is_visible(geometry: WindowGeometry, displays: &[ScreenRect]) -> bool {
+    const MIN_VISIBLE_PX: i64 = 64;
+    let left = i64::from(geometry.x);
+    let top = i64::from(geometry.y);
+    let right = left + i64::from(geometry.width);
+    let bottom = top + i64::from(geometry.height);
+
+    displays.iter().any(|display| {
+        let display_left = i64::from(display.x);
+        let display_top = i64::from(display.y);
+        let display_right = display_left + i64::from(display.width);
+        let display_bottom = display_top + i64::from(display.height);
+        let overlap_width = right.min(display_right) - left.max(display_left);
+        let overlap_height = bottom.min(display_bottom) - top.max(display_top);
+        overlap_width >= MIN_VISIBLE_PX && overlap_height >= MIN_VISIBLE_PX
+    })
+}
+
+#[cfg(test)]
+mod native_window_behavior_tests {
+    use super::*;
+    use crate::app::app_state::EditorBuffer;
+
+    fn text_buffer(path: &str) -> BufferEntry {
+        BufferEntry {
+            content: BufferContent::Text(EditorBuffer::new(PathBuf::from(path), None)),
+        }
+    }
+
+    #[test]
+    fn cached_tab_index_is_rejected_after_a_close_before_redraw() {
+        let mut buffers = vec![
+            text_buffer("/tmp/a.rs"),
+            text_buffer("/tmp/b.rs"),
+            text_buffer("/tmp/c.rs"),
+        ];
+        let rendered_identity = topbar_buffer_identity(&buffers[1]);
+        assert_eq!(
+            resolve_topbar_tab_index(&buffers, 1, rendered_identity),
+            Some(1)
+        );
+
+        buffers.remove(0);
+
+        assert_eq!(
+            resolve_topbar_tab_index(&buffers, 1, rendered_identity),
+            None,
+            "the cached index now points at c.rs and must not activate it"
+        );
+    }
+
+    #[test]
+    fn titlebar_press_outside_topbar_is_ignored() {
+        assert_eq!(
+            titlebar_press_action(
+                (400.0, 80.0),
+                [0.0, 0.0, 1200.0, 34.0],
+                None,
+                Duration::from_millis(500),
+            ),
+            TitlebarPressAction::None
+        );
+    }
+
+    #[test]
+    fn first_titlebar_press_only_arms_native_drag() {
+        let now = Instant::now();
+        assert_eq!(
+            titlebar_press_action(
+                (400.0, 16.0),
+                [0.0, 0.0, 1200.0, 34.0],
+                Some((now, None)),
+                Duration::from_millis(500),
+            ),
+            TitlebarPressAction::ArmDrag
+        );
+    }
+
+    #[test]
+    fn second_nearby_titlebar_press_toggles_native_zoom() {
+        let now = Instant::now();
+        let previous = now.checked_sub(Duration::from_millis(200)).expect("past");
+        assert_eq!(
+            titlebar_press_action(
+                (402.0, 17.0),
+                [0.0, 0.0, 1200.0, 34.0],
+                Some((now, Some((previous, (400.0, 16.0))))),
+                Duration::from_millis(500),
+            ),
+            TitlebarPressAction::ToggleMaximize
+        );
+    }
+
+    #[test]
+    fn stale_or_distant_titlebar_press_arms_a_new_drag() {
+        let now = Instant::now();
+        let stale = now.checked_sub(Duration::from_millis(700)).expect("past");
+        assert_eq!(
+            titlebar_press_action(
+                (400.0, 16.0),
+                [0.0, 0.0, 1200.0, 34.0],
+                Some((now, Some((stale, (400.0, 16.0))))),
+                Duration::from_millis(500),
+            ),
+            TitlebarPressAction::ArmDrag
+        );
+        let recent = now.checked_sub(Duration::from_millis(100)).expect("past");
+        assert_eq!(
+            titlebar_press_action(
+                (500.0, 16.0),
+                [0.0, 0.0, 1200.0, 34.0],
+                Some((now, Some((recent, (400.0, 16.0))))),
+                Duration::from_millis(500),
+            ),
+            TitlebarPressAction::ArmDrag
+        );
+    }
+
+    #[test]
+    fn titlebar_drag_only_starts_after_pointer_crosses_threshold() {
+        assert!(!titlebar_drag_threshold_reached(
+            (100.0, 20.0),
+            (102.0, 22.0)
+        ));
+        assert!(titlebar_drag_threshold_reached(
+            (100.0, 20.0),
+            (106.0, 20.0)
+        ));
+    }
+
+    #[test]
+    fn macos_double_click_preference_is_parsed_without_case_sensitivity() {
+        assert_eq!(
+            parse_macos_double_click_action("Minimize\n"),
+            MacosDoubleClickAction::Minimize
+        );
+        assert_eq!(
+            parse_macos_double_click_action("None"),
+            MacosDoubleClickAction::None
+        );
+        assert_eq!(
+            parse_macos_double_click_action("Maximize"),
+            MacosDoubleClickAction::Maximize
+        );
+    }
+
+    #[test]
+    fn saved_window_must_overlap_a_monitor_before_restoring_position() {
+        let geometry = WindowGeometry {
+            x: 100,
+            y: 100,
+            width: 1200,
+            height: 800,
+            maximized: false,
+        };
+        let displays = [ScreenRect {
+            x: 0,
+            y: 0,
+            width: 1512,
+            height: 982,
+        }];
+        assert!(window_geometry_is_visible(geometry, &displays));
+
+        let offscreen = WindowGeometry {
+            x: 5000,
+            ..geometry
+        };
+        assert!(!window_geometry_is_visible(offscreen, &displays));
+    }
+}
 
 #[cfg(target_os = "macos")]
 fn apply_platform_window_chrome(
@@ -1143,6 +1457,187 @@ impl AppShell {
         };
         self.handle_command(Command::TestRunnerScroll(amount))
     }
+
+    #[cfg(target_os = "macos")]
+    fn handle_titlebar_mouse_press(&mut self) -> bool {
+        if self.handle_topbar_tab_mouse_press() {
+            return true;
+        }
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let Some(topbar) = layout.model.find(RegionId::TopBar) else {
+            return false;
+        };
+        let bounds = [topbar.x, topbar.y, topbar.width, topbar.height];
+        let now = Instant::now();
+        let action = titlebar_press_action(
+            position,
+            bounds,
+            Some((now, self.last_titlebar_click)),
+            macos_double_click_interval(),
+        );
+        match action {
+            TitlebarPressAction::None => false,
+            TitlebarPressAction::ArmDrag => {
+                self.titlebar_drag_origin = Some(position);
+                true
+            }
+            TitlebarPressAction::ToggleMaximize => {
+                self.titlebar_drag_origin = None;
+                self.last_titlebar_click = None;
+                if let Some(window) = self.window.as_ref() {
+                    match macos_double_click_action() {
+                        MacosDoubleClickAction::Maximize => {
+                            window.set_maximized(!window.is_maximized());
+                        }
+                        MacosDoubleClickAction::Minimize => window.set_minimized(true),
+                        MacosDoubleClickAction::None => {}
+                    }
+                    self.capture_window_geometry();
+                }
+                true
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn handle_titlebar_mouse_press(&mut self) -> bool {
+        self.handle_topbar_tab_mouse_press()
+    }
+
+    fn handle_topbar_tab_mouse_press(&mut self) -> bool {
+        let Some((rendered_index, rendered_identity)) =
+            self.last_cursor_position.and_then(|position| {
+                self.renderer
+                    .as_ref()
+                    .and_then(|renderer| renderer.topbar_tab_at_position(position))
+            })
+        else {
+            return false;
+        };
+        let Some(index) =
+            resolve_topbar_tab_index(self.app_state.buffers(), rendered_index, rendered_identity)
+        else {
+            return false;
+        };
+        self.titlebar_drag_origin = None;
+        self.last_titlebar_click = None;
+        let _ = self.handle_command(Command::BufferGoto(index));
+        true
+    }
+
+    #[cfg(target_os = "macos")]
+    fn update_titlebar_drag(&mut self, position: (f32, f32)) -> bool {
+        let Some(origin) = self.titlebar_drag_origin else {
+            return false;
+        };
+        if !titlebar_drag_threshold_reached(origin, position) {
+            return false;
+        }
+        self.titlebar_drag_origin = None;
+        self.last_titlebar_click = None;
+        if let Some(window) = self.window.as_ref()
+            && let Err(err) = window.drag_window()
+        {
+            eprintln!("[AppShell] native window drag failed: {err}");
+        }
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn update_titlebar_drag(&mut self, _position: (f32, f32)) -> bool {
+        false
+    }
+
+    #[cfg(target_os = "macos")]
+    fn handle_titlebar_mouse_release(&mut self) -> bool {
+        let Some(origin) = self.titlebar_drag_origin.take() else {
+            return false;
+        };
+        let position = self.last_cursor_position.unwrap_or(origin);
+        if titlebar_drag_threshold_reached(origin, position) {
+            self.last_titlebar_click = None;
+        } else {
+            self.last_titlebar_click = Some((Instant::now(), position));
+        }
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn handle_titlebar_mouse_release(&mut self) -> bool {
+        false
+    }
+
+    fn capture_window_geometry(&mut self) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let maximized = window.is_maximized();
+        let size = window.inner_size();
+        let position = window.outer_position().ok();
+        let fallback = self
+            .persistent_state
+            .window_geometry
+            .unwrap_or(WindowGeometry {
+                x: 0,
+                y: 0,
+                width: self.ui_config.window.width,
+                height: self.ui_config.window.height,
+                maximized,
+            });
+        let next = if maximized {
+            WindowGeometry {
+                maximized: true,
+                ..fallback
+            }
+        } else {
+            WindowGeometry {
+                x: position.map_or(fallback.x, |position| position.x),
+                y: position.map_or(fallback.y, |position| position.y),
+                width: size.width.max(1),
+                height: size.height.max(1),
+                maximized: false,
+            }
+        };
+        if next.is_sane() && self.persistent_state.window_geometry != Some(next) {
+            self.persistent_state.window_geometry = Some(next);
+            self.window_geometry_dirty = true;
+            self.last_window_geometry_change = Some(Instant::now());
+        }
+    }
+
+    fn persist_window_geometry_if_due(&mut self, force: bool) {
+        if !self.window_geometry_dirty {
+            return;
+        }
+        let due = force
+            || self.last_window_geometry_change.is_none_or(|changed_at| {
+                Instant::now().saturating_duration_since(changed_at) >= WINDOW_GEOMETRY_SAVE_DELAY
+            });
+        if due {
+            self.persistent_state.save();
+            self.window_geometry_dirty = false;
+        }
+    }
+
+    pub(in crate::app::event_loop) fn request_window_close(&mut self) -> bool {
+        if self.exit_requested {
+            return false;
+        }
+        if self.pending_confirmation.is_some() {
+            return false;
+        }
+        let dirty_count = self.app_state.dirty_buffer_count();
+        if dirty_count == 0 {
+            self.exit_requested = true;
+            return true;
+        }
+        self.begin_dirty_window_quit_confirmation(dirty_count)
+    }
 }
 
 impl ApplicationHandler<AppEvent> for AppShell {
@@ -1151,13 +1646,44 @@ impl ApplicationHandler<AppEvent> for AppShell {
             return;
         }
 
+        let restored_geometry = (self.ui_config.window.startup_mode == WindowStartupMode::Windowed)
+            .then_some(self.persistent_state.window_geometry)
+            .flatten()
+            .filter(|geometry| geometry.is_sane());
+        let displays: Vec<ScreenRect> = event_loop
+            .available_monitors()
+            .map(|monitor| {
+                let position = monitor.position();
+                let size = monitor.size();
+                ScreenRect {
+                    x: position.x,
+                    y: position.y,
+                    width: size.width,
+                    height: size.height,
+                }
+            })
+            .collect();
+
         let mut attrs =
             Window::default_attributes().with_title(self.ui_config.window.title.clone());
         attrs = match self.ui_config.window.startup_mode {
-            WindowStartupMode::Windowed => attrs.with_inner_size(LogicalSize::new(
-                f64::from(self.ui_config.window.width),
-                f64::from(self.ui_config.window.height),
-            )),
+            WindowStartupMode::Windowed => {
+                if let Some(geometry) = restored_geometry {
+                    let mut restored = attrs
+                        .with_inner_size(PhysicalSize::new(geometry.width, geometry.height))
+                        .with_maximized(geometry.maximized);
+                    if window_geometry_is_visible(geometry, &displays) {
+                        restored =
+                            restored.with_position(PhysicalPosition::new(geometry.x, geometry.y));
+                    }
+                    restored
+                } else {
+                    attrs.with_inner_size(LogicalSize::new(
+                        f64::from(self.ui_config.window.width),
+                        f64::from(self.ui_config.window.height),
+                    ))
+                }
+            }
             WindowStartupMode::Maximized | WindowStartupMode::Fullscreen => {
                 attrs.with_maximized(true)
             }
@@ -1219,7 +1745,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
 
     fn window_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         window_id: WindowId,
         event: WindowEvent,
     ) {
@@ -1232,7 +1758,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
 
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if self.request_window_close() {
+                    self.request_redraw();
+                }
+            }
             WindowEvent::Resized(new_size) => {
                 self.window_size = new_size;
                 if let Some(renderer) = self.renderer.as_mut() {
@@ -1254,7 +1784,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     .map(|window| window.scale_factor())
                     .unwrap_or(1.0);
                 self.update_runtime_scaling_for_window(scale_factor);
+                self.capture_window_geometry();
                 self.request_redraw();
+            }
+            WindowEvent::Moved(_) => {
+                self.capture_window_geometry();
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 // Refresh the cached physical size before recomputing: when the
@@ -1417,7 +1951,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
             WindowEvent::CursorMoved { position, .. } => {
                 let cursor = (position.x as f32, position.y as f32);
                 self.last_cursor_position = Some(cursor);
-                if self.active_drag.is_some() {
+                if self.update_titlebar_drag(cursor) {
+                    self.request_redraw();
+                } else if self.active_drag.is_some() {
                     if self.update_pointer_drag(cursor) {
                         self.request_redraw();
                     }
@@ -1471,8 +2007,17 @@ impl ApplicationHandler<AppEvent> for AppShell {
                         self.request_redraw();
                         return;
                     }
+                    if self.handle_titlebar_mouse_release() {
+                        self.request_redraw();
+                        return;
+                    }
                 }
-                if self.handle_right_terminal_mouse_input(button, state) {
+                if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_titlebar_mouse_press()
+                {
+                    self.request_redraw();
+                } else if self.handle_right_terminal_mouse_input(button, state) {
                     self.request_redraw();
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed
@@ -1517,6 +2062,14 @@ impl ApplicationHandler<AppEvent> for AppShell {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        replace_panic_recovery_snapshot(self.app_state.dirty_recovery_buffers());
+        if self.exit_requested {
+            self.capture_window_geometry();
+            self.persist_window_geometry_if_due(true);
+            event_loop.exit();
+            return;
+        }
+        self.persist_window_geometry_if_due(false);
         self.flush_pending_parse_after_debounce();
         self.flush_pending_git_diff_after_debounce();
         self.enforce_ai_inline_anchor();
@@ -3025,6 +3578,7 @@ impl AppShell {
                         _ => (PathBuf::new(), None, false),
                     };
                     TopbarTab {
+                        identity: topbar_buffer_identity(buffer),
                         label: buffer.label(),
                         kind: match &buffer.content {
                             BufferContent::Text(_text) => TopbarTabKind::Text { path: file_path },
@@ -3526,8 +4080,11 @@ impl AppShell {
             return Some(false);
         }
 
+        if matches!(key_event.logical_key.as_ref(), Key::Named(NamedKey::Escape)) {
+            return Some(self.cancel_pending_confirmation());
+        }
+
         let Some(decision) = (match key_event.logical_key.as_ref() {
-            Key::Named(NamedKey::Escape) => Some(false),
             Key::Character(text) if text.eq_ignore_ascii_case("y") => Some(true),
             Key::Character(text) if text.eq_ignore_ascii_case("n") => Some(false),
             _ => None,

@@ -94,7 +94,7 @@ pub fn save_cache_in(dir: &Path, cache: &LeetCodeProblemCache) -> Result<(), Str
         .map_err(|err| format!("create leetcode cache dir failed: {err}"))?;
     let text = serde_json::to_string_pretty(cache)
         .map_err(|err| format!("serialize leetcode cache failed: {err}"))?;
-    std::fs::write(cache_path(dir, &cache.id), text)
+    crate::app::persistence::atomic_write(&cache_path(dir, &cache.id), text)
         .map_err(|err| format!("write leetcode cache failed: {err}"))
 }
 

@@ -57,6 +57,23 @@ fn terminal_paste_normalizes_newlines_to_carriage_returns() {
 }
 
 #[test]
+fn save_failure_is_shown_as_an_error_toast() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let missing_parent = std::env::temp_dir().join(format!(
+        "netherize-missing-save-parent-{}/file.rs",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(missing_parent.parent().expect("missing parent path"));
+    shell.app_state = AppState::from_text(missing_parent, "unsaved");
+
+    assert!(shell.handle_command(Command::SaveFile));
+
+    let toast = shell.transient_toast.as_ref().expect("save error toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert!(toast.message.contains("save file"), "{}", toast.message);
+}
+
+#[test]
 fn move_to_first_line_uses_viewport_layout_path() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = (0..80)
@@ -366,6 +383,38 @@ fn clicking_a_canvas_card_focuses_it_and_enters_edit() {
         }
         other => panic!("expected EditCard, got {other:?}"),
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn canvas_save_failure_is_shown_as_an_error_toast() {
+    let (mut shell, dir, card_id) = shell_with_background_canvas_card();
+    assert!(shell.focus_canvas_card_for_click(card_id));
+    assert!(shell.handle_command(Command::InsertChar('Z')));
+    let path = dir.join("bar.rs");
+    let original_permissions = std::fs::metadata(&path)
+        .expect("original card metadata")
+        .permissions();
+    let mut permissions = std::fs::metadata(&path)
+        .expect("card metadata")
+        .permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&path, permissions).expect("make card read-only");
+
+    assert!(shell.handle_command(Command::SaveFile));
+
+    let toast = shell
+        .transient_toast
+        .as_ref()
+        .expect("canvas save error toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert!(
+        toast.message.contains("save canvas file"),
+        "{}",
+        toast.message
+    );
+
+    let _ = std::fs::set_permissions(&path, original_permissions);
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1418,9 +1467,35 @@ fn delete_confirmation_cancels_on_escape() {
         return_focus: FocusTarget::LeftSidebar,
     });
 
-    assert!(shell.respond_to_pending_confirmation(false));
+    assert!(shell.cancel_pending_confirmation());
     assert!(shell.pending_confirmation.is_none());
     assert!(!shell.app_state.is_command_palette_visible());
+}
+
+#[test]
+fn quit_confirmation_escape_cancels_without_discarding_or_exiting() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_dirty_quit_escape_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.request_window_close());
+    assert!(shell.cancel_pending_confirmation());
+    assert!(!shell.exit_requested);
+    assert!(shell.app_state.is_dirty());
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read original file"),
+        "hello\n"
+    );
+
+    let _ = std::fs::remove_file(file_path);
 }
 
 #[test]
@@ -1473,6 +1548,150 @@ fn dirty_buffer_close_confirmation_yes_saves_then_closes() {
     assert!(!shell.app_state.is_command_palette_visible());
 
     let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn clean_window_close_requests_exit_without_prompt() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.request_window_close());
+    assert!(shell.exit_requested);
+    assert!(shell.pending_confirmation.is_none());
+}
+
+#[test]
+fn dirty_window_close_opens_quit_confirmation_and_waits() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_dirty_quit_prompt_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.request_window_close());
+    assert!(!shell.exit_requested);
+    assert_eq!(
+        shell.pending_confirmation_prompt().as_deref(),
+        Some("Save changes to 1 file before quitting? (y/n)")
+    );
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn dirty_untitled_window_close_prompts_and_saves_before_exit() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let save_path = std::env::temp_dir().join(format!(
+        "netherize_dirty_untitled_quit_{}.txt",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&save_path);
+    shell.app_state = AppState::from_text(save_path.clone(), "draft");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.request_window_close());
+    assert!(!shell.exit_requested);
+    assert_eq!(
+        shell.pending_confirmation_prompt().as_deref(),
+        Some("Save changes to 1 file before quitting? (y/n)")
+    );
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert!(shell.exit_requested);
+    assert_eq!(std::fs::read_to_string(&save_path).unwrap(), "!draft");
+
+    let _ = std::fs::remove_file(save_path);
+}
+
+#[test]
+fn dirty_canvas_window_close_prompts_and_saves_before_exit() {
+    let (mut shell, dir, card_id) = shell_with_background_canvas_card();
+    assert!(shell.focus_canvas_card_for_click(card_id));
+    assert!(shell.handle_command(Command::InsertChar('Z')));
+
+    assert!(shell.request_window_close());
+    assert!(!shell.exit_requested);
+    assert_eq!(
+        shell.pending_confirmation_prompt().as_deref(),
+        Some("Save changes to 1 file before quitting? (y/n)")
+    );
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert!(shell.exit_requested);
+    assert!(
+        std::fs::read_to_string(dir.join("bar.rs"))
+            .unwrap()
+            .starts_with('Z')
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn quit_confirmation_no_discards_and_requests_exit() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_dirty_quit_no_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.request_window_close());
+    assert!(shell.respond_to_pending_confirmation(false));
+    assert!(shell.exit_requested);
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read original file"),
+        "hello\n"
+    );
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn quit_confirmation_yes_saves_all_dirty_buffers_before_exit() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root =
+        std::env::temp_dir().join(format!("netherize_dirty_quit_all_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let first = root.join("first.txt");
+    let second = root.join("second.txt");
+    std::fs::write(&first, "first\n").expect("write first");
+    std::fs::write(&second, "second\n").expect("write second");
+
+    shell
+        .app_state
+        .open_file(first.clone())
+        .expect("open first");
+    shell.app_state.insert_char('1');
+    shell
+        .app_state
+        .open_file(second.clone())
+        .expect("open second");
+    shell.app_state.insert_char('2');
+
+    assert!(shell.request_window_close());
+    assert_eq!(shell.app_state.dirty_buffer_count(), 2);
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert!(shell.exit_requested);
+    assert_eq!(shell.app_state.dirty_buffer_count(), 0);
+    assert_eq!(
+        std::fs::read_to_string(&first).expect("read first"),
+        "1first\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&second).expect("read second"),
+        "2second\n"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

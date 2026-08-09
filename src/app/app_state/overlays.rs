@@ -1,5 +1,20 @@
 use super::*;
 
+const INTERACTIVE_TEXT_FILE_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
+
+pub(super) fn ensure_interactive_text_file_size(path: &Path) -> Result<(), String> {
+    let bytes = std::fs::metadata(path)
+        .map_err(|err| format!("inspect file {:?} failed: {err}", path))?
+        .len();
+    if bytes > INTERACTIVE_TEXT_FILE_LIMIT_BYTES {
+        return Err(format!(
+            "open file {:?} refused: {bytes} bytes exceeds the 10 MiB interactive editor limit",
+            path
+        ));
+    }
+    Ok(())
+}
+
 impl AppState {
     pub fn set_current_overlays(&mut self, overlays: Vec<EditorOverlay>) -> bool {
         if self.current_overlays == overlays {
@@ -1083,8 +1098,16 @@ impl AppState {
     }
 
     pub(super) fn load_buffer_from_file(&mut self, canonical_path: &Path) -> Result<(), String> {
-        let content = fs::read_to_string(canonical_path)
-            .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
+        ensure_interactive_text_file_size(canonical_path)?;
+        let bytes = fs::read(canonical_path)
+            .map_err(|err| format!("read text file {:?} failed: {err}", canonical_path))?;
+        let content = String::from_utf8(bytes).map_err(|err| {
+            format!(
+                "text file {:?} is not valid UTF-8 (invalid byte at offset {})",
+                canonical_path,
+                err.utf8_error().valid_up_to()
+            )
+        })?;
         let modified_time = std::fs::metadata(canonical_path)
             .and_then(|m| m.modified())
             .ok();
@@ -1103,8 +1126,9 @@ impl AppState {
         &mut self,
         canonical_path: &Path,
     ) -> Result<(), String> {
+        ensure_interactive_text_file_size(canonical_path)?;
         let content = fs::read_to_string(canonical_path)
-            .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
+            .map_err(|err| format!("open UTF-8 text file {:?} failed: {err}", canonical_path))?;
         let modified_time = std::fs::metadata(canonical_path)
             .and_then(|m| m.modified())
             .ok();

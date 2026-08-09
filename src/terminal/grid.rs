@@ -14,6 +14,8 @@
 //! // cell.ch == 'H', cell.style.fg == Index(2) (green)
 //! ```
 
+use std::collections::VecDeque;
+
 use unicode_normalization::UnicodeNormalization;
 
 use crate::terminal::ansi_parser::{AnsiColor, AnsiEvent, AnsiParser};
@@ -151,7 +153,7 @@ impl HighlightColors {
 ///
 /// Cells được lưu row-major: `cells[row * cols + col]`.
 /// Khi cursor xuống quá dòng cuối, grid **scroll up** (xóa dòng đầu, thêm dòng trống cuối).
-const SCROLLBACK_LIMIT: usize = 500;
+const SCROLLBACK_LIMIT: usize = 10_000;
 
 #[derive(Clone)]
 pub struct TerminalGrid {
@@ -160,7 +162,7 @@ pub struct TerminalGrid {
     cells: Vec<TerminalCell>,
 
     /// Scrollback buffer — rows pushed off the top of the live grid.
-    scrollback: Vec<Vec<TerminalCell>>,
+    scrollback: VecDeque<Vec<TerminalCell>>,
 
     /// How many rows above the live grid bottom are shown (0 = live view).
     pub scroll_offset: usize,
@@ -199,7 +201,7 @@ impl TerminalGrid {
             cols,
             rows,
             cells: vec![TerminalCell::blank(); cols * rows],
-            scrollback: Vec::new(),
+            scrollback: VecDeque::new(),
             scroll_offset: 0,
             cursor_row: 0,
             cursor_col: 0,
@@ -452,9 +454,9 @@ impl TerminalGrid {
     /// Scroll lên 1 dòng: push dòng đầu vào scrollback, thêm dòng trống dưới.
     fn scroll_up(&mut self) {
         let pushed_row: Vec<TerminalCell> = self.cells[0..self.cols].to_vec();
-        self.scrollback.push(pushed_row);
+        self.scrollback.push_back(pushed_row);
         let overflowed = if self.scrollback.len() > SCROLLBACK_LIMIT {
-            self.scrollback.remove(0);
+            self.scrollback.pop_front();
             true
         } else {
             false
@@ -516,7 +518,7 @@ impl TerminalGrid {
                 let end = start + old_cols;
                 let mut row = old_cells[start..end].to_vec();
                 resize_terminal_row(&mut row, new_cols);
-                self.scrollback.push(row);
+                self.scrollback.push_back(row);
             }
             if self.scrollback.len() > SCROLLBACK_LIMIT {
                 let overflow = self.scrollback.len() - SCROLLBACK_LIMIT;
@@ -1536,6 +1538,18 @@ fn word_end_at_or_after_chars(text: &[char], cursor: usize) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_keeps_ten_thousand_scrollback_rows() {
+        let mut grid = TerminalGrid::new(8, 2);
+        let output = (0..10_500)
+            .map(|idx| format!("{idx}\r\n"))
+            .collect::<String>();
+
+        grid.feed_chunk(&output);
+
+        assert_eq!(grid.scrollback.len(), 10_000);
+    }
     use crate::terminal::ansi_parser::AnsiColor;
 
     #[test]

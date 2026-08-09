@@ -856,7 +856,8 @@ impl UiConfig {
         let raw = UserUiConfigFile::from(self);
         let text = toml::to_string_pretty(&raw)
             .map_err(|err| format!("serialize ui config failed: {err}"))?;
-        std::fs::write(&path, text).map_err(|err| format!("write ui config failed: {err}"))
+        crate::app::persistence::atomic_write(&path, text)
+            .map_err(|err| format!("write ui config failed: {err}"))
     }
 }
 

@@ -8,8 +8,6 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$PROJECT_DIR/target/$APP_NAME.app"
 ZIP="$PROJECT_DIR/target/${APP_NAME}-${VERSION}-macos.zip"
 LOGO_SRC="$PROJECT_DIR/assets/app_logo_black.png"
-USER_CONFIG_ROOT="${HOME}/.config/netherize"
-LEGACY_CONFIG_ROOT="${HOME}/.netherize_editor"
 
 # ── 1. Build ───────────────────────────────────────────────────────────────────
 echo "Building $BINARY (release)..."
@@ -29,23 +27,6 @@ chmod +x "$BUNDLE/Contents/MacOS/$BINARY"
 # ── 4. Config (must sit next to binary so exe.parent()/config/ resolves) ──────
 rm -rf "$BUNDLE/Contents/MacOS/config"
 cp -R "$PROJECT_DIR/config" "$BUNDLE/Contents/MacOS/config"
-
-# Also sync host-level config so local test machines don't keep stale themes
-# from ~/.config/netherize or ~/.netherize_editor overriding the bundled files.
-echo "Syncing host config overrides from source..."
-rm -rf "$USER_CONFIG_ROOT/config" "$USER_CONFIG_ROOT/themes" "$USER_CONFIG_ROOT/keymaps"
-mkdir -p "$USER_CONFIG_ROOT"
-cp -R "$PROJECT_DIR/config" "$USER_CONFIG_ROOT/config"
-mkdir -p "$USER_CONFIG_ROOT/themes"
-cp -R "$PROJECT_DIR/config/themes/." "$USER_CONFIG_ROOT/themes/"
-mkdir -p "$USER_CONFIG_ROOT/keymaps"
-cp -R "$PROJECT_DIR/config/keymaps/." "$USER_CONFIG_ROOT/keymaps/"
-
-rm -rf "$LEGACY_CONFIG_ROOT/themes" "$LEGACY_CONFIG_ROOT/keymaps"
-mkdir -p "$LEGACY_CONFIG_ROOT/themes"
-cp -R "$PROJECT_DIR/config/themes/." "$LEGACY_CONFIG_ROOT/themes/"
-mkdir -p "$LEGACY_CONFIG_ROOT/keymaps"
-cp -R "$PROJECT_DIR/config/keymaps/." "$LEGACY_CONFIG_ROOT/keymaps/"
 
 # ── 5. Icon: PNG → ICNS ───────────────────────────────────────────────────────
 ICONSET="$PROJECT_DIR/target/AppIcon.iconset"
@@ -96,8 +77,24 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+# Refuse to package a stale binary. This catches copy/path regressions before a
+# developer replaces the daily-use app with a bundle that is not the build above.
+# Compare before codesigning because signing intentionally mutates the Mach-O.
+SOURCE_HASH="$(shasum -a 256 "$PROJECT_DIR/target/release/$BINARY" | awk '{print $1}')"
+BUNDLE_HASH="$(shasum -a 256 "$BUNDLE/Contents/MacOS/$BINARY" | awk '{print $1}')"
+if [[ "$SOURCE_HASH" != "$BUNDLE_HASH" ]]; then
+  echo "Bundle verification failed: binary hash mismatch" >&2
+  exit 1
+fi
+echo "Verified bundled binary: $BUNDLE_HASH"
+
 # ── 7. Codesign (ad-hoc, no developer account needed) ─────────────────────────
-codesign --force --deep --sign - "$BUNDLE" 2>/dev/null && echo "Ad-hoc signed" || echo "Codesign skipped (install Xcode CLT if needed)"
+if codesign --force --deep --sign - "$BUNDLE" 2>/dev/null; then
+  codesign --verify --deep --strict "$BUNDLE"
+  echo "Ad-hoc signature verified"
+else
+  echo "Codesign skipped (install Xcode CLT if needed)"
+fi
 
 # ── 8. Zip for GitHub Release ─────────────────────────────────────────────────
 echo "Creating release zip → $ZIP"

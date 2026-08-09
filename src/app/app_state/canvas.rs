@@ -8,7 +8,7 @@ use crate::canvas::{
     CanvasBlock, CanvasInteraction, CanvasSpan, CanvasState, Dir, WorldRect,
 };
 
-use super::{AppState, CanvasEditSession};
+use super::{AppState, BufferContent, CanvasEditSession};
 
 /// Gap between the focal block and the relation column, and between stacked
 /// relation blocks (world units == screen px at zoom 1).
@@ -205,14 +205,35 @@ impl AppState {
         };
         // Reuse a stashed (dirty) session for this card; otherwise build one.
         if !self.canvas_edit_session_is_for(block) {
-            // If the card is the SAME file the main editor has open, seed from the
-            // LIVE buffer (`self.text`) so the card includes unsaved edits and the
-            // two stay consistent; otherwise read the file from disk.
-            let same_as_main = self
-                .active_file()
-                .is_some_and(|a| crate::app::app_state::overlays::path_matches(a, &origin.path));
-            let text = if same_as_main {
-                self.text.clone()
+            // Seed from any open editor view for this path, including a dirty
+            // inactive tab. Falling back to disk here would silently fork two
+            // versions and let a later canvas save destroy the tab's draft.
+            let open_buffer_text = self.buffers.iter().enumerate().find_map(|(index, entry)| {
+                let BufferContent::Text(buffer) = &entry.content else {
+                    return None;
+                };
+                if !crate::app::app_state::overlays::path_matches(&buffer.path, &origin.path) {
+                    return None;
+                }
+                if self.active_buffer_index == Some(index) {
+                    Some(self.text.clone())
+                } else {
+                    buffer.in_memory_text.clone()
+                }
+            });
+            let untabbed_text = self
+                .active_buffer_index
+                .is_none()
+                .then(|| {
+                    self.active_file()
+                        .filter(|active| {
+                            crate::app::app_state::overlays::path_matches(active, &origin.path)
+                        })
+                        .map(|_| self.text.clone())
+                })
+                .flatten();
+            let text = if let Some(text) = open_buffer_text.or(untabbed_text) {
+                text
             } else {
                 match std::fs::read_to_string(&origin.path) {
                     Ok(content) => ropey::Rope::from_str(&content),
@@ -2542,7 +2563,7 @@ mod tests {
         );
 
         // ⌘S in the card writes the edit to the CARD file (not the main file).
-        assert!(app.canvas_save_edit_session());
+        assert_eq!(app.canvas_save_edit_session(), Ok(true));
         let bar_after = std::fs::read_to_string(&bar).unwrap();
         assert!(
             bar_after.starts_with('Z'),
@@ -2553,6 +2574,76 @@ mod tests {
             foo_after, main_before,
             "the origin file on disk is untouched"
         );
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn dirty_canvas_edit_is_counted_and_recoverable() {
+        let path = PathBuf::from("/proj/src/card.rs");
+        let mut app = app_with_text("fn origin() {}\n");
+        let session =
+            CanvasEditSession::new(7, path.clone(), Rope::from_str("fn card() {}\n"), 0, 0);
+        app.canvas_edit_session = Some(session);
+        let mut session = app.take_canvas_edit_session().expect("session exists");
+        app.swap_canvas_edit_session(&mut session);
+        app.insert_char('!');
+        app.swap_canvas_edit_session(&mut session);
+        app.put_canvas_edit_session(session);
+
+        assert_eq!(app.dirty_buffer_count(), 1);
+        let recovery = app.dirty_recovery_buffers();
+        assert_eq!(recovery.len(), 1);
+        assert_eq!(recovery[0].path, path);
+        assert_eq!(recovery[0].text.to_string(), "!fn card() {}\n");
+    }
+
+    #[test]
+    fn canvas_save_refuses_to_destroy_independently_changed_dirty_tab() {
+        let dir = std::env::temp_dir().join(format!(
+            "netherize_canvas_save_conflict_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let foo = dir.join("foo.rs");
+        let bar = dir.join("bar.rs");
+        std::fs::write(&foo, "fn origin() {}\n").unwrap();
+        std::fs::write(&bar, "fn card() {}\n").unwrap();
+
+        let mut app = AppState::new(foo.clone());
+        app.open_file(bar.clone()).unwrap();
+        app.insert_char('T');
+        app.open_file(foo).unwrap();
+        assert!(app.open_canvas(VW, VH, LH));
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            origin_at(bar.to_str().unwrap(), 0),
+            snap("card"),
+        )]);
+        assert!(app.canvas_begin_edit());
+        assert!(
+            app.canvas_edit_session_text().unwrap().starts_with('T'),
+            "canvas must seed from the dirty inactive tab, not stale disk text"
+        );
+
+        let mut session = app.take_canvas_edit_session().unwrap();
+        app.swap_canvas_edit_session(&mut session);
+        app.insert_char('C');
+        app.swap_canvas_edit_session(&mut session);
+        app.put_canvas_edit_session(session);
+
+        app.open_file(bar.clone()).unwrap();
+        app.insert_char('B');
+        let tab_text = app.text_string();
+        let error = app
+            .canvas_save_edit_session()
+            .expect_err("divergent dirty tab must block canvas save");
+
+        assert!(error.contains("conflict"), "unexpected error: {error}");
+        assert!(app.is_dirty());
+        assert_eq!(app.text_string(), tab_text);
+        assert_eq!(std::fs::read_to_string(&bar).unwrap(), "fn card() {}\n");
 
         let _ = std::fs::remove_dir_all(dir);
     }

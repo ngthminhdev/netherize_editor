@@ -276,6 +276,7 @@ impl Renderer {
             topbar_chrome_instances: Vec::new(),
             topbar_scissor: None,
             topbar_text_batches: Vec::new(),
+            topbar_tab_hitboxes: Vec::new(),
             last_topbar_layout_key: None,
             topbar_logo_image_pipeline,
             topbar_logo_scissor: None,
@@ -478,6 +479,7 @@ impl Renderer {
         );
         self.topbar_chrome_instances.clear();
         self.topbar_text_batches.clear();
+        self.topbar_tab_hitboxes.clear();
         self.topbar_logo_image_pipeline.clear();
         self.topbar_logo_scissor = None;
         self.topbar_text_pipeline

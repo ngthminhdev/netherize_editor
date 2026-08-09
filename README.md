@@ -17,6 +17,8 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Text shaping (cosmic-text) | ✅ Rich text + syntax spans |
 | Syntax highlighting (tree-sitter) | ✅ 17 languages (Rust / JS / TS / JSX / TSX / Go / Python / Dart / Java / Bash / JSON / YAML / TOML / Markdown / SQL / XML / Dockerfile / Proto) |
 | Workbench layout engine | ✅ Region-based, resizable splits |
+| Native window lifecycle | ✅ Thresholded titlebar drag, clickable tabs, preference-aware double-click, safe dirty quit, remembered window frame |
+| File reliability | ✅ Atomic durable saves, save-error toast, 10 MiB interactive guard, dirty-buffer panic recovery |
 | File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation + theme-correct colors |
 | Embedded terminal (PTY) | ✅ ANSI parser + grid |
 | LSP client | ✅ Smart root detection + async stdio transport + Mason-style install prompt |

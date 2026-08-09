@@ -655,6 +655,33 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::ToggleLiveGrepCaseSensitive),
         },
         Case {
+            name: "in-file search ctrl+a -> ToggleInFileSearchCaseSensitive",
+            context: {
+                let mut context =
+                    KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+                context.command_palette_mode = Some(CommandPaletteMode::InFileSearch);
+                context
+            },
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyA),
+                named_key: None,
+                text: Some("a".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::ToggleInFileSearchCaseSensitive),
+        },
+        Case {
+            name: "generic palette ctrl+a -> PaletteMoveCursorToStart",
+            context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyA),
+                named_key: None,
+                text: Some("a".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::PaletteMoveCursorToStart),
+        },
+        Case {
             name: "palette ctrl+n -> OverlaySelectNext",
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: NormalizedInput {
@@ -816,9 +843,11 @@ fn default_profile_leader_rn_renames_and_leader_rr_enters_resize() {
     };
     assert_eq!(matched.command, Command::SwitchMode(ModeEvent::EnterResize));
 
-    // Resize mode is now reachable while the explorer or terminal hold focus too.
+    // Resize mode is reachable while either sidebar or the terminal holds focus too.
     for (mode, focus) in [
         (EditorMode::Normal, InputFocusContext::Explorer),
+        (EditorMode::Normal, InputFocusContext::Inspector),
+        (EditorMode::Normal, InputFocusContext::BottomPanel),
         (EditorMode::TerminalNormal, InputFocusContext::Terminal),
     ] {
         let context = KeybindingContext::with_focus(mode, focus);

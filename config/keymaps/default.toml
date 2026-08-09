@@ -8,8 +8,8 @@ description = "Clean full Neovim-style profile (block TOML, no inline bindings)"
 [meta]
 leader = "space"
 
-# Enter resize mode from the editor, the explorer, or the terminal (copy mode),
-# so panels can be resized while they hold focus.
+# Enter resize mode from the editor, either sidebar, the bottom panel, or the
+# terminal (copy mode), so docks can be resized while they hold focus.
 [[bindings]]
 mode = "normal"
 key = "<leader>r r"
@@ -17,6 +17,16 @@ command = "mode.resize"
 
 [[bindings]]
 mode = "explorer"
+key = "<leader>r r"
+command = "mode.resize"
+
+[[bindings]]
+mode = "inspector"
+key = "<leader>r r"
+command = "mode.resize"
+
+[[bindings]]
+mode = "bottom_panel"
 key = "<leader>r r"
 command = "mode.resize"
 
@@ -1165,11 +1175,6 @@ command = "overlay.select_next"
 mode = "palette"
 key = "cmd+v"
 command = "editor.paste"
-
-[[bindings]]
-mode = "palette"
-key = "Ctrl+a"
-command = "search.toggle_case_sensitive"
 
 [[bindings]]
 mode = "palette"
