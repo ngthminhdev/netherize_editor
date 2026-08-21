@@ -103,11 +103,22 @@ cd "$PROJECT_DIR/target"
 zip -r --symlinks "$(basename "$ZIP")" "$APP_NAME.app" >/dev/null
 cd "$PROJECT_DIR"
 
+# ── 9. DMG (drag-to-Applications installer) ───────────────────────────────────
+DMG="$PROJECT_DIR/target/${APP_NAME}-${VERSION}-macos.dmg"
+STAGING="$PROJECT_DIR/target/dmg-staging"
+echo "Creating DMG → $DMG"
+rm -rf "$STAGING" "$DMG"
+mkdir -p "$STAGING"
+cp -R "$BUNDLE" "$STAGING/"
+ln -s /Applications "$STAGING/Applications"
+hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
+rm -rf "$STAGING"
+
 echo ""
 echo "Bundle : $BUNDLE"
-echo "Release : $ZIP ($(du -sh "$ZIP" | cut -f1))"
+echo "DMG    : $DMG ($(du -sh "$DMG" | cut -f1))"
+echo "Zip    : $ZIP ($(du -sh "$ZIP" | cut -f1))"
 echo ""
-echo "Upload $ZIP to GitHub Releases as attachment."
-echo ""
-echo "Install locally:"
-echo "  cp -r '$BUNDLE' /Applications/"
+echo "Upload the DMG to GitHub Releases (zip kept for CI/legacy)."
+echo "Install: open the DMG, drag $APP_NAME.app onto Applications."
+echo "Note: ad-hoc signed — first launch needs right-click → Open (Gatekeeper)."

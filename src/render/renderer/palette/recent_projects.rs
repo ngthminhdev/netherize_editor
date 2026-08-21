@@ -31,26 +31,21 @@ impl Renderer {
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
         let mut icons: Vec<IconDrawInstance> = Vec::new();
 
+        // Theme Selector shares every metric with Recent Projects (font, row
+        // padding, text inset) so both pickers read as the same component;
+        // only the row *content* differs (swatch strip vs project icon).
         let is_theme_selector =
             model.mode == crate::app::command_palette::CommandPaletteMode::ThemeSelector;
-        let font_size = if is_theme_selector {
-            self.theme.ui.sidebar_font_size * 1.18
-        } else {
-            self.theme.ui.sidebar_font_size
-        };
+        let font_size = self.theme.ui.sidebar_font_size;
         let char_w = font_size * 0.62;
-        let line_h = if is_theme_selector {
-            (model.line_height * 1.18).max(24.0)
-        } else {
-            model.line_height.max(18.0)
-        };
-        let row_v_pad = if is_theme_selector { 8.0 } else { 9.0 };
+        let line_h = model.line_height.max(18.0);
+        let row_v_pad = 9.0;
         let row_h = if is_theme_selector {
-            line_h + row_v_pad * 2.0
+            model.row_height
         } else {
             model.row_height.max(line_h * 2.0 + row_v_pad * 2.0 + 2.0)
         };
-        let text_x = panel_x + model.panel_padding + if is_theme_selector { 16.0 } else { 8.0 };
+        let text_x = panel_x + model.panel_padding + 8.0;
 
         // Theme Selector keeps the existing rich browser row. Recent Projects uses
         // the same renderer/chrome pipeline but upgrades to a project launcher row.
@@ -205,43 +200,8 @@ impl Renderer {
 
         // ── Body rows ──────────────────────────────────────────────────────────
         let footer_h = palette_footer_height(line_h);
-        let row_h = if is_theme_selector {
-            line_h + 18.0
-        } else {
-            row_h
-        };
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
-        if is_theme_selector && body_h > 1.0 {
-            let mut frost = model.panel_bg;
-            frost[3] = frost[3].max(0.74);
-            quads.push(
-                RegionDrawInstance::new(
-                    [
-                        panel_x + model.panel_padding * 0.5,
-                        row_top - 2.0,
-                        panel_w - model.panel_padding,
-                        body_h + 4.0,
-                    ],
-                    frost,
-                )
-                .with_radius(12.0),
-            );
-            let mut veil = self.theme.ui.bg.as_f32();
-            veil[3] = 0.28;
-            quads.push(
-                RegionDrawInstance::new(
-                    [
-                        panel_x + model.panel_padding * 0.5,
-                        row_top - 2.0,
-                        panel_w - model.panel_padding,
-                        body_h + 4.0,
-                    ],
-                    veil,
-                )
-                .with_radius(12.0),
-            );
-        }
         let scroll_offset = model
             .scroll_offset_rows
             .min(model.result_labels.len().saturating_sub(max_visible));
@@ -269,7 +229,7 @@ impl Renderer {
             }
             if visible_idx > 0 {
                 let mut sep = model.border_color;
-                sep[3] *= if is_theme_selector { 0.18 } else { 0.30 };
+                sep[3] *= 0.30;
                 quads.push(RegionDrawInstance::new(
                     [text_x, row_top, inner_width - 8.0, 1.0],
                     sep,
@@ -279,8 +239,11 @@ impl Renderer {
             let label_y = row_top + row_v_pad;
 
             if is_theme_selector {
-                let palette_x = text_x;
-                let palette_y = row_top + (row_h - 24.0) * 0.5;
+                // Swatch strip fills the same leading slot the project icon
+                // occupies in Recent Projects, so both pickers line up.
+                let swatch_size = 16.0;
+                let swatch_stride = 22.0;
+                let swatch_y = row_top + (row_h - swatch_size) * 0.5;
                 let fallback_swatches = theme_preview_colors(name, model);
                 let swatches = model
                     .item_preview_colors
@@ -291,14 +254,19 @@ impl Renderer {
                 for (swatch_idx, color) in swatches.iter().take(6).enumerate() {
                     quads.push(
                         RegionDrawInstance::new(
-                            [palette_x + swatch_idx as f32 * 34.0, palette_y, 24.0, 24.0],
+                            [
+                                text_x + swatch_idx as f32 * swatch_stride,
+                                swatch_y,
+                                swatch_size,
+                                swatch_size,
+                            ],
                             *color,
                         )
-                        .with_radius(12.0),
+                        .with_radius(swatch_size * 0.5),
                     );
                 }
 
-                let name_x = text_x + 224.0;
+                let name_x = text_x + 6.0 * swatch_stride + 14.0;
                 Self::render_highlighted_label(
                     name,
                     ranges,
@@ -310,21 +278,6 @@ impl Renderer {
                     &mut self.atlas,
                     &self.queue,
                     &mut glyphs,
-                );
-
-                let marker_w = 34.0;
-                let marker_h = 16.0;
-                let marker_x = panel_x + panel_w - model.panel_padding - marker_w - 8.0;
-                let marker_y = row_top + (row_h - marker_h) * 0.5;
-                let mut marker = if is_selected {
-                    model.match_color
-                } else {
-                    model.border_color
-                };
-                marker[3] = if is_selected { 0.88 } else { 0.35 };
-                quads.push(
-                    RegionDrawInstance::new([marker_x, marker_y, marker_w, marker_h], marker)
-                        .with_radius(4.0),
                 );
             } else {
                 let full_path_buf = std::path::Path::new(full_path);

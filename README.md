@@ -39,9 +39,7 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
 | Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
 | LeetCode test generation | ✅ Stratified case generation + AI verification |
-| Single-instance routing, `--new-instance`, remote open of dirs/files | `src/app/single_instance.rs`, `src/app/event_loop/mod.rs` (`run`), `src/app/event_loop/commands_explorer.rs` (`handle_remote_open`) | Socket protocol, startup forwarding, and the in-window open handling |
-| Workspace switch (Open Folder / recent / worktrees), dirty-switch guard | `src/app/event_loop/commands_explorer.rs` (`switch_workspace_with_files`), `src/app/event_loop/commands_prompts.rs` | Switch pipeline, save/discard confirmation, worktree palette |
-| External file change toasts / conflict prompt wording | `src/app/event_loop/async_results/filesystem.rs`, `src/app/app_state/palette.rs` | Toast aggregation sits on the external-change pipeline reports |
+| Single instance + `netherize` CLI | ✅ One dock icon; `netherize .` routes to the running window; in-app PATH installer |
 | Spatial Canvas (NetherCanvas) | ✅ Navigable 2D code canvas with LSP-driven cards, auto-arrange, scope-aware editing |
 | Workbench panel slide animation | ✅ Hyprland-style timeline-based slide for docks + zen mode |
 | Solid caret (no blink) | ✅ Caret stays visible always |
@@ -584,6 +582,12 @@ Use this table when you want to jump straight to the likely file instead of read
 | Vim counts, pending operators, chord interruption, `r<char>`, Leap pending states | `src/app/input/handler.rs`, `src/app/input/pending.rs` | Handler owns the state machine; pending types keep the router states readable |
 | A shortcut does not fire, or `0/F12/<leader>` maps wrong | `config/keymaps/default.toml`, `src/app/input_map/mod.rs`, `src/app/resolved_keymap.rs` | Binding definition, sequence matching, and merged runtime keymap live here |
 | A command should repeat `count` times or should/should not support counts | `src/core/commands.rs`, `src/core/command_dispatch/mod.rs` | Count policy and the actual execution loop are centralized here |
+| Single-instance routing, `--new-instance`, remote open of dirs/files | `src/app/single_instance.rs`, `src/app/event_loop/mod.rs` (`run`), `src/app/event_loop/commands_explorer.rs` (`handle_remote_open`) | Socket protocol, startup forwarding, and the in-window open handling |
+| Workspace switch (Open Folder / recent / worktrees), dirty-switch guard | `src/app/event_loop/commands_explorer.rs` (`switch_workspace_with_files`), `src/app/event_loop/commands_prompts.rs` | Switch pipeline, save/discard confirmation, worktree palette |
+| External file change toasts / conflict prompt wording | `src/app/event_loop/async_results/filesystem.rs`, `src/app/app_state/palette.rs` | Toast aggregation sits on the external-change pipeline reports |
+| `netherize` CLI in PATH (install/uninstall, wrong-version fixes) | `src/app/cli_install.rs`, `src/app/event_loop/commands.rs` (`install_cli_command`) | Symlink-to-running-exe logic + escalation order live here |
+| Command palette action list (Cmd-Shift-P coverage, labels) | `src/app/command_palette.rs` (`COMMAND_PALETTE_ACTIONS`) | One table drives the list; filter matches label + id |
+| Theme picker layout / current-theme-first behavior | `src/render/renderer/palette/recent_projects.rs`, `src/app/event_loop/commands_palette.rs` (promote + preview) | Theme picker shares the Recent Projects renderer; promotion happens on open |
 | Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch/mod.rs`, `src/core/transaction.rs`, `src/app/app_state/mod.rs` | Dispatch decides when to commit; transaction.rs groups; AppState stores the stack |
 | Mode transitions such as Normal/Insert/Visual/TerminalFocus | `src/core/mode.rs`, `src/app/app_state/mod.rs` | `ModeState` validates transitions; `AppState` applies them |
 | F12 terminal behavior, focus handoff, explorer/panel focus routing | `src/app/event_loop/commands.rs`, `src/app/event_loop/commands_terminal.rs`, `src/app/event_loop/commands_explorer.rs` | The facade routes by UI domain; terminal and explorer behavior now live in focused modules |

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BINARY="netherize_editor"
+CLI_NAME="netherize"
 INSTALL_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.config/netherize"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,6 +16,12 @@ mkdir -p "$INSTALL_DIR"
 cp "target/release/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod +x "$INSTALL_DIR/$BINARY"
 
+# `netherize` is the CLI entry point (like `code` / `zed`). Symlink, not copy,
+# so re-running this script — or the in-app "Shell Command: Install 'netherize'
+# in PATH" command re-pointing it at the .app bundle — always wins.
+echo "Linking CLI → $INSTALL_DIR/$CLI_NAME"
+ln -sf "$INSTALL_DIR/$BINARY" "$INSTALL_DIR/$CLI_NAME"
+
 echo "Syncing config/themes → $CONFIG_DIR/themes"
 mkdir -p "$CONFIG_DIR/themes"
 cp -r "$PROJECT_DIR/config/themes/"* "$CONFIG_DIR/themes/"
@@ -27,4 +34,4 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
 fi
 
 echo ""
-echo "Done. Run: $BINARY"
+echo "Done. Run: $CLI_NAME ."

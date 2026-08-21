@@ -81,6 +81,10 @@ pub const OPEN_FOLDER: &str = "editor.open_folder";
 pub const OPEN_RECENT_PROJECTS: &str = "projects.recent";
 pub const OPEN_WORKTREES: &str = "projects.worktrees";
 
+// ── Shell command (CLI in PATH) ──────────────────────────────────────────────
+pub const INSTALL_CLI_PATH: &str = "cli.install";
+pub const UNINSTALL_CLI_PATH: &str = "cli.uninstall";
+
 // ── App-level UI ──────────────────────────────────────────────────────────────
 pub const TOGGLE_TERMINAL: &str = "app.toggle_terminal";
 pub const TOGGLE_BOTTOM_DOCK: &str = "app.toggle_bottom_dock";
@@ -295,6 +299,8 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_FOLDER,
     OPEN_RECENT_PROJECTS,
     OPEN_WORKTREES,
+    INSTALL_CLI_PATH,
+    UNINSTALL_CLI_PATH,
     MOVE_LEFT,
     MOVE_RIGHT,
     MOVE_UP,
@@ -611,6 +617,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_FOLDER => Some(Command::OpenFolder),
         OPEN_RECENT_PROJECTS => Some(Command::OpenRecentProjects),
         OPEN_WORKTREES => Some(Command::OpenWorktreePalette),
+        INSTALL_CLI_PATH => Some(Command::InstallCliPath),
+        UNINSTALL_CLI_PATH => Some(Command::UninstallCliPath),
         ENTER_NORMAL => Some(Command::SwitchMode(ModeEvent::EnterNormal)),
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),

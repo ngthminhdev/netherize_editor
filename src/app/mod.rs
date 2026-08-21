@@ -1,6 +1,7 @@
 pub mod ai_agents;
 pub mod app_state;
 pub mod async_bridge;
+pub mod cli_install;
 pub mod clipboard;
 pub mod command_palette;
 pub mod event_loop;

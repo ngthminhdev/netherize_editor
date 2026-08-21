@@ -145,6 +145,11 @@ pub enum Command {
     /// Open command palette listing this repo's other git worktrees; Enter
     /// switches the workspace to the selected worktree in place.
     OpenWorktreePalette,
+    /// Symlink the running executable into PATH as `netherize` (VS Code's
+    /// "Shell Command: Install 'code' command in PATH").
+    InstallCliPath,
+    /// Remove the `netherize` symlinks created by `InstallCliPath`.
+    UninstallCliPath,
     /// Remove the selected entry from the recent projects list.
     RemoveRecentProject,
     OpenFilePicker,

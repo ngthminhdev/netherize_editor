@@ -218,6 +218,20 @@ impl AppState {
             .collect();
         self.command_palette
             .open_with_items(CommandPaletteMode::RecentProjects, items);
+        self.command_palette
+            .set_title_override(Some("WORKTREES".to_string()));
+    }
+
+    /// Move the active theme to the top of an open theme selector and select
+    /// it, so opening the picker never flips the live preview.
+    pub fn promote_theme_selector_current(&mut self, profile: &str) -> bool {
+        self.command_palette.promote_theme(profile)
+    }
+
+    /// Feed persisted most-recently-run command ids to the command palette
+    /// (RECENT group at the top of Cmd-Shift-P).
+    pub fn set_palette_recent_commands(&mut self, ids: Vec<String>) {
+        self.command_palette.set_recent_commands(ids);
     }
 
     pub fn sync_welcome_recent_projects(&mut self, recent: &[std::path::PathBuf]) -> bool {

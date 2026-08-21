@@ -623,6 +623,67 @@ impl AppShell {
         }
     }
 
+    /// `cli.install` — put `netherize` in PATH as a symlink to the running
+    /// binary, so the terminal always launches the installed build.
+    pub(super) fn install_cli_command(&mut self) -> bool {
+        let exe = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(err) => {
+                self.show_transient_toast_kind(
+                    format!("CLI install failed: {err}"),
+                    ToastKind::Warning,
+                );
+                return true;
+            }
+        };
+        match crate::app::cli_install::install_cli(&exe) {
+            Ok(outcome) => {
+                let mut message = format!(
+                    "Installed: netherize → {} (v{})",
+                    outcome.installed_at.display(),
+                    env!("CARGO_PKG_VERSION")
+                );
+                if !outcome.repointed_legacy.is_empty() {
+                    message.push_str("\nRe-pointed stale netherize_editor to this build");
+                }
+                if outcome.path_hint_needed {
+                    message.push_str(&format!(
+                        "\nAdd to PATH: export PATH=\"{}:$PATH\"",
+                        outcome
+                            .installed_at
+                            .parent()
+                            .map(|dir| dir.display().to_string())
+                            .unwrap_or_default()
+                    ));
+                }
+                self.show_transient_toast(message);
+            }
+            Err(err) => {
+                self.show_transient_toast_kind(
+                    format!("CLI install failed\n{err}"),
+                    ToastKind::Warning,
+                );
+            }
+        }
+        true
+    }
+
+    /// `cli.uninstall` — remove the `netherize` symlinks created above.
+    pub(super) fn uninstall_cli_command(&mut self) -> bool {
+        let removed = crate::app::cli_install::uninstall_cli();
+        if removed.is_empty() {
+            self.show_transient_toast("No netherize CLI symlink found".to_string());
+        } else {
+            let paths = removed
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.show_transient_toast(format!("Removed: {paths}"));
+        }
+        true
+    }
+
     fn handle_terminal_paste(&mut self) -> bool {
         let clipboard_text = match self.clipboard.get_text() {
             Ok(text) => text,

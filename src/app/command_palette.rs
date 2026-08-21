@@ -217,7 +217,8 @@ impl CommandPaletteMode {
         }
     }
 
-    /// File Picker, Live Grep, Recent Projects và Theme Selector dùng UI phức tạp.
+    /// File Picker, Live Grep, Recent Projects, Theme Selector và Command
+    /// Palette dùng UI phức tạp (badge header + footer + group rows).
     pub fn is_complex_picker(self) -> bool {
         matches!(
             self,
@@ -228,6 +229,7 @@ impl CommandPaletteMode {
                 | Self::LspReferences
                 | Self::FileHistory
                 | Self::DocumentSymbols
+                | Self::CommandPalette
         )
     }
 }
@@ -352,7 +354,8 @@ impl CommandPaletteItem {
     pub fn command(id: &str, label: &str) -> Self {
         Self {
             label: label.to_string(),
-            secondary_label: None,
+            // Shown right-aligned & dimmed so keymap users see the id to bind.
+            secondary_label: Some(id.to_string()),
             icon: None,
             action: CommandPaletteAction::ExecuteCommand(id.to_string()),
             tone: CommandPaletteItemTone::Default,
@@ -483,6 +486,9 @@ pub struct CommandPaletteRenderModel {
     pub result_labels: Vec<String>,
     /// Secondary label cho mỗi kết quả (full path) — dùng cho 2-column modes như RecentProjects.
     pub secondary_labels: Vec<String>,
+    /// Per-row section label ("RECENT"/"COMMANDS"). Empty = no grouping; the
+    /// renderer draws a group header whenever the value changes between rows.
+    pub row_group_labels: Vec<String>,
     /// Match byte ranges (start..end) trong label tương ứng.
     pub result_match_ranges: Vec<Vec<(usize, usize)>>,
     pub selected_index: usize,
@@ -552,6 +558,16 @@ pub struct CommandPalette {
     /// Items pre-populated externally (e.g. recent projects). Used by
     /// RecentProjects mode where `refresh_results` would otherwise clear them.
     static_items: Vec<CommandPaletteItem>,
+    /// Header badge text overriding the mode's default title, for pickers that
+    /// reuse another mode's plumbing (worktree switcher reuses RecentProjects).
+    title_override: Option<String>,
+    /// Most-recently-run command ids (from persistence), newest first. Shown
+    /// as the RECENT group at the top of CommandPalette while the query is
+    /// empty.
+    recent_command_ids: Vec<String>,
+    /// How many rows at the top of `results` came from `recent_command_ids`
+    /// in the latest refresh (0 whenever a query is active).
+    recent_rows_in_results: usize,
 }
 
 impl Default for CommandPalette {
@@ -570,6 +586,9 @@ impl Default for CommandPalette {
             vim_register: String::new(),
             max_results: DEFAULT_MAX_RESULTS,
             static_items: Vec::new(),
+            title_override: None,
+            recent_command_ids: Vec::new(),
+            recent_rows_in_results: 0,
         }
     }
 }
@@ -587,6 +606,7 @@ impl CommandPalette {
         self.pending_operator = None;
         // vim_register intentionally persists across opens.
         self.static_items.clear();
+        self.title_override = None;
         self.refresh_results(workspace);
         self.results.len()
     }
@@ -610,9 +630,46 @@ impl CommandPalette {
         // stale vim mode from a previous session and opens in Normal.
         self.vim_mode = PaletteVimMode::Insert;
         self.pending_operator = None;
+        self.title_override = None;
         self.static_items = items.clone();
         self.results = items;
         self.results.len()
+    }
+
+    /// Override the header badge text for the current open (cleared by the
+    /// next `open`/`open_with_items`/`close`).
+    pub fn set_title_override(&mut self, title: Option<String>) {
+        self.title_override = title;
+    }
+
+    /// Feed the persisted most-recently-run command ids into the palette and
+    /// rebuild results so the RECENT group shows up on open.
+    pub fn set_recent_commands(&mut self, ids: Vec<String>) {
+        if self.recent_command_ids == ids {
+            return;
+        }
+        self.recent_command_ids = ids;
+        if self.is_visible && self.mode == CommandPaletteMode::CommandPalette {
+            self.refresh_results(None);
+        }
+    }
+
+    /// Move the item whose action selects `profile` to the top of the list and
+    /// select it — the theme picker opens showing the active theme first, so
+    /// the open itself never changes the previewed theme.
+    pub fn promote_theme(&mut self, profile: &str) -> bool {
+        let position = self.static_items.iter().position(|item| {
+            matches!(&item.action,
+                CommandPaletteAction::SelectTheme(name) if name.eq_ignore_ascii_case(profile))
+        });
+        let Some(position) = position else {
+            return false;
+        };
+        let item = self.static_items.remove(position);
+        self.static_items.insert(0, item);
+        self.results = self.static_items.clone();
+        self.selected_index = 0;
+        true
     }
 
     pub fn set_hidden_items(
@@ -624,6 +681,7 @@ impl CommandPalette {
         let changed = self.mode != mode || self.results.len() != items.len();
         self.mode = mode;
         self.query.clear();
+        self.title_override = None;
         self.is_visible = false;
         self.is_loading = false;
         self.cursor_byte = 0;
@@ -646,6 +704,7 @@ impl CommandPalette {
         self.selected_index = 0;
         self.results.clear();
         self.static_items.clear();
+        self.title_override = None;
         self.cursor_byte = 0;
         self.selection_range = None;
         was_open
@@ -935,10 +994,16 @@ impl CommandPalette {
             return;
         }
 
+        self.recent_rows_in_results = 0;
         self.results = match self.mode {
             CommandPaletteMode::FilePicker => Vec::new(),
             CommandPaletteMode::CommandPalette => {
-                command_palette_items(&self.query, self.max_results)
+                // Full action registry — never truncated here; the panel
+                // scrolls through whatever the filter leaves.
+                let (items, recent_rows) =
+                    command_palette_items(&self.query, &self.recent_command_ids);
+                self.recent_rows_in_results = recent_rows;
+                items
             }
             CommandPaletteMode::VimCommand => vim_command_items(&self.query),
             CommandPaletteMode::WorkspaceSymbols => {
@@ -1095,11 +1160,12 @@ impl CommandPalette {
             // Recent Projects ưu tiên rộng hơn để hiển thị full path.
             let available_w = (width - 48.0).max(320.0);
             let min_w = (width * 0.35).max(400.0);
-            let pw = if self.mode == CommandPaletteMode::ThemeSelector {
+            let pw = if self.mode == CommandPaletteMode::FilePicker {
                 (width * 0.60).clamp(min_w.max(560.0), available_w)
-            } else if self.mode == CommandPaletteMode::FilePicker {
-                (width * 0.60).clamp(min_w.max(560.0), available_w)
-            } else if self.mode == CommandPaletteMode::RecentProjects {
+            } else if matches!(
+                self.mode,
+                CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
+            ) {
                 (width * 0.70).clamp(min_w, available_w)
             } else if matches!(
                 self.mode,
@@ -1238,10 +1304,28 @@ impl CommandPalette {
             CommandPaletteMode::LiveGrep
                 | CommandPaletteMode::DocumentSymbols
                 | CommandPaletteMode::LeetCodeLanguageSelector
+                | CommandPaletteMode::CommandPalette
         ) {
             self.results
                 .iter()
                 .map(|entry| entry.secondary_label.clone().unwrap_or_default())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let row_group_labels: Vec<String> = if self.mode == CommandPaletteMode::CommandPalette
+            && self.query.is_empty()
+            && self.recent_rows_in_results > 0
+        {
+            (0..self.results.len())
+                .map(|idx| {
+                    if idx < self.recent_rows_in_results {
+                        "RECENT".to_string()
+                    } else {
+                        "COMMANDS".to_string()
+                    }
+                })
                 .collect()
         } else {
             Vec::new()
@@ -1271,9 +1355,13 @@ impl CommandPalette {
         let mut panel_bg = theme.ui.panel_bg.as_f32();
         panel_bg[3] = panel_bg[3].max(0.98);
         if self.mode == CommandPaletteMode::ThemeSelector {
-            scrim[3] = 0.08;
+            // Live preview must show THROUGH the picker: near-invisible scrim,
+            // translucent panel. The old "méo" look came from the misaligned
+            // frost/veil quads and the faint border (both removed), not from
+            // the translucency itself — keep the panel frame crisp.
+            scrim[3] = 0.10;
             panel_bg = theme.ui.overlay_bg.as_f32();
-            panel_bg[3] = panel_bg[3].min(0.58);
+            panel_bg[3] = panel_bg[3].clamp(0.55, 0.68);
         }
 
         Some(CommandPaletteRenderModel {
@@ -1292,13 +1380,17 @@ impl CommandPalette {
             },
             result_labels,
             secondary_labels,
+            row_group_labels,
             result_match_ranges,
             selected_index: self.selected_index,
             scroll_offset_rows,
             line_height,
             row_height,
             panel_padding,
-            title: self.mode.title().to_string(),
+            title: self
+                .title_override
+                .clone()
+                .unwrap_or_else(|| self.mode.title().to_string()),
             total_results: self.results.len(),
             is_loading: self.is_loading,
             show_results,
@@ -1404,63 +1496,187 @@ fn symbol_tone(kind: &str) -> CommandPaletteItemTone {
     }
 }
 
-fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteItem> {
-    let candidates = [
-        ("editor.undo", "Undo"),
-        ("editor.redo", "Redo"),
-        ("editor.toggle_line_comment", "Toggle Line Comment"),
-        (
-            "editor.toggle_selection_comment",
-            "Toggle Selection Comment",
-        ),
-        ("editor.open_in_file_search", "Search In Current File"),
-        ("editor.search_next", "Search Next Match"),
-        ("editor.search_prev", "Search Previous Match"),
-        (
-            "editor.search_word_under_cursor",
-            "Search Word Under Cursor",
-        ),
-        ("editor.clear_search_highlights", "Clear Search Highlights"),
-        ("editor.paste", "Paste System Clipboard"),
-        ("editor.save_file", "Save File"),
-        ("app.open_file_picker", "Open File Picker"),
-        ("app.open_file_finder", "Open File Finder"),
-        ("app.search_in_files", "Search In Files"),
-        ("app.open_workspace_symbols", "Open Workspace Symbols"),
-        ("app.open_document_symbols", "Find Symbol in File"),
-        ("lsp.rename", "Rename Symbol"),
-        ("lsp.select_python_env", "Change Python Venv"),
-        ("lsp.select_dart_env", "Change Dart/Flutter SDK"),
-        ("lsp.restart", "Restart Language Server"),
-        ("runner.new_leetcode_file", "New LeetCode File"),
-        ("runner.fetch_leetcode_problem", "Fetch LeetCode Problem"),
-        ("workspace.reload", "Reload Workspace"),
-        ("app.open_vim_command", "Open Vim Command"),
-        ("app.open_help", "Open Cheat Sheet"),
-        ("app.toggle_terminal", "Toggle Terminal"),
-        ("app.toggle_maximize_focus", "Toggle Zen Mode"),
-        ("app.toggle_left_dock", "Toggle Left Dock"),
-        ("app.focus_editor", "Focus Editor"),
-        ("app.focus_explorer", "Focus Explorer"),
-        ("app.focus_terminal", "Focus Terminal"),
-        ("app.focus_inspector", "Focus Inspector"),
-        ("app.focus_left", "Focus Left"),
-        ("app.focus_right", "Focus Right"),
-        ("app.focus_up", "Focus Up"),
-        ("app.focus_down", "Focus Down"),
-        ("app.new_instance", "New Instance"),
-        ("buffer.new", "New Buffer"),
-        ("buffer.next", "Next Buffer"),
-        ("buffer.prev", "Previous Buffer"),
-        ("buffer.close_current", "Close Current Buffer"),
-    ];
+/// Every palette-worthy action, VS Code style: real actions only, no
+/// per-keystroke motions/editing primitives (those live in the keymap).
+/// Both the label and the command id are matched by the filter, so power
+/// users can type either "worktree" or "projects.worktrees".
+pub(crate) const COMMAND_PALETTE_ACTIONS: &[(&str, &str)] = &[
+    // ── Workspace / projects ──────────────────────────────────────────
+    ("editor.open_folder", "Open Folder…"),
+    ("projects.recent", "Open Recent Project"),
+    ("projects.worktrees", "Switch Git Worktree"),
+    ("workspace.reload", "Reload Workspace"),
+    ("app.new_instance", "New Instance"),
+    ("cli.install", "Shell Command: Install 'netherize' in PATH"),
+    (
+        "cli.uninstall",
+        "Shell Command: Uninstall 'netherize' from PATH",
+    ),
+    // ── Files / search ────────────────────────────────────────────────
+    ("editor.save_file", "Save File"),
+    ("app.open_file_picker", "Open File Picker"),
+    ("app.open_file_finder", "Open File Finder"),
+    ("app.search_in_files", "Search In Files"),
+    ("app.open_workspace_symbols", "Open Workspace Symbols"),
+    ("app.open_document_symbols", "Find Symbol in File"),
+    ("app.open_file_history", "Open File History"),
+    ("editor.open_in_file_search", "Search In Current File"),
+    ("editor.search_next", "Search Next Match"),
+    ("editor.search_prev", "Search Previous Match"),
+    (
+        "editor.search_word_under_cursor",
+        "Search Word Under Cursor",
+    ),
+    ("editor.clear_search_highlights", "Clear Search Highlights"),
+    // ── Editing ───────────────────────────────────────────────────────
+    ("editor.undo", "Undo"),
+    ("editor.redo", "Redo"),
+    ("editor.toggle_line_comment", "Toggle Line Comment"),
+    (
+        "editor.toggle_selection_comment",
+        "Toggle Selection Comment",
+    ),
+    ("editor.paste", "Paste System Clipboard"),
+    ("editor.join_lines", "Join Lines"),
+    ("editor.toggle_fold", "Toggle Fold"),
+    ("editor.toggle_fold_all", "Toggle All Folds"),
+    ("multicursor.select_all", "Select All Occurrences"),
+    // ── Language / LSP ────────────────────────────────────────────────
+    ("lsp.format_document", "Format Document"),
+    ("lsp.rename", "Rename Symbol"),
+    ("lsp.go_to_definition", "Go to Definition"),
+    ("lsp.preview_definition", "Peek Definition"),
+    ("lsp.references", "Find References"),
+    ("lsp.hover", "Show Hover"),
+    ("lsp.code_action", "Code Action"),
+    ("lsp.restart", "Restart Language Server"),
+    ("lsp.select_python_env", "Change Python Venv"),
+    ("lsp.select_dart_env", "Change Dart/Flutter SDK"),
+    ("diagnostics.open_picker", "Open Diagnostics"),
+    // ── Git / tools ───────────────────────────────────────────────────
+    ("git.open_lazygit", "Open Lazygit"),
+    ("git.blame_line", "Git Blame Line"),
+    ("docker.open_lazydocker", "Open Lazydocker"),
+    ("codegraph.open_graph_hud", "Open Code Graph"),
+    ("canvas.open", "Open Canvas"),
+    ("canvas.auto_arrange", "Canvas: Auto Arrange"),
+    ("ai.chat_toggle", "Toggle AI Chat"),
+    // ── Runner / LeetCode ─────────────────────────────────────────────
+    ("runner.run", "Run Test Cases"),
+    ("runner.new_leetcode_file", "New LeetCode File"),
+    ("runner.fetch_leetcode_problem", "Fetch LeetCode Problem"),
+    // ── View / layout ─────────────────────────────────────────────────
+    ("app.open_theme_selector", "Select Theme"),
+    ("app.open_settings", "Open Settings"),
+    ("app.open_extensions_manager", "Open Extensions"),
+    ("app.open_help", "Open Cheat Sheet"),
+    ("app.open_vim_command", "Open Vim Command"),
+    ("app.toggle_terminal", "Toggle Terminal"),
+    ("app.toggle_bottom_dock", "Toggle Bottom Dock"),
+    ("app.toggle_left_dock", "Toggle Left Dock"),
+    ("app.toggle_maximize_focus", "Toggle Zen Mode"),
+    ("view.toggle_minimap", "Toggle Minimap"),
+    ("app.toggle_markdown_preview", "Toggle Markdown Preview"),
+    ("app.close_sidebars", "Close Sidebars"),
+    // ── Focus ─────────────────────────────────────────────────────────
+    ("app.focus_editor", "Focus Editor"),
+    ("app.focus_explorer", "Focus Explorer"),
+    ("app.focus_outline", "Focus Outline"),
+    ("app.focus_terminal", "Focus Terminal"),
+    ("app.focus_inspector", "Focus Inspector"),
+    ("app.focus_left", "Focus Left"),
+    ("app.focus_right", "Focus Right"),
+    ("app.focus_up", "Focus Up"),
+    ("app.focus_down", "Focus Down"),
+    ("app.focus_back", "Focus Back"),
+    ("app.move_focus_cycle", "Cycle Focus"),
+    // ── Buffers / terminal tabs ───────────────────────────────────────
+    ("buffer.new", "New Buffer"),
+    ("buffer.next", "Next Buffer"),
+    ("buffer.prev", "Previous Buffer"),
+    ("buffer.close_current", "Close Current Buffer"),
+    ("terminal.tab_new", "New Terminal Tab"),
+    ("terminal.tab_close", "Close Terminal Tab"),
+    ("terminal.search_open", "Search Terminal"),
+    // ── Explorer ──────────────────────────────────────────────────────
+    ("explorer.create_file", "Explorer: New File"),
+    ("explorer.create_folder", "Explorer: New Folder"),
+    ("explorer.rename_base", "Explorer: Rename File"),
+    ("explorer.copy_file", "Explorer: Copy File"),
+    ("explorer.paste_file", "Explorer: Paste File"),
+    ("explorer.toggle_hidden", "Explorer: Toggle Hidden Files"),
+    ("explorer.toggle_ignored", "Explorer: Toggle Ignored Files"),
+    (
+        "explorer.toggle_git_changes_only",
+        "Explorer: Git Changes Only",
+    ),
+    ("explorer.start_filter", "Explorer: Filter Files"),
+];
+
+/// Fuzzy match a command against a lowercase query. Ranking: substring in the
+/// label (earlier = better) > substring in the id > in-order subsequence of the
+/// label (fewer skipped chars = better). `None` = no match.
+fn command_fuzzy_score(label: &str, id: &str, query: &str) -> Option<i64> {
+    let label_lower = label.to_ascii_lowercase();
+    if let Some(pos) = label_lower.find(query) {
+        return Some(2000 - pos as i64 * 2);
+    }
+    if let Some(pos) = id.find(query) {
+        return Some(1000 - pos as i64);
+    }
+    let mut score = 500i64;
+    let mut label_chars = label_lower.chars();
+    for query_char in query.chars() {
+        loop {
+            match label_chars.next() {
+                Some(c) if c == query_char => break,
+                Some(_) => score -= 1,
+                None => return None,
+            }
+        }
+    }
+    Some(score)
+}
+
+/// Build the CommandPalette result list. Empty query: RECENT group (persisted
+/// most-recently-run ids, deduped out of the main list) followed by the full
+/// registry; returns how many leading rows are the RECENT group. Non-empty
+/// query: fuzzy-ranked matches, no grouping.
+fn command_palette_items(query: &str, recents: &[String]) -> (Vec<CommandPaletteItem>, usize) {
     let q = query.trim().to_ascii_lowercase();
-    candidates
+    if q.is_empty() {
+        let mut items = Vec::new();
+        for recent_id in recents {
+            if let Some((id, label)) = COMMAND_PALETTE_ACTIONS
+                .iter()
+                .find(|(id, _)| id == recent_id)
+            {
+                items.push(CommandPaletteItem::command(id, label));
+            }
+        }
+        let recent_rows = items.len();
+        for (id, label) in COMMAND_PALETTE_ACTIONS {
+            if !recents.iter().any(|recent| recent == id) {
+                items.push(CommandPaletteItem::command(id, label));
+            }
+        }
+        return (items, recent_rows);
+    }
+
+    let mut scored: Vec<(i64, usize)> = COMMAND_PALETTE_ACTIONS
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, (id, label))| command_fuzzy_score(label, id, &q).map(|s| (s, idx)))
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    let items = scored
         .into_iter()
-        .filter(|(_, label)| q.is_empty() || label.to_ascii_lowercase().contains(&q))
-        .take(max_results)
-        .map(|(id, label)| CommandPaletteItem::command(id, label))
-        .collect()
+        .map(|(_, idx)| {
+            let (id, label) = COMMAND_PALETTE_ACTIONS[idx];
+            CommandPaletteItem::command(id, label)
+        })
+        .collect();
+    (items, 0)
 }
 
 fn workspace_symbol_items(query: &str, max_results: usize) -> Vec<CommandPaletteItem> {
@@ -1516,7 +1732,9 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
 fn palette_max_items(mode: CommandPaletteMode) -> usize {
     match mode {
         CommandPaletteMode::LiveGrep => 10,
-        CommandPaletteMode::ThemeSelector => 12,
+        // Visible-row cap only — the result list itself holds the full action
+        // registry (see refresh_results) and the panel scrolls through it.
+        CommandPaletteMode::CommandPalette => 10,
         mode if mode.is_complex_picker() => 12,
         _ => 10,
     }
@@ -1525,7 +1743,8 @@ fn palette_max_items(mode: CommandPaletteMode) -> usize {
 fn palette_row_height(mode: CommandPaletteMode, line_height: f32) -> f32 {
     match mode {
         CommandPaletteMode::LiveGrep => line_height * 2.0 + 16.0,
-        CommandPaletteMode::ThemeSelector => line_height * 1.18 + 18.0,
+        CommandPaletteMode::ThemeSelector => line_height + 18.0,
+        CommandPaletteMode::CommandPalette => line_height + 14.0,
         CommandPaletteMode::RecentProjects => line_height * 2.0 + 20.0,
         CommandPaletteMode::DocumentSymbols | CommandPaletteMode::FilePicker => {
             (line_height + 16.0) * 1.5
@@ -1545,15 +1764,8 @@ fn complex_picker_reserved_height(
     // math thinks selected rows are visible while the renderer has already
     // clipped them behind the footer.
     let header_gap = 12.0 + 1.0 + 6.0;
-    let renderer_line_height = if mode == CommandPaletteMode::ThemeSelector {
-        (line_height * 1.18).max(24.0)
-    } else {
-        line_height
-    };
-    let footer_height = renderer_line_height + 37.0;
-    let header_height = if mode == CommandPaletteMode::ThemeSelector {
-        renderer_line_height + 10.0 + header_gap
-    } else if mode == CommandPaletteMode::RecentProjects {
+    let footer_height = line_height + 37.0;
+    let header_height = if mode == CommandPaletteMode::RecentProjects {
         let badge_height = line_height + 10.0 + header_gap;
         let column_header_height = line_height + 1.0 + 4.0;
         badge_height + column_header_height
@@ -2016,6 +2228,220 @@ mod tests {
 
     fn make_item(label: &str) -> CommandPaletteItem {
         CommandPaletteItem::command("test.command", label)
+    }
+
+    fn make_theme_item(name: &str) -> CommandPaletteItem {
+        CommandPaletteItem {
+            label: name.to_string(),
+            secondary_label: None,
+            icon: None,
+            action: CommandPaletteAction::SelectTheme(name.to_string()),
+            tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn command_palette_actions_are_valid_and_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for (id, label) in COMMAND_PALETTE_ACTIONS {
+            assert!(
+                crate::core::command_ids::is_valid(id),
+                "palette action '{id}' ({label}) is not a registered command id"
+            );
+            assert!(seen.insert(*id), "duplicate palette action id '{id}'");
+        }
+        // The regressions this table exists for: discoverability of the new
+        // dev-workflow commands.
+        for required in [
+            "projects.worktrees",
+            "app.open_theme_selector",
+            "cli.install",
+            "app.open_settings",
+            "lsp.format_document",
+        ] {
+            assert!(seen.contains(required), "palette must list '{required}'");
+        }
+    }
+
+    #[test]
+    fn command_palette_filter_matches_command_id_too() {
+        let (items, _) = command_palette_items("worktree", &[]);
+        assert!(
+            items.iter().any(|item| item.label == "Switch Git Worktree"),
+            "typing part of the id must surface the command"
+        );
+        let (all, recent_rows) = command_palette_items("", &[]);
+        assert_eq!(
+            all.len(),
+            COMMAND_PALETTE_ACTIONS.len(),
+            "empty query lists the full registry"
+        );
+        assert_eq!(recent_rows, 0);
+    }
+
+    #[test]
+    fn command_palette_fuzzy_matches_and_ranks() {
+        // Substring lands the obvious hit on top.
+        let (items, _) = command_palette_items("zen", &[]);
+        assert_eq!(items[0].label, "Toggle Zen Mode");
+
+        // In-order subsequence with gaps still matches ("tglzen").
+        let (items, _) = command_palette_items("tglzen", &[]);
+        assert!(
+            items.iter().any(|item| item.label == "Toggle Zen Mode"),
+            "subsequence query must match"
+        );
+
+        // Garbage matches nothing.
+        let (items, _) = command_palette_items("qqxxzz", &[]);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn command_palette_recents_group_on_top_without_duplicates() {
+        let recents = vec![
+            "app.open_settings".to_string(),
+            "editor.undo".to_string(),
+            "gone.command".to_string(), // stale id — silently dropped
+        ];
+        let (items, recent_rows) = command_palette_items("", &recents);
+
+        assert_eq!(recent_rows, 2);
+        assert_eq!(items[0].label, "Open Settings");
+        assert_eq!(items[1].label, "Undo");
+        assert_eq!(
+            items.len(),
+            COMMAND_PALETTE_ACTIONS.len(),
+            "recents are moved, not duplicated"
+        );
+        assert_eq!(items.iter().filter(|item| item.label == "Undo").count(), 1);
+
+        // Typing a query dissolves the group.
+        let (_, recent_rows) = command_palette_items("undo", &recents);
+        assert_eq!(recent_rows, 0);
+    }
+
+    #[test]
+    fn command_palette_render_model_carries_group_labels() {
+        let theme = ThemeConfig::builtin_dark();
+        let mut palette = CommandPalette::default();
+        palette.set_recent_commands(vec!["editor.undo".to_string()]);
+        palette.open(CommandPaletteMode::CommandPalette, None);
+
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1400.0, 900.0])
+            .expect("render model");
+        assert_eq!(
+            model.row_group_labels.first().map(String::as_str),
+            Some("RECENT")
+        );
+        assert_eq!(
+            model.row_group_labels.get(1).map(String::as_str),
+            Some("COMMANDS")
+        );
+        assert_eq!(model.row_group_labels.len(), model.result_labels.len());
+        assert_eq!(
+            model.secondary_labels.first().map(String::as_str),
+            Some("editor.undo"),
+            "command id shows as the row's secondary label"
+        );
+    }
+
+    #[test]
+    fn promote_theme_moves_current_to_front_and_selects_it() {
+        let mut palette = CommandPalette::default();
+        palette.open_with_items(
+            CommandPaletteMode::ThemeSelector,
+            vec![
+                make_theme_item("aurora"),
+                make_theme_item("Nether-Dark"),
+                make_theme_item("zephyr"),
+            ],
+        );
+        palette.selected_index = 2;
+
+        assert!(palette.promote_theme("nether-dark"));
+
+        assert_eq!(palette.results[0].label, "Nether-Dark");
+        assert_eq!(palette.selected_index, 0);
+        assert_eq!(palette.results.len(), 3);
+        // Unknown profile: no reorder, no panic.
+        assert!(!palette.promote_theme("missing-theme"));
+    }
+
+    #[test]
+    fn title_override_shows_in_render_and_clears_on_close() {
+        let theme = ThemeConfig::builtin_dark();
+        let mut palette = CommandPalette::default();
+        palette.open_with_items(
+            CommandPaletteMode::RecentProjects,
+            vec![make_item("worktree-a")],
+        );
+        palette.set_title_override(Some("WORKTREES".to_string()));
+
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("render model");
+        assert_eq!(model.title, "WORKTREES");
+
+        palette.close();
+        palette.open_with_items(CommandPaletteMode::RecentProjects, vec![make_item("proj")]);
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("render model");
+        assert_eq!(
+            model.title,
+            CommandPaletteMode::RecentProjects.title(),
+            "override must not leak into the next open"
+        );
+    }
+
+    #[test]
+    fn theme_selector_panel_stays_translucent_for_live_preview() {
+        let theme = ThemeConfig::builtin_dark();
+        let mut palette = CommandPalette::default();
+        palette.open_with_items(
+            CommandPaletteMode::ThemeSelector,
+            vec![make_theme_item("aurora")],
+        );
+
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("render model");
+        // The whole point of the picker is seeing the previewed theme through
+        // and around the panel — panel translucent, scrim near-invisible.
+        assert!(
+            model.panel_bg[3] <= 0.75,
+            "theme picker panel must stay translucent, got alpha {}",
+            model.panel_bg[3]
+        );
+        assert!(
+            model.scrim_color[3] <= 0.15,
+            "theme picker scrim must stay light, got alpha {}",
+            model.scrim_color[3]
+        );
+    }
+
+    #[test]
+    fn command_palette_lists_everything_but_panel_stays_short() {
+        let theme = ThemeConfig::builtin_dark();
+        let mut palette = CommandPalette::default();
+        palette.open(CommandPaletteMode::CommandPalette, None);
+
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1400.0, 900.0])
+            .expect("render model");
+        assert_eq!(
+            model.total_results,
+            COMMAND_PALETTE_ACTIONS.len(),
+            "full registry stays in the result list"
+        );
+        assert!(
+            model.panel_bounds[3] <= 900.0 * 0.62,
+            "panel must not swallow the screen, got height {} of 900",
+            model.panel_bounds[3]
+        );
     }
 
     #[test]

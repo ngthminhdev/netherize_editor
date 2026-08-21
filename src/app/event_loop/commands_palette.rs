@@ -145,13 +145,26 @@ impl AppShell {
                     if matches!(command_for_post_hooks, Command::OpenDocumentSymbols) {
                         self.submit_lsp_document_symbols();
                     }
-                    if matches!(command_for_post_hooks, Command::OpenThemeSelector) {
-                        self.begin_theme_picker_preview_session();
-                        request_redraw |= self.preview_selected_theme_from_picker();
+                    if self.app_state.command_palette_mode()
+                        == Some(CommandPaletteMode::CommandPalette)
+                    {
+                        self.app_state.set_palette_recent_commands(
+                            self.persistent_state.recent_commands.clone(),
+                        );
                     }
                     if self.app_state.command_palette_mode()
                         == Some(CommandPaletteMode::ThemeSelector)
                     {
+                        // Active theme first + selected, THEN preview: row 0 is
+                        // the current theme, so opening the picker previews the
+                        // theme already applied instead of jumping to whatever
+                        // sorts first alphabetically.
+                        let current_profile = ThemeConfig::resolved_profile(
+                            self.persistent_state.configured_theme_profile(),
+                        );
+                        request_redraw |= self
+                            .app_state
+                            .promote_theme_selector_current(&current_profile);
                         self.begin_theme_picker_preview_session();
                         request_redraw |= self.preview_selected_theme_from_picker();
                     }
@@ -501,6 +514,20 @@ impl AppShell {
                     )
                 {
                     return Some(self.confirm_lsp_rename_prompt());
+                }
+
+                // Record whichever palette command is about to run as the most
+                // recent one (RECENT group on the next open). Runs before the
+                // intercepts below so fire-and-execute commands count too.
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && self.app_state.command_palette_mode()
+                        == Some(CommandPaletteMode::CommandPalette)
+                    && let Some(crate::app::command_palette::CommandPaletteAction::ExecuteCommand(
+                        id,
+                    )) = self.app_state.command_palette_selected_action()
+                {
+                    self.persistent_state.push_recent_command(&id);
+                    self.persistent_state.save();
                 }
 
                 // Restart Language Server is a fire-and-execute command that

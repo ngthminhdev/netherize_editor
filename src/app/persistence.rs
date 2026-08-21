@@ -225,6 +225,10 @@ pub struct AppPersistentState {
     /// Agent ids for the AI Chat agent picker, most-recently-used first.
     #[serde(default)]
     pub recent_ai_agents: Vec<String>,
+    /// Command ids run from the command palette, most-recently-used first.
+    /// Shown as the RECENT group at the top of Cmd-Shift-P.
+    #[serde(default)]
+    pub recent_commands: Vec<String>,
     /// Last non-maximized window frame plus the last zoom state. Kept out of
     /// `ui.toml`: that file describes defaults, while this is per-machine state.
     #[serde(default)]
@@ -344,6 +348,15 @@ impl AppPersistentState {
         self.recent_ai_agents.retain(|id| id != agent_id);
         self.recent_ai_agents.insert(0, agent_id.to_string());
         self.recent_ai_agents.truncate(MAX_RECENT_AGENTS);
+    }
+
+    /// Record `command_id` as the most-recently-run palette command
+    /// (front, dedup, cap — feeds the RECENT group in Cmd-Shift-P).
+    pub fn push_recent_command(&mut self, command_id: &str) {
+        const MAX_RECENT_COMMANDS: usize = 3;
+        self.recent_commands.retain(|id| id != command_id);
+        self.recent_commands.insert(0, command_id.to_string());
+        self.recent_commands.truncate(MAX_RECENT_COMMANDS);
     }
 
     pub fn infer_project_icon_source(path: &Path) -> String {
@@ -604,6 +617,18 @@ mod tests {
         assert_eq!(state.recent_leetcode_languages.len(), 12);
         // Most recent stays at the front.
         assert_eq!(state.recent_leetcode_languages[0], "lang19");
+    }
+
+    #[test]
+    fn push_recent_command_dedupes_and_caps_at_three() {
+        let mut state = AppPersistentState::default();
+        state.push_recent_command("a.one");
+        state.push_recent_command("b.two");
+        state.push_recent_command("a.one"); // re-run moves to front, no dup
+        state.push_recent_command("c.three");
+        state.push_recent_command("d.four"); // pushes oldest (b.two) out
+
+        assert_eq!(state.recent_commands, vec!["d.four", "c.three", "a.one"]);
     }
 
     #[test]

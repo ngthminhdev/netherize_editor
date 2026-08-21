@@ -346,6 +346,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenFolder
         | Command::OpenRecentProjects
         | Command::OpenWorktreePalette
+        | Command::InstallCliPath
+        | Command::UninstallCliPath
         | Command::RemoveRecentProject
         | Command::ToggleTerminal
         | Command::ToggleBottomDock

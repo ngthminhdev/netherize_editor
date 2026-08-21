@@ -395,6 +395,8 @@ impl AppShell {
                 Some(changed)
             }
             Command::OpenWorktreePalette => Some(self.open_worktree_palette()),
+            Command::InstallCliPath => Some(self.install_cli_command()),
+            Command::UninstallCliPath => Some(self.uninstall_cli_command()),
             Command::ToggleLeftDock => {
                 let mut changed = self.panel_state.toggle_left();
                 if changed {

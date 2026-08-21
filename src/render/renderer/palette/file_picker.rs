@@ -162,7 +162,9 @@ impl Renderer {
                 break;
             }
 
-            // Determine folder for this item (only in FilePicker mode)
+            // Group key: FilePicker groups by parent folder (collapsible);
+            // other modes (CommandPalette) group by the model's per-row section
+            // label (RECENT / COMMANDS — headers only, not collapsible).
             let folder = if is_file_picker {
                 let file_path = label.split(':').next().unwrap_or(label);
                 std::path::Path::new(file_path)
@@ -170,12 +172,16 @@ impl Renderer {
                     .and_then(|p| p.to_str())
                     .map(|s| s.to_string())
             } else {
-                None
+                model
+                    .row_group_labels
+                    .get(absolute_idx)
+                    .filter(|group| !group.is_empty())
+                    .cloned()
             };
 
-            // Render group header when folder changes
+            // Render group header when the group changes
             let is_collapsed = if let Some(ref folder_str) = folder {
-                let collapsed = model.collapsed_paths.contains(folder_str);
+                let collapsed = is_file_picker && model.collapsed_paths.contains(folder_str);
                 if current_folder.as_ref() != Some(folder_str) {
                     // New group header
                     if rendered_rows >= max_visible {
@@ -194,8 +200,12 @@ impl Renderer {
                         header_bg,
                     ));
 
-                    let arrow = if collapsed { "▸" } else { "▾" };
-                    let header_text = format!("{} {}", arrow, folder_str);
+                    let header_text = if is_file_picker {
+                        let arrow = if collapsed { "▸" } else { "▾" };
+                        format!("{} {}", arrow, folder_str)
+                    } else {
+                        folder_str.clone()
+                    };
                     let header_color = model.hint_color;
                     let header_y = row_top + (row_h - line_h) * 0.5;
                     glyphs.extend(layout_panel_text(
@@ -247,87 +257,98 @@ impl Renderer {
             let mut row_model = model.clone();
             row_model.label_color = file_picker_tone_color(tone, model);
 
-            let (label_text, label_ranges, label_x, label_y) =
-                if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols {
-                    // The kind icon comes from the item's `icon` field (the label
-                    // is just the symbol name now, so every name shares a left
-                    // edge). Tint the monochrome symbol SVG with the kind tone.
-                    let badge = model
-                        .item_icons
-                        .get(absolute_idx)
-                        .and_then(|icon| icon.as_deref())
-                        .unwrap_or("built_in:identifier");
-                    let badge_color = file_picker_tone_color(tone, model);
-                    let badge_size = (row_h * 0.58).clamp(30.0, 42.0);
-                    let badge_x = text_x;
-                    let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    push_palette_icon_or_badge(
-                        badge,
-                        badge_color,
-                        model.panel_bg,
-                        [badge_x, badge_y, badge_size, badge_size],
-                        0.82,
-                        PrefixIconBadgeChrome::None,
-                        &mut self.palette_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        &mut quads,
-                        &mut glyphs,
-                        &mut icons,
-                    );
-                    self.palette_text_system
-                        .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
-                    self.palette_text_system.set_size(
-                        Some((inner_width - badge_size - 12.0).max(1.0)),
-                        Some(line_h),
-                    );
-                    (
-                        label.clone(),
-                        ranges.clone(),
-                        text_x + badge_size + 18.0,
-                        row_top + (row_h - line_h) * 0.5,
-                    )
-                } else {
-                    let file_path = label.split(':').next().unwrap_or(label);
-                    let filename = std::path::Path::new(file_path)
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or(file_path);
-                    let badge = self.theme.get_icon_for_file(filename, false);
-                    // Bearded-icons are full-color SVGs — use white tint so the
-                    // icon shader multiplies by 1.0 and preserves the original
-                    // colors (same as the sidebar does).
-                    let icon_tint = [1.0_f32; 4];
-                    let badge_size = file_badge_size;
-                    let badge_x = text_x;
-                    let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    push_palette_icon_or_badge(
-                        badge,
-                        icon_tint,
-                        model.panel_bg,
-                        [badge_x, badge_y, badge_size, badge_size],
-                        0.82,
-                        PrefixIconBadgeChrome::None,
-                        &mut self.palette_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        &mut quads,
-                        &mut glyphs,
-                        &mut icons,
-                    );
-                    self.palette_text_system
-                        .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
-                    self.palette_text_system.set_size(
-                        Some((inner_width - badge_size - 18.0).max(1.0)),
-                        Some(line_h),
-                    );
-                    (
-                        label.clone(),
-                        ranges.clone(),
-                        text_x + badge_size + 18.0,
-                        row_top + (row_h - line_h) * 0.5,
-                    )
-                };
+            let (label_text, label_ranges, label_x, label_y) = if model.mode
+                == crate::app::command_palette::CommandPaletteMode::CommandPalette
+            {
+                // Command rows: no icon slot — label starts flush left, the
+                // command id renders right-aligned below via secondary_labels.
+                (
+                    label.clone(),
+                    ranges.clone(),
+                    text_x + 4.0,
+                    row_top + (row_h - line_h) * 0.5,
+                )
+            } else if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols
+            {
+                // The kind icon comes from the item's `icon` field (the label
+                // is just the symbol name now, so every name shares a left
+                // edge). Tint the monochrome symbol SVG with the kind tone.
+                let badge = model
+                    .item_icons
+                    .get(absolute_idx)
+                    .and_then(|icon| icon.as_deref())
+                    .unwrap_or("built_in:identifier");
+                let badge_color = file_picker_tone_color(tone, model);
+                let badge_size = (row_h * 0.58).clamp(30.0, 42.0);
+                let badge_x = text_x;
+                let badge_y = row_top + (row_h - badge_size) * 0.5;
+                push_palette_icon_or_badge(
+                    badge,
+                    badge_color,
+                    model.panel_bg,
+                    [badge_x, badge_y, badge_size, badge_size],
+                    0.82,
+                    PrefixIconBadgeChrome::None,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    &mut quads,
+                    &mut glyphs,
+                    &mut icons,
+                );
+                self.palette_text_system
+                    .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
+                self.palette_text_system.set_size(
+                    Some((inner_width - badge_size - 12.0).max(1.0)),
+                    Some(line_h),
+                );
+                (
+                    label.clone(),
+                    ranges.clone(),
+                    text_x + badge_size + 18.0,
+                    row_top + (row_h - line_h) * 0.5,
+                )
+            } else {
+                let file_path = label.split(':').next().unwrap_or(label);
+                let filename = std::path::Path::new(file_path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(file_path);
+                let badge = self.theme.get_icon_for_file(filename, false);
+                // Bearded-icons are full-color SVGs — use white tint so the
+                // icon shader multiplies by 1.0 and preserves the original
+                // colors (same as the sidebar does).
+                let icon_tint = [1.0_f32; 4];
+                let badge_size = file_badge_size;
+                let badge_x = text_x;
+                let badge_y = row_top + (row_h - badge_size) * 0.5;
+                push_palette_icon_or_badge(
+                    badge,
+                    icon_tint,
+                    model.panel_bg,
+                    [badge_x, badge_y, badge_size, badge_size],
+                    0.82,
+                    PrefixIconBadgeChrome::None,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    &mut quads,
+                    &mut glyphs,
+                    &mut icons,
+                );
+                self.palette_text_system
+                    .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
+                self.palette_text_system.set_size(
+                    Some((inner_width - badge_size - 18.0).max(1.0)),
+                    Some(line_h),
+                );
+                (
+                    label.clone(),
+                    ranges.clone(),
+                    text_x + badge_size + 18.0,
+                    row_top + (row_h - line_h) * 0.5,
+                )
+            };
 
             Self::render_highlighted_label(
                 &label_text,
@@ -342,13 +363,16 @@ impl Renderer {
                 &mut glyphs,
             );
 
-            // Right-aligned dimmed metadata (symbol kind · line/col), drawn only
-            // when it fits clear of the name.
-            if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols
-                && let Some(secondary) = model
-                    .secondary_labels
-                    .get(absolute_idx)
-                    .filter(|s| !s.is_empty())
+            // Right-aligned dimmed metadata (symbol kind · line/col, or the
+            // command id), drawn only when it fits clear of the name.
+            if matches!(
+                model.mode,
+                crate::app::command_palette::CommandPaletteMode::DocumentSymbols
+                    | crate::app::command_palette::CommandPaletteMode::CommandPalette
+            ) && let Some(secondary) = model
+                .secondary_labels
+                .get(absolute_idx)
+                .filter(|s| !s.is_empty())
             {
                 let label_w = estimate_monospace_width(&label_text, font_size);
                 let sec_w = estimate_monospace_width(secondary, font_size);
@@ -420,7 +444,13 @@ impl Renderer {
                 },
                 PaletteFooterAction {
                     keys: &["↵"],
-                    label: "open",
+                    label: if model.mode
+                        == crate::app::command_palette::CommandPaletteMode::CommandPalette
+                    {
+                        "run"
+                    } else {
+                        "open"
+                    },
                 },
                 PaletteFooterAction {
                     keys: &["󱊷"],
