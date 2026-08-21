@@ -5723,3 +5723,110 @@ fn missing_sort_text_falls_back_to_label_order() {
         "items without sortText compare by label (LSP spec fallback)"
     );
 }
+
+#[test]
+fn removing_recent_project_keeps_palette_open_for_more_deletes() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_recent_multi_delete_{}",
+        std::process::id()
+    ));
+    let projects: Vec<_> = (0..3).map(|i| root.join(format!("project_{i}"))).collect();
+    for project in &projects {
+        std::fs::create_dir_all(project).expect("create project dir");
+    }
+    shell.persistent_state.recent_projects = projects.clone();
+    let recents = shell.persistent_state.recent_projects.clone();
+    let meta = shell.persistent_state.recent_project_meta.clone();
+    shell
+        .app_state
+        .open_recent_projects_palette_with_meta(&recents, &meta)
+        .expect("open recent projects palette");
+
+    // `x` only fires from palette Normal mode; land on the middle row.
+    assert!(shell.handle_command(Command::PaletteVimInput(
+        crate::core::commands::PaletteVimKey::Esc
+    )));
+    assert!(shell.handle_command(Command::OverlaySelectNext));
+    assert_eq!(shell.app_state.command_palette_selected_index(), 1);
+
+    assert!(shell.handle_command(Command::RemoveRecentProject));
+
+    // The palette must survive the delete in Normal mode with the selection
+    // still on the same row, so the next `x` chains onto the next project.
+    assert_eq!(shell.persistent_state.recent_projects.len(), 2);
+    assert!(shell.app_state.is_command_palette_visible());
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::RecentProjects)
+    );
+    assert_eq!(
+        shell.app_state.command_palette_vim_mode(),
+        crate::app::command_palette::PaletteVimMode::Normal
+    );
+    assert_eq!(shell.app_state.command_palette_selected_index(), 1);
+
+    assert!(shell.handle_command(Command::RemoveRecentProject));
+    assert_eq!(shell.persistent_state.recent_projects.len(), 1);
+    assert!(shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+fn route_and_dispatch_key(shell: &mut AppShell, ch: char, key: KeyCode) -> Option<Command> {
+    let context = shell.build_context();
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(key),
+            named_key: None,
+            text: Some(ch.to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            let command = translated.command.clone();
+            shell.handle_command(translated.command);
+            Some(command)
+        }
+        _ => None,
+    }
+}
+
+#[test]
+fn space_r_r_then_h_resizes_the_dock_on_the_first_press() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("main.rs"), "fn main() {}\n");
+    shell.panel_state.left.visible = true;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    assert_eq!(
+        route_and_dispatch_key(&mut shell, ' ', KeyCode::Space),
+        None
+    );
+    assert_eq!(route_and_dispatch_key(&mut shell, 'r', KeyCode::KeyR), None);
+    assert_eq!(
+        route_and_dispatch_key(&mut shell, 'r', KeyCode::KeyR),
+        Some(Command::SwitchMode(
+            crate::core::mode::ModeEvent::EnterResize
+        ))
+    );
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Resize);
+
+    // The VERY FIRST `h` after entering resize mode must move the dock —
+    // no warm-up presses, no key-repeat required.
+    let before = shell.panel_state.left.size_px;
+    assert_eq!(
+        route_and_dispatch_key(&mut shell, 'h', KeyCode::KeyH),
+        Some(Command::ResizeDecreaseWidth)
+    );
+    assert!(
+        (shell.panel_state.left.size_px - before).abs() > f32::EPSILON,
+        "first h in resize mode must resize the left dock (before={before}, after={})",
+        shell.panel_state.left.size_px
+    );
+}

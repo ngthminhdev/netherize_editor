@@ -4,6 +4,7 @@ use crate::{
 };
 
 use super::super::helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_bold};
+use super::help_keycaps::{flat_keycap_palette, push_flat_keycap};
 
 #[derive(Clone, Copy)]
 pub enum ShortcutHintSegment<'a> {
@@ -19,6 +20,9 @@ fn centered_text_origin_y(origin_y: f32, content_height: f32, line_height: f32) 
     origin_y + ((content_height - line_height) * 0.5).max(0.0)
 }
 
+/// Welcome-screen key hints. Chips are drawn by the SAME flat-keycap helper as
+/// `layout_help_keycaps`, so every key hint in the app shares one look.
+#[allow(clippy::too_many_arguments)]
 pub fn layout_shortcut_hint(
     segments: &[ShortcutHintSegment<'_>],
     text_system: &mut TextSystem,
@@ -31,7 +35,7 @@ pub fn layout_shortcut_hint(
     line_height: f32,
     text_color: [f32; 4],
     key_bg: [f32; 4],
-    key_shadow: [f32; 4],
+    _key_shadow: [f32; 4],
     key_text_color: [f32; 4],
 ) -> Vec<GlyphInstance> {
     let mut glyphs = Vec::new();
@@ -39,10 +43,10 @@ pub fn layout_shortcut_hint(
     let key_gap = (font_size * 0.32).max(4.0);
     let segment_gap = (font_size * 0.64).max(8.0);
     let key_height = (line_height + font_size * 0.42).clamp(font_size + 8.0, font_size + 14.0);
-    let key_radius = (key_height * 0.18).max(4.0);
-    let key_bottom_height = 1.0f32.max(key_height * 0.06);
+    let key_radius = (key_height * 0.22).clamp(3.0, 6.0);
     let key_padding_x = (font_size * 0.52).max(6.0);
     let key_text_y = centered_text_origin_y(origin_y, key_height, line_height);
+    let palette = flat_keycap_palette(key_text_color, key_bg);
 
     text_system.set_size(None, Some(line_height));
 
@@ -73,58 +77,12 @@ pub fn layout_shortcut_hint(
                     let key_label_w = estimate_monospace_width(key, font_size);
                     let key_width = key_label_w + key_padding_x * 2.0;
                     let key_text_x = centered_text_origin_x(cursor_x, key_width, key_label_w);
-                    let border_thickness = (key_height * 0.06).clamp(1.0, 2.0);
-                    let mut key_outline = key_text_color;
-                    key_outline[3] = key_outline[3].max(0.8);
-                    let mut key_fill = key_bg;
-                    key_fill[3] = key_fill[3].max(0.92);
-                    let mut key_base = key_shadow;
-                    key_base[3] = key_base[3].max(0.95);
-                    let mut key_inner = key_bg;
-                    key_inner[3] = (key_inner[3] + 0.08).min(1.0);
 
-                    chrome.push(
-                        RegionDrawInstance::new(
-                            [cursor_x, origin_y, key_width, key_height],
-                            key_outline,
-                        )
-                        .with_radius(key_radius),
-                    );
-                    chrome.push(
-                        RegionDrawInstance::new(
-                            [
-                                cursor_x + border_thickness,
-                                origin_y + border_thickness,
-                                (key_width - border_thickness * 2.0).max(1.0),
-                                (key_height - border_thickness * 2.0).max(1.0),
-                            ],
-                            key_fill,
-                        )
-                        .with_radius((key_radius - border_thickness).max(3.0)),
-                    );
-                    chrome.push(
-                        RegionDrawInstance::new(
-                            [
-                                cursor_x + border_thickness,
-                                origin_y + key_height - key_bottom_height - border_thickness,
-                                (key_width - border_thickness * 2.0).max(1.0),
-                                key_bottom_height.max(1.0),
-                            ],
-                            key_base,
-                        )
-                        .with_radius((key_radius * 0.5).max(2.0)),
-                    );
-                    chrome.push(
-                        RegionDrawInstance::new(
-                            [
-                                cursor_x + border_thickness,
-                                origin_y + border_thickness,
-                                (key_width - border_thickness * 2.0).max(1.0),
-                                (key_height * 0.34).max(1.0),
-                            ],
-                            key_inner,
-                        )
-                        .with_radius((key_radius - border_thickness - 1.0).max(2.0)),
+                    push_flat_keycap(
+                        chrome,
+                        [cursor_x, origin_y, key_width, key_height],
+                        key_radius,
+                        &palette,
                     );
                     glyphs.extend(layout_panel_text_bold(
                         key,
@@ -133,7 +91,7 @@ pub fn layout_shortcut_hint(
                         queue,
                         key_text_x,
                         key_text_y,
-                        key_text_color,
+                        palette.text,
                     ));
                     cursor_x += key_width;
                 }

@@ -636,6 +636,29 @@ impl CommandPalette {
         self.results.len()
     }
 
+    /// Restore the interaction state after a static picker list was rebuilt
+    /// in place (e.g. `x` removed a recent project): keep the query filter,
+    /// stay in the same vim mode and hold the selection near the removed row
+    /// so repeated deletes chain without leaving Normal mode.
+    pub fn restore_picker_interaction(
+        &mut self,
+        query: &str,
+        vim_mode: PaletteVimMode,
+        selected_index: usize,
+    ) {
+        if !query.is_empty() {
+            self.query = query.to_string();
+            self.cursor_byte = self.query.len();
+            self.refresh_results(None);
+        }
+        self.vim_mode = vim_mode;
+        self.selected_index = if self.results.is_empty() {
+            0
+        } else {
+            selected_index.min(self.results.len() - 1)
+        };
+    }
+
     /// Override the header badge text for the current open (cleared by the
     /// next `open`/`open_with_items`/`close`).
     pub fn set_title_override(&mut self, title: Option<String>) {

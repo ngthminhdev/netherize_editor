@@ -635,21 +635,31 @@ impl AppShell {
             .map(str::to_string)
             .unwrap_or_else(|| path.to_string_lossy().into_owned());
 
+        let query = self.app_state.command_palette_query_text().to_string();
+        let vim_mode = self.app_state.command_palette_vim_mode();
+        let selected_index = self.app_state.command_palette_selected_index();
+
         if !self.persistent_state.remove_recent(&path) {
             return false;
         }
 
         self.persistent_state.save();
+        // Welcome sync parks its rows via `set_hidden_items`, which HIDES the
+        // palette — it must run before the reopen, or `x` closes the picker.
         let mut changed = self
+            .app_state
+            .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+        changed |= self
             .app_state
             .open_recent_projects_palette_with_meta(
                 &self.persistent_state.recent_projects,
                 &self.persistent_state.recent_project_meta,
             )
             .is_ok();
-        changed |= self
-            .app_state
-            .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+        // Keep vim mode + filter + row position so `x x x` deletes several
+        // entries without re-entering Normal mode each time.
+        self.app_state
+            .restore_recent_projects_interaction(&query, vim_mode, selected_index);
         self.show_transient_toast(format!("Removed recent project: {label}"));
         changed || self.transient_toast.is_some()
     }

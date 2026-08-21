@@ -204,6 +204,17 @@ impl AppState {
         Ok(())
     }
 
+    /// See [`crate::app::command_palette::CommandPalette::restore_picker_interaction`].
+    pub fn restore_recent_projects_interaction(
+        &mut self,
+        query: &str,
+        vim_mode: crate::app::command_palette::PaletteVimMode,
+        selected_index: usize,
+    ) {
+        self.command_palette
+            .restore_picker_interaction(query, vim_mode, selected_index);
+    }
+
     /// Git-worktree switcher: reuses the RecentProjects picker plumbing (same
     /// confirm path — Enter switches workspace in place).
     pub fn open_worktree_switch_palette(&mut self, worktrees: &[std::path::PathBuf]) {

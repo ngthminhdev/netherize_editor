@@ -9,8 +9,6 @@ use super::super::helpers::{estimate_monospace_width, layout_clamp, layout_panel
 pub struct HelpKeycapPalette {
     pub border: [f32; 4],
     pub fill: [f32; 4],
-    pub shadow: [f32; 4],
-    pub highlight: [f32; 4],
     pub text: [f32; 4],
 }
 
@@ -31,48 +29,42 @@ fn mix(a: [f32; 4], b: [f32; 4], t: f32, alpha: f32) -> [f32; 4] {
     ]
 }
 
-pub fn help_keycap_palette(
-    key: &str,
-    fg: [f32; 4],
-    fg_dim: [f32; 4],
-    accent: [f32; 4],
-    info: [f32; 4],
-    warning: [f32; 4],
-    error: [f32; 4],
-    panel_bg: [f32; 4],
-) -> HelpKeycapPalette {
-    let normalized = key
-        .trim_matches(|ch| ch == '<' || ch == '>')
-        .trim()
-        .to_ascii_lowercase();
-
-    let (tone, text) = if matches!(normalized.as_str(), "cmd" | "⌘" | "option" | "opt" | "alt") {
-        (accent, fg)
-    } else if matches!(normalized.as_str(), "spc" | "space" | "leader") {
-        (warning, fg)
-    } else if matches!(
-        normalized.as_str(),
-        "ctrl" | "control" | "shift" | "enter" | "return" | "tab"
-    ) {
-        (info, fg)
-    } else if matches!(
-        normalized.as_str(),
-        "esc" | "escape" | "backspace" | "delete"
-    ) {
-        (error, fg)
-    } else {
-        (fg_dim, fg)
-    };
-
+/// The single source of truth for keycap chip colours — shared with
+/// `shortcut_hint.rs` so both components render pixel-identical chips.
+pub(crate) fn flat_keycap_palette(fg: [f32; 4], panel_bg: [f32; 4]) -> HelpKeycapPalette {
     HelpKeycapPalette {
-        border: mix(panel_bg, tone, 0.82, 0.98),
-        fill: mix(panel_bg, tone, 0.18, 0.98),
-        shadow: mix(panel_bg, tone, 0.42, 0.98),
-        highlight: mix(panel_bg, tone, 0.26, 1.0),
-        text,
+        border: mix(panel_bg, fg, 0.30, 0.95),
+        fill: mix(panel_bg, fg, 0.07, 1.0),
+        text: [fg[0], fg[1], fg[2], fg[3] * 0.92],
     }
 }
 
+/// Draw one flat keycap chip (border + inset fill). Shared by both keycap
+/// components so there is exactly one chip look in the whole app.
+pub(crate) fn push_flat_keycap(
+    chrome: &mut Vec<RegionDrawInstance>,
+    rect: [f32; 4],
+    radius: f32,
+    palette: &HelpKeycapPalette,
+) {
+    let [x, y, w, h] = rect;
+    let border = 1.0;
+    chrome.push(RegionDrawInstance::new([x, y, w, h], palette.border).with_radius(radius));
+    chrome.push(
+        RegionDrawInstance::new(
+            [
+                x + border,
+                y + border,
+                (w - border * 2.0).max(1.0),
+                (h - border * 2.0).max(1.0),
+            ],
+            palette.fill,
+        )
+        .with_radius((radius - border).max(2.0)),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn layout_help_keycaps(
     keys: &[&str],
     text_system: &mut TextSystem,
@@ -84,11 +76,11 @@ pub fn layout_help_keycaps(
     font_size: f32,
     row_height: f32,
     fg: [f32; 4],
-    fg_dim: [f32; 4],
-    accent: [f32; 4],
-    info: [f32; 4],
-    warning: [f32; 4],
-    error: [f32; 4],
+    _fg_dim: [f32; 4],
+    _accent: [f32; 4],
+    _info: [f32; 4],
+    _warning: [f32; 4],
+    _error: [f32; 4],
     panel_bg: [f32; 4],
 ) -> Vec<GlyphInstance> {
     if font_size.is_nan() || row_height.is_nan() {
@@ -99,17 +91,15 @@ pub fn layout_help_keycaps(
     let scale = (font_size / 14.0).max(0.5);
     let key_gap = (font_size * 0.44).max(4.0 * scale);
     let key_height = layout_clamp(
-        font_size + 12.0 * scale,
-        24.0 * scale,
-        row_height - 6.0 * scale,
+        font_size + 10.0 * scale,
+        20.0 * scale,
+        row_height - 4.0 * scale,
     );
-    let key_radius = layout_clamp(key_height * 0.20, 4.0 * scale, 12.0 * scale);
-    let border_thickness = layout_clamp(key_height * 0.06, 1.0, 1.5 * scale);
-    let key_padding_x = layout_clamp(font_size * 0.8, 8.0 * scale, 24.0 * scale);
-    let key_shadow_height = layout_clamp(key_height * 0.10, 2.0 * scale, 4.0 * scale);
+    let key_radius = layout_clamp(key_height * 0.22, 3.0 * scale, 6.0 * scale);
+    let key_padding_x = layout_clamp(font_size * 0.62, 7.0 * scale, 18.0 * scale);
     let key_origin_y = centered_text_origin_y(origin_y, row_height, key_height);
     let key_line_height = font_size + 2.0 * scale;
-    let inner_radius = (key_radius - border_thickness).max(2.0 * scale);
+    let palette = flat_keycap_palette(fg, panel_bg);
 
     text_system.set_size(None, Some(key_line_height));
     let dummy = [255u8, 255u8, 255u8, 255u8];
@@ -136,52 +126,14 @@ pub fn layout_help_keycaps(
             cursor_x += key_gap;
             continue;
         }
-        let key_width = layout_clamp(label_w + key_padding_x * 2.0, 32.0 * scale, 400.0 * scale);
+        let key_width = layout_clamp(label_w + key_padding_x * 2.0, 26.0 * scale, 400.0 * scale);
         let key_text_x = centered_text_origin_x(cursor_x, key_width, label_w);
-        let palette = help_keycap_palette(key, fg, fg_dim, accent, info, warning, error, panel_bg);
 
-        chrome.push(
-            RegionDrawInstance::new(
-                [cursor_x, key_origin_y, key_width, key_height],
-                palette.border,
-            )
-            .with_radius(key_radius),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    cursor_x + border_thickness,
-                    key_origin_y + border_thickness,
-                    (key_width - border_thickness * 2.0).max(1.0),
-                    (key_height - border_thickness * 2.0).max(1.0),
-                ],
-                palette.shadow,
-            )
-            .with_radius(inner_radius),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    cursor_x + border_thickness,
-                    key_origin_y + border_thickness,
-                    (key_width - border_thickness * 2.0).max(1.0),
-                    (key_height - border_thickness * 2.0 - key_shadow_height).max(1.0),
-                ],
-                palette.fill,
-            )
-            .with_radius(inner_radius),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    cursor_x + border_thickness,
-                    key_origin_y + border_thickness,
-                    (key_width - border_thickness * 2.0).max(1.0),
-                    ((key_height - border_thickness * 2.0 - key_shadow_height) * 0.38).max(1.0),
-                ],
-                palette.highlight,
-            )
-            .with_radius((inner_radius - 1.0).max(3.0)),
+        push_flat_keycap(
+            chrome,
+            [cursor_x, key_origin_y, key_width, key_height],
+            key_radius,
+            &palette,
         );
 
         glyphs.extend(layout_panel_text_bold(
@@ -206,14 +158,14 @@ pub fn estimate_help_keycaps_width(keys: &[&str], font_size: f32) -> f32 {
     }
     let scale = (font_size / 14.0).max(0.5);
     let key_gap = (font_size * 0.44).max(4.0 * scale);
-    let key_padding_x = layout_clamp(font_size * 0.8, 8.0 * scale, 24.0 * scale);
+    let key_padding_x = layout_clamp(font_size * 0.62, 7.0 * scale, 18.0 * scale);
     let mut total = 0.0;
     for (i, key) in keys.iter().copied().enumerate() {
         if i > 0 {
             total += key_gap;
         }
         let label_w = estimate_monospace_width(key, font_size);
-        total += layout_clamp(label_w + key_padding_x * 2.0, 32.0 * scale, 400.0 * scale);
+        total += layout_clamp(label_w + key_padding_x * 2.0, 26.0 * scale, 400.0 * scale);
     }
     total
 }
