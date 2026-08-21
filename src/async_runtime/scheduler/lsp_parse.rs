@@ -138,6 +138,10 @@ fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
         .get("kind")
         .and_then(Value::as_u64)
         .map(|kind| kind as u32);
+    let sort_text = item
+        .get("sortText")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let callable = kind.map(completion_kind_is_callable);
     let has_parameters = infer_completion_has_parameters(
         &label,
@@ -160,6 +164,7 @@ fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
         text_edit_text,
         additional_text_edits,
         kind,
+        sort_text,
         callable,
         has_parameters,
         documentation,
@@ -1154,6 +1159,19 @@ fn parse_document_symbols(result: &Value) -> Vec<LspDocumentSymbol> {
 mod tests {
     use super::{parse_completion_item, parse_completion_items, parse_document_symbols};
     use serde_json::json;
+
+    #[test]
+    fn parse_completion_reads_sort_text() {
+        let item = parse_completion_item(&json!({
+            "label": "beta",
+            "sortText": "0001"
+        }))
+        .expect("parse item");
+        assert_eq!(item.sort_text.as_deref(), Some("0001"));
+
+        let plain = parse_completion_item(&json!({ "label": "alpha" })).expect("parse item");
+        assert_eq!(plain.sort_text, None);
+    }
 
     #[test]
     fn parse_completion_preserves_text_edits_and_data() {

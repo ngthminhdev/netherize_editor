@@ -1,10 +1,62 @@
 use super::*;
 
+/// What typing `ch` in insert mode should do to the completion menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TypedCharCompletionAction {
+    /// Server trigger char (`.`, `::`, …): re-request right away — the member
+    /// context changed, debouncing here just feels laggy.
+    TriggerImmediately,
+    /// Identifier char with the menu closed: open it after the typing debounce.
+    QueueDebounced,
+    /// Anything else (or identifier typing while the menu is open, which the
+    /// client-side refresh already filters).
+    None,
+}
+
+pub(super) fn typed_char_completion_action(
+    ch: char,
+    trigger_chars: &[char],
+    completion_open: bool,
+) -> TypedCharCompletionAction {
+    if trigger_chars.contains(&ch) {
+        return TypedCharCompletionAction::TriggerImmediately;
+    }
+    let is_identifier = ch.is_alphanumeric() || ch == '_' || ch == '$';
+    if is_identifier && !completion_open {
+        return TypedCharCompletionAction::QueueDebounced;
+    }
+    TypedCharCompletionAction::None
+}
+
 impl AppShell {
-    pub(super) fn should_auto_trigger_lsp_completion_for_char(&self, ch: char) -> bool {
-        self.app_state.current_mode() == EditorMode::Insert
-            && self.active_lsp_server.is_some()
-            && self.lsp_completion_trigger_chars.contains(&ch)
+    /// Apply the per-keystroke completion policy after a successful insert-mode
+    /// text edit. This is THE auto-trigger path for the completion menu — every
+    /// LSP language gets it (trigger chars fire immediately, identifier typing
+    /// debounces), which is what makes suggestions appear while typing at all.
+    pub(super) fn apply_typed_char_completion_policy(&mut self, command: &Command) {
+        if self.app_state.current_mode() != EditorMode::Insert || self.active_lsp_server.is_none() {
+            return;
+        }
+        let Command::InsertChar(ch) = command else {
+            // Backspace/Newline/paste never (re)open a closed menu; an open one
+            // was already refreshed (or dismissed) by the caller.
+            return;
+        };
+        match typed_char_completion_action(
+            *ch,
+            &self.lsp_completion_trigger_chars,
+            self.app_state.has_completion(),
+        ) {
+            TypedCharCompletionAction::TriggerImmediately => {
+                self.pending_lsp_completion_after_debounce = false;
+                self.last_lsp_completion_type_at = None;
+                let _ = self.submit_lsp_completion();
+            }
+            TypedCharCompletionAction::QueueDebounced => {
+                self.queue_lsp_completion_after_debounce_if_needed();
+            }
+            TypedCharCompletionAction::None => {}
+        }
     }
 
     pub(super) fn queue_lsp_completion_after_debounce_if_needed(&mut self) {
@@ -18,12 +70,7 @@ impl AppShell {
             self.last_lsp_completion_type_at = None;
             return;
         };
-        let Some(profile) = crate::lsp::registry::language_profile_for_path(active_path) else {
-            self.pending_lsp_completion_after_debounce = false;
-            self.last_lsp_completion_type_at = None;
-            return;
-        };
-        if !supports_debounced_lsp_completion(profile.key) {
+        if crate::lsp::registry::language_profile_for_path(active_path).is_none() {
             self.pending_lsp_completion_after_debounce = false;
             self.last_lsp_completion_type_at = None;
             return;
@@ -37,7 +84,7 @@ impl AppShell {
             .checked_sub(1)
             .and_then(|col| self.app_state.char_at_line_col(cursor_line, col))
             .is_some_and(|ch| self.lsp_completion_trigger_chars.contains(&ch));
-        if prefix_info.prefix.chars().count() < 2 && !is_member_access {
+        if prefix_info.prefix.is_empty() && !is_member_access {
             self.pending_lsp_completion_after_debounce = false;
             self.last_lsp_completion_type_at = None;
             return;
@@ -622,10 +669,6 @@ impl AppShell {
 
 fn is_ts_js_profile_key(key: &str) -> bool {
     matches!(key, "typescript" | "tsx" | "javascript" | "jsx")
-}
-
-fn supports_debounced_lsp_completion(key: &str) -> bool {
-    is_ts_js_profile_key(key) || key == "go"
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

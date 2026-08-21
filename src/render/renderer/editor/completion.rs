@@ -80,34 +80,50 @@ pub(crate) fn draw_completion_menu(
     const MAX_VISIBLE_ROWS: usize = 10;
     let ui_s = geom.ui_scale;
     let pad_x = 12.0 * ui_s;
-    let pad_y = 8.0 * ui_s;
-    let badge_gap = 8.0 * ui_s;
-    let scrollbar_w = 6.0 * ui_s;
+    let pad_y = 6.0 * ui_s;
+    let badge_gap = 10.0 * ui_s;
+    let scrollbar_w = 4.0 * ui_s;
     let char_w = (geom.font_size * 0.6).max(1.0);
-    let row_h0 = (geom.line_height * 1.25).max(20.0 * ui_s);
+    let row_h = (geom.line_height + 12.0 * ui_s).max(24.0 * ui_s);
     let label_line_h = geom.line_height;
-    let text_v_center = (row_h0 - label_line_h) * 0.5;
-    let badge_size = (row_h0 * 0.78).clamp(16.0 * ui_s, 26.0 * ui_s);
-    let badge_radius = badge_size * 0.22;
+    let text_v_center = (row_h - label_line_h) * 0.5;
+    let badge_size = (row_h * 0.72).clamp(16.0 * ui_s, 26.0 * ui_s);
+    let badge_radius = badge_size * 0.28;
     let badge_col_w = pad_x + badge_size + badge_gap;
+    let detail_font_size = (geom.font_size * 0.92).max(9.0);
 
     let total = completion.filtered_items.len();
     let visible_rows = total.clamp(1, MAX_VISIBLE_ROWS);
-    let row_gap = 3.0_f32 * ui_s;
-    let row_h = row_h0 + row_gap;
-    let rows_h = visible_rows as f32 * row_h - row_gap;
-    let popup_h = rows_h + pad_y * 2.0;
+    let rows_h = visible_rows as f32 * row_h;
+    let footer_h = (geom.line_height * 0.9 + 10.0 * ui_s).max(20.0 * ui_s);
+    let popup_h = rows_h + pad_y * 2.0 + footer_h;
 
+    // Content-based width: the longest visible label (capped so one absurd
+    // label can't blow the panel up) plus a share for the dim detail column.
     let max_label_chars = completion
         .filtered_items
         .iter()
+        .take(40)
         .map(|i| i.item.label.chars().count())
         .max()
-        .unwrap_or(8);
-    let desired_w = badge_col_w + max_label_chars as f32 * char_w + pad_x + scrollbar_w;
+        .unwrap_or(8)
+        .min(48);
+    let has_details = completion.filtered_items.iter().take(40).any(|i| {
+        i.item
+            .detail
+            .as_deref()
+            .is_some_and(|d| !d.trim().is_empty())
+    });
+    let detail_share = if has_details {
+        26.0 * char_w
+    } else {
+        9.0 * char_w
+    };
+    let desired_w =
+        badge_col_w + max_label_chars as f32 * char_w + detail_share + pad_x * 2.0 + scrollbar_w;
     let [bx, by, bw, bh] = geom.bounds;
-    let min_w = (440.0 * ui_s).min(bw.max(1.0));
-    let max_w = (bw * 0.6).max(min_w);
+    let min_w = (300.0 * ui_s).min((bw - 16.0).max(1.0));
+    let max_w = ((bw * 0.55).min(680.0 * ui_s)).max(min_w);
     let list_w = clamp_popup_width(desired_w, min_w, max_w);
     let popup_w = list_w;
 
@@ -118,9 +134,9 @@ pub(crate) fn draw_completion_menu(
         popup_x = (viewport_right - 8.0 - popup_w).max(bx + 4.0);
     }
     popup_x = popup_x.max(bx + 4.0);
-    let mut popup_y = geom.caret_bottom + 2.0;
+    let mut popup_y = geom.caret_bottom + 4.0;
     if popup_y + popup_h > viewport_bottom - 8.0 {
-        popup_y = (geom.caret_top - popup_h - 2.0).max(by + 4.0);
+        popup_y = (geom.caret_top - popup_h - 4.0).max(by + 4.0);
     }
 
     // Opaque background so the menu fully covers whatever is behind it (in the
@@ -130,29 +146,36 @@ pub(crate) fn draw_completion_menu(
     bg[3] = 1.0;
     let border = theme.ui.border_color.as_f32();
     let sel_bg = theme.ui.selection_bg.as_f32();
-    let sel_accent = theme.ui.cyan.as_f32();
     let fg = theme.ui.fg.as_f32();
     let fg_dim = theme.ui.fg_dim.as_f32();
     let cyan = theme.ui.cyan.as_f32();
+    let panel_radius = 8.0 * ui_s;
 
-    // Shadow → border → background.
-    t.chrome.push(RegionDrawInstance::new(
-        [
-            popup_x + 2.0 * ui_s,
-            popup_y + 4.0 * ui_s,
-            popup_w + 4.0,
-            popup_h + 8.0,
-        ],
-        [0.0, 0.0, 0.0, 0.45],
-    ));
-    t.chrome.push(RegionDrawInstance::new(
-        [popup_x, popup_y, popup_w, popup_h],
-        border,
-    ));
-    t.chrome.push(RegionDrawInstance::new(
-        [popup_x + 1.0, popup_y + 1.0, popup_w - 2.0, popup_h - 2.0],
-        bg,
-    ));
+    // Soft drop shadow → border → background, all rounded (the old square
+    // panel + offset black slab was the "méo méo" look).
+    t.chrome.push(
+        RegionDrawInstance::new(
+            [
+                popup_x - 2.0 * ui_s,
+                popup_y + 3.0 * ui_s,
+                popup_w + 4.0 * ui_s,
+                popup_h + 4.0 * ui_s,
+            ],
+            [0.0, 0.0, 0.0, 0.30],
+        )
+        .with_radius(panel_radius + 2.0 * ui_s),
+    );
+    t.chrome.push(
+        RegionDrawInstance::new([popup_x, popup_y, popup_w, popup_h], border)
+            .with_radius(panel_radius),
+    );
+    t.chrome.push(
+        RegionDrawInstance::new(
+            [popup_x + 1.0, popup_y + 1.0, popup_w - 2.0, popup_h - 2.0],
+            bg,
+        )
+        .with_radius((panel_radius - 1.0).max(1.0)),
+    );
 
     // Keep the selected row on screen.
     let scroll_start = if total <= visible_rows {
@@ -174,24 +197,28 @@ pub(crate) fn draw_completion_menu(
         let is_selected = item_idx == completion.selected_index;
         let row_y = popup_y + pad_y + row_idx as f32 * row_h;
         if is_selected {
-            t.chrome.push(RegionDrawInstance::new(
-                [popup_x, row_y, list_w, row_h0],
-                sel_bg,
-            ));
-            t.chrome.push(RegionDrawInstance::new(
-                [popup_x, row_y, 2.0, row_h0],
-                sel_accent,
-            ));
+            t.chrome.push(
+                RegionDrawInstance::new(
+                    [
+                        popup_x + 4.0 * ui_s,
+                        row_y + 1.0,
+                        list_w - 8.0 * ui_s,
+                        row_h - 2.0,
+                    ],
+                    sel_bg,
+                )
+                .with_radius(5.0 * ui_s),
+            );
         }
 
         // Kind badge (rounded chip + icon).
         let badge = completion_kind_badge(item.item.kind, theme);
-        let icon_tint = blend(bg, badge.color, 0.78);
-        let kind_bg = blend(bg, badge.color, 0.10);
-        let kind_border = blend(bg, badge.color, 0.86);
+        let icon_tint = blend(bg, badge.color, 0.82);
+        let kind_bg = blend(bg, badge.color, 0.08);
+        let kind_border = blend(bg, badge.color, 0.55);
         let badge_x = popup_x + pad_x;
-        let badge_y = row_y + (row_h0 - badge_size) * 0.5;
-        let bt = (badge_size * 0.075).clamp(1.5, 2.5);
+        let badge_y = row_y + (row_h - badge_size) * 0.5;
+        let bt = (badge_size * 0.07).clamp(1.0, 2.0);
         t.chrome.push(
             RegionDrawInstance::new([badge_x, badge_y, badge_size, badge_size], kind_border)
                 .with_radius(badge_radius),
@@ -209,7 +236,7 @@ pub(crate) fn draw_completion_menu(
             .with_radius((badge_radius - bt).max(1.0)),
         );
         if let Some(icon) = canonical_icon_id(badge.icon) {
-            let icon_size = (badge_size * 0.72).max(10.0);
+            let icon_size = (badge_size * 0.68).max(10.0);
             t.icons.push(IconDrawInstance {
                 icon,
                 rect: [
@@ -222,27 +249,28 @@ pub(crate) fn draw_completion_menu(
             });
         }
 
-        // Label (match-highlighted) + optional dim inline detail on the right.
+        // Label (match-highlighted) + dim right-aligned "(kind) detail" column
+        // (the VS Code layout in the reference).
         let label_x = popup_x + badge_col_w;
-        let inline_detail = item
+        let kind_name = completion_kind_name(item.item.kind);
+        let raw_detail = item
             .item
             .detail
             .as_deref()
             .map(str::trim)
-            .filter(|d| !d.is_empty())
-            .map(|d| clamp_completion_detail(d, (list_w * 0.35).max(char_w * 8.0), geom.font_size))
-            .unwrap_or_default();
-        let inline_w = if inline_detail.is_empty() {
-            0.0
-        } else {
-            estimate_monospace_width(&inline_detail, geom.font_size)
+            .filter(|d| !d.is_empty());
+        let inline_full = match raw_detail {
+            Some(detail) => format!("({kind_name}) {detail}"),
+            None => format!("({kind_name})"),
         };
-        let label_max_w = if inline_detail.is_empty() {
-            list_w - badge_col_w - pad_x - scrollbar_w
-        } else {
-            list_w - badge_col_w - pad_x - scrollbar_w - inline_w - pad_x
-        }
-        .max(char_w * 4.0);
+        let inline_detail = clamp_completion_detail(
+            &inline_full,
+            (list_w * 0.42).max(char_w * 10.0),
+            detail_font_size,
+        );
+        let inline_w = estimate_monospace_width(&inline_detail, detail_font_size);
+        let label_max_w =
+            (list_w - badge_col_w - pad_x * 2.0 - scrollbar_w - inline_w).max(char_w * 4.0);
         let spans = completion_label_spans(item, cyan);
         let label_color = if is_selected { fg } else { fg_dim };
         t.text_system
@@ -259,8 +287,12 @@ pub(crate) fn draw_completion_menu(
             label_x,
             row_y + text_v_center,
         ));
-        if !inline_detail.is_empty() {
-            let idx = popup_x + list_w - pad_x - scrollbar_w - inline_w;
+        let detail_x = popup_x + list_w - pad_x - scrollbar_w - inline_w;
+        if detail_x > label_x + char_w * 3.0 {
+            let mut detail_color = fg_dim;
+            detail_color[3] *= 0.85;
+            t.text_system
+                .set_metrics(Metrics::new(detail_font_size, label_line_h));
             t.text_system
                 .set_size(Some(inline_w.max(1.0)), Some(label_line_h));
             t.glyphs.extend(layout_panel_text(
@@ -268,26 +300,63 @@ pub(crate) fn draw_completion_menu(
                 t.text_system,
                 t.atlas,
                 t.queue,
-                idx,
+                detail_x,
                 row_y + text_v_center,
-                fg_dim,
+                detail_color,
             ));
+            t.text_system
+                .set_metrics(Metrics::new(geom.font_size, label_line_h));
         }
     }
 
-    // Scrollbar.
+    // Scrollbar (thin, rounded, only when the list overflows).
     if total > visible_rows {
-        let sx = popup_x + list_w - scrollbar_w;
+        let sx = popup_x + list_w - scrollbar_w - 3.0 * ui_s;
         let sy = popup_y + pad_y;
-        t.chrome.push(RegionDrawInstance::new(
-            [sx, sy, scrollbar_w, rows_h],
-            border,
-        ));
-        let thumb_h = (rows_h * (visible_rows as f32 / total as f32)).max(8.0);
+        let thumb_h = (rows_h * (visible_rows as f32 / total as f32)).max(12.0);
         let progress = completion.selected_index as f32 / (total.saturating_sub(1).max(1) as f32);
+        t.chrome.push(
+            RegionDrawInstance::new([sx, sy, scrollbar_w, rows_h], blend(bg, fg, 0.08))
+                .with_radius(scrollbar_w * 0.5),
+        );
+        t.chrome.push(
+            RegionDrawInstance::new(
+                [sx, sy + (rows_h - thumb_h) * progress, scrollbar_w, thumb_h],
+                blend(bg, fg, 0.35),
+            )
+            .with_radius(scrollbar_w * 0.5),
+        );
+    }
+
+    // Footer hint bar: hairline + key hints (mirrors the reference's
+    // "Press ↵ to insert" strip).
+    {
+        let footer_y = popup_y + popup_h - footer_h;
         t.chrome.push(RegionDrawInstance::new(
-            [sx, sy + (rows_h - thumb_h) * progress, scrollbar_w, thumb_h],
-            sel_accent,
+            [popup_x + 1.0, footer_y, popup_w - 2.0, 1.0],
+            blend(bg, border, 0.9),
+        ));
+        let hint = format!(
+            "\u{21b5} insert    \u{2191}\u{2193} navigate    esc dismiss    {}/{}",
+            completion.selected_index + 1,
+            total
+        );
+        let hint_size = (geom.font_size * 0.82).max(8.0);
+        let hint_line_h = footer_h;
+        let mut hint_color = fg_dim;
+        hint_color[3] *= 0.9;
+        t.text_system
+            .set_metrics(Metrics::new(hint_size, hint_line_h));
+        t.text_system
+            .set_size(Some(popup_w - pad_x * 2.0), Some(hint_line_h));
+        t.glyphs.extend(layout_panel_text(
+            &hint,
+            t.text_system,
+            t.atlas,
+            t.queue,
+            popup_x + pad_x,
+            footer_y,
+            hint_color,
         ));
     }
 
@@ -321,6 +390,39 @@ const COMPLETION_KIND_STRUCT: u32 = 22;
 const COMPLETION_KIND_EVENT: u32 = 23;
 const COMPLETION_KIND_OPERATOR: u32 = 24;
 const COMPLETION_KIND_TYPE_PARAMETER: u32 = 25;
+
+/// Human name for an LSP completion kind, used for the dim right-hand
+/// "(method) signature" column (mirrors VS Code's rendering).
+pub(super) fn completion_kind_name(kind: Option<u32>) -> &'static str {
+    match kind {
+        Some(COMPLETION_KIND_TEXT) => "text",
+        Some(COMPLETION_KIND_METHOD) => "method",
+        Some(COMPLETION_KIND_FUNCTION) => "function",
+        Some(COMPLETION_KIND_CONSTRUCTOR) => "constructor",
+        Some(COMPLETION_KIND_FIELD) => "field",
+        Some(COMPLETION_KIND_VARIABLE) => "variable",
+        Some(COMPLETION_KIND_CLASS) => "class",
+        Some(COMPLETION_KIND_INTERFACE) => "interface",
+        Some(COMPLETION_KIND_MODULE) => "module",
+        Some(COMPLETION_KIND_PROPERTY) => "property",
+        Some(COMPLETION_KIND_UNIT) => "unit",
+        Some(COMPLETION_KIND_VALUE) => "value",
+        Some(COMPLETION_KIND_ENUM) => "enum",
+        Some(COMPLETION_KIND_KEYWORD) => "keyword",
+        Some(COMPLETION_KIND_SNIPPET) => "snippet",
+        Some(COMPLETION_KIND_COLOR) => "color",
+        Some(COMPLETION_KIND_FILE) => "file",
+        Some(COMPLETION_KIND_REFERENCE) => "reference",
+        Some(COMPLETION_KIND_FOLDER) => "folder",
+        Some(COMPLETION_KIND_ENUM_MEMBER) => "enum member",
+        Some(COMPLETION_KIND_CONSTANT) => "constant",
+        Some(COMPLETION_KIND_STRUCT) => "struct",
+        Some(COMPLETION_KIND_EVENT) => "event",
+        Some(COMPLETION_KIND_OPERATOR) => "operator",
+        Some(COMPLETION_KIND_TYPE_PARAMETER) => "type parameter",
+        _ => "symbol",
+    }
+}
 
 /// Clamp a completion's inline detail to `max_width`. Path/import-like details
 /// (module specifiers, "Auto import from …", file paths) keep their END so the
@@ -462,6 +564,27 @@ pub(super) fn completion_kind_badge<'a>(
             icon: "built_in:identifier",
             color: theme.ui.fg_ghost.as_f32(),
         },
+    }
+}
+
+#[cfg(test)]
+mod kind_name_tests {
+    use super::completion_kind_name;
+
+    #[test]
+    fn kind_names_match_the_lsp_kind_table() {
+        assert_eq!(completion_kind_name(Some(2)), "method");
+        assert_eq!(completion_kind_name(Some(3)), "function");
+        assert_eq!(completion_kind_name(Some(10)), "property");
+        assert_eq!(completion_kind_name(Some(6)), "variable");
+        assert_eq!(completion_kind_name(Some(14)), "keyword");
+        assert_eq!(completion_kind_name(Some(22)), "struct");
+    }
+
+    #[test]
+    fn unknown_kinds_fall_back_to_symbol() {
+        assert_eq!(completion_kind_name(None), "symbol");
+        assert_eq!(completion_kind_name(Some(999)), "symbol");
     }
 }
 

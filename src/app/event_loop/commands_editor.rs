@@ -82,8 +82,8 @@ impl AppShell {
                 } else {
                     false
                 };
-                if report.state_changed && !self.app_state.has_completion() {
-                    self.queue_lsp_completion_after_debounce_if_needed();
+                if report.state_changed {
+                    self.apply_typed_char_completion_policy(command);
                 }
                 if report.request_redraw
                     || report.state_changed
@@ -355,10 +355,6 @@ impl AppShell {
             &command,
             Command::InsertChar(_) | Command::InsertText(_) | Command::Backspace
         );
-        let auto_trigger_char = match &command {
-            Command::InsertChar(ch) => Some(*ch),
-            _ => None,
-        };
         if is_typing_edit {
             let _ = self.app_state.clear_completion();
             self.semantic_highlight_request_revision =
@@ -436,12 +432,6 @@ impl AppShell {
                 self.editor_caret_needs_layout = true;
                 self.request_redraw();
             }
-        }
-        if report.success
-            && let Some(ch) = auto_trigger_char
-            && self.should_auto_trigger_lsp_completion_for_char(ch)
-        {
-            self.submit_lsp_completion();
         }
         if report.success && should_notify_did_open {
             self.submit_lsp_did_open_for_active_file();

@@ -2669,6 +2669,7 @@ fn test_completion_item(
         text_edit_text: None,
         additional_text_edits: Vec::new(),
         kind: Some(3),
+        sort_text: None,
         callable: Some(true),
         has_parameters: Some(false),
         documentation: None,
@@ -2963,6 +2964,7 @@ fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
             text_edit_text: None,
             additional_text_edits: Vec::new(),
             kind: Some(2),
+            sort_text: None,
             callable: Some(true),
             has_parameters: Some(false),
             documentation: None,
@@ -3292,6 +3294,7 @@ fn completion_accept_deduplicates_trigger_char_in_insert_text() {
             text_edit_text: None,
             additional_text_edits: Vec::new(),
             kind: Some(2),
+            sort_text: None,
             callable: Some(true),
             has_parameters: Some(false),
             documentation: None,
@@ -3335,6 +3338,7 @@ fn completion_accept_strips_existing_member_receiver_from_full_insert_text() {
             text_edit_text: None,
             additional_text_edits: Vec::new(),
             kind: Some(5),
+            sort_text: None,
             callable: Some(false),
             has_parameters: None,
             documentation: None,
@@ -5470,4 +5474,252 @@ fn window_title_shows_file_and_project() {
 
     let bare = format_window_title(None, None, "Netherize");
     assert_eq!(bare, "Netherize");
+}
+
+#[test]
+fn palette_enter_runs_event_loop_command_for_real() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    let opened = shell.handle_palette_and_open_command(
+        &Command::OpenCommandPalette,
+        1,
+        &Command::OpenCommandPalette,
+    );
+    assert!(opened.is_some());
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::CommandPalette)
+    );
+
+    // Filter down to "Toggle Left Dock" (an event-loop-only command: core
+    // dispatch just answers "handled by event loop") and press Enter.
+    let _ = shell
+        .app_state
+        .command_palette
+        .set_query("toggle left dock", None);
+    assert_eq!(
+        shell
+            .app_state
+            .command_palette
+            .results
+            .first()
+            .map(|item| item.label.clone()),
+        Some("Toggle Left Dock".to_string())
+    );
+    let left_visible_before = shell.panel_state.left.visible;
+
+    let handled = shell.handle_palette_and_open_command(
+        &Command::FilePickerConfirmSelection,
+        1,
+        &Command::FilePickerConfirmSelection,
+    );
+
+    assert!(handled.is_some());
+    assert_ne!(
+        shell.panel_state.left.visible, left_visible_before,
+        "Enter on a palette command must actually run it, not just report success"
+    );
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        None,
+        "palette closes after running the command"
+    );
+    assert_eq!(
+        shell
+            .persistent_state
+            .recent_commands
+            .first()
+            .map(String::as_str),
+        Some("app.toggle_left_dock"),
+        "the run lands in the RECENT group source"
+    );
+}
+
+// ── LSP completion trigger logic ────────────────────────────────────────────
+
+#[test]
+fn typed_char_completion_action_classifies_typed_chars() {
+    use super::commands_completion::{
+        TypedCharCompletionAction as A, typed_char_completion_action,
+    };
+    let triggers = ['.', ':'];
+
+    // A server trigger char always re-requests immediately, popup open or not.
+    assert_eq!(
+        typed_char_completion_action('.', &triggers, false),
+        A::TriggerImmediately
+    );
+    assert_eq!(
+        typed_char_completion_action('.', &triggers, true),
+        A::TriggerImmediately
+    );
+    assert_eq!(
+        typed_char_completion_action(':', &triggers, false),
+        A::TriggerImmediately
+    );
+
+    // Identifier chars open the menu (debounced) only when it is closed;
+    // while open, the existing refresh path filters client-side.
+    assert_eq!(
+        typed_char_completion_action('a', &triggers, false),
+        A::QueueDebounced
+    );
+    assert_eq!(
+        typed_char_completion_action('_', &triggers, false),
+        A::QueueDebounced
+    );
+    assert_eq!(
+        typed_char_completion_action('9', &triggers, false),
+        A::QueueDebounced
+    );
+    assert_eq!(typed_char_completion_action('a', &triggers, true), A::None);
+
+    // Everything else (whitespace, punctuation) never opens the menu.
+    assert_eq!(typed_char_completion_action(' ', &triggers, false), A::None);
+    assert_eq!(typed_char_completion_action(';', &triggers, false), A::None);
+    assert_eq!(typed_char_completion_action(')', &triggers, false), A::None);
+}
+
+#[test]
+fn typing_a_trigger_char_requests_completion_immediately_for_rust() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("trigger_char_rust");
+    let _path = open_completion_file(&mut shell, &root.join("src/main.rs"), "value\n");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+    shell.lsp_completion_trigger_chars = vec!['.', ':'];
+    shell
+        .app_state
+        .jump_to_line_and_column(0, "value".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+
+    assert!(shell.handle_command(Command::InsertChar('.')));
+
+    assert!(
+        shell.active_lsp_completion_request_id.is_some(),
+        "typing a server trigger char must fire an LSP completion request immediately"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn typing_an_identifier_char_queues_debounced_completion_for_rust() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("ident_char_rust");
+    let _path = open_completion_file(&mut shell, &root.join("src/main.rs"), "va\n");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+    shell.lsp_completion_trigger_chars = vec!['.', ':'];
+    shell
+        .app_state
+        .jump_to_line_and_column(0, "va".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+
+    assert!(shell.handle_command(Command::InsertChar('l')));
+
+    assert!(
+        shell.pending_lsp_completion_after_debounce,
+        "identifier typing must queue a debounced completion request in every LSP language"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn backspace_does_not_requeue_completion_when_popup_closed() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("backspace_no_reopen");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.po\n");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "typescript-language-server".to_string(),
+        root_path: root.clone(),
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+    shell
+        .app_state
+        .jump_to_line_and_column(0, "axios.po".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+
+    assert!(shell.handle_command(Command::Backspace));
+
+    assert!(
+        !shell.pending_lsp_completion_after_debounce,
+        "deleting text with the popup closed must not pop the menu back open"
+    );
+    assert!(shell.active_lsp_completion_request_id.is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn empty_prefix_completion_list_respects_server_sort_text() {
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let mut zebra = test_completion_item("zebra", "zebra");
+    zebra.sort_text = Some("0000".to_string());
+    let mut alpha = test_completion_item("alpha", "alpha");
+    alpha.sort_text = Some("0002".to_string());
+    let mut hidden = test_completion_item("_private", "_private");
+    hidden.sort_text = Some("0001".to_string());
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![alpha, hidden, zebra],
+        0,
+        0,
+        0,
+        String::new(),
+        &cache,
+        Some("rust"),
+    );
+
+    let labels: Vec<&str> = completion
+        .filtered_items
+        .iter()
+        .map(|entry| entry.item.label.as_str())
+        .collect();
+    assert_eq!(
+        labels,
+        vec!["zebra", "_private", "alpha"],
+        "with no typed prefix the menu must honor the server's sortText order"
+    );
+}
+
+#[test]
+fn missing_sort_text_falls_back_to_label_order() {
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let mut sorted_first = test_completion_item("beta", "beta");
+    sorted_first.sort_text = Some("0000".to_string());
+    let plain_a = test_completion_item("alpha", "alpha");
+    let plain_z = test_completion_item("zeta", "zeta");
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![plain_z, sorted_first, plain_a],
+        0,
+        0,
+        0,
+        String::new(),
+        &cache,
+        Some("rust"),
+    );
+
+    let labels: Vec<&str> = completion
+        .filtered_items
+        .iter()
+        .map(|entry| entry.item.label.as_str())
+        .collect();
+    assert_eq!(
+        labels,
+        vec!["beta", "alpha", "zeta"],
+        "items without sortText compare by label (LSP spec fallback)"
+    );
 }

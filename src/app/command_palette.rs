@@ -950,7 +950,8 @@ impl CommandPalette {
             return;
         }
 
-        // RecentProjects: filter static_items by query (name OR full path).
+        // Static-list pickers: same fuzzy matcher as the command palette,
+        // ranked over label + secondary text (path for recent projects).
         if matches!(
             self.mode,
             CommandPaletteMode::RecentProjects
@@ -961,30 +962,21 @@ impl CommandPalette {
             self.results = if self.query.is_empty() {
                 self.static_items.clone()
             } else {
-                let q = self.query.to_lowercase();
-                let mut filtered: Vec<CommandPaletteItem> = self
+                let q = self.query.trim().to_lowercase();
+                let mut scored: Vec<(i64, usize)> = self
                     .static_items
                     .iter()
-                    .filter(|item| {
-                        item.label.to_lowercase().contains(&q)
-                            || item
-                                .secondary_label
-                                .as_deref()
-                                .map(|secondary| secondary.to_lowercase().contains(&q))
-                                .unwrap_or(false)
-                            || matches!(&item.action,
-                                CommandPaletteAction::OpenFile(path)
-                                    if path.to_string_lossy().to_lowercase().contains(&q))
+                    .enumerate()
+                    .filter_map(|(idx, item)| {
+                        fuzzy_score(&item.label, &item_secondary_text(item), &q)
+                            .map(|score| (score, idx))
                     })
-                    .cloned()
                     .collect();
-
-                if self.mode == CommandPaletteMode::DocumentSymbols {
-                    filtered.sort_by_key(|item| {
-                        item.label.to_lowercase().find(&q).unwrap_or(usize::MAX)
-                    });
-                }
-                filtered
+                scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+                scored
+                    .into_iter()
+                    .map(|(_, idx)| self.static_items[idx].clone())
+                    .collect()
             };
             if self.results.is_empty() {
                 self.selected_index = 0;
@@ -1135,12 +1127,7 @@ impl CommandPalette {
         let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) = if self.mode
             == CommandPaletteMode::LiveGrep
         {
-            let max_w = (width - 48.0).max(320.0);
-            let pw = if max_w >= 720.0 {
-                (width * 0.82).clamp(720.0, max_w)
-            } else {
-                max_w
-            };
+            let pw = complex_panel_width(width);
             let px = x + ((width - pw) * 0.5).max(0.0);
             let min_height =
                 live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
@@ -1156,25 +1143,9 @@ impl CommandPalette {
             let visible_result_rows = (body_height / row_height).floor() as usize;
             (pw, px, py, ph, visible_result_rows.max(1))
         } else if self.mode.is_complex_picker() {
-            // File Picker / LiveGrep / Recent Projects — min 35% screen, TRUE CENTER
-            // Recent Projects ưu tiên rộng hơn để hiển thị full path.
-            let available_w = (width - 48.0).max(320.0);
-            let min_w = (width * 0.35).max(400.0);
-            let pw = if self.mode == CommandPaletteMode::FilePicker {
-                (width * 0.60).clamp(min_w.max(560.0), available_w)
-            } else if matches!(
-                self.mode,
-                CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
-            ) {
-                (width * 0.70).clamp(min_w, available_w)
-            } else if matches!(
-                self.mode,
-                CommandPaletteMode::WorkspaceSymbols | CommandPaletteMode::DocumentSymbols
-            ) {
-                (width * 0.60).clamp(min_w.max(560.0), available_w)
-            } else {
-                min_w.max(660.0_f32.min(available_w))
-            };
+            // Every complex picker shares ONE width so the components read as
+            // the same surface — only row content differs per mode.
+            let pw = complex_panel_width(width);
             let px = x + ((width - pw) * 0.5).max(0.0);
             let body_rows = if self.mode == CommandPaletteMode::FilePicker
                 && self.results.is_empty()
@@ -1613,15 +1584,19 @@ pub(crate) const COMMAND_PALETTE_ACTIONS: &[(&str, &str)] = &[
     ("explorer.start_filter", "Explorer: Filter Files"),
 ];
 
-/// Fuzzy match a command against a lowercase query. Ranking: substring in the
-/// label (earlier = better) > substring in the id > in-order subsequence of the
-/// label (fewer skipped chars = better). `None` = no match.
-fn command_fuzzy_score(label: &str, id: &str, query: &str) -> Option<i64> {
+/// Shared fuzzy matcher for every in-process picker (commands, recent
+/// projects, themes, symbols). Ranking: substring in the primary label
+/// (earlier = better) > substring in the secondary text (command id, path…)
+/// > in-order subsequence of the label (fewer skipped chars = better).
+/// `query` must already be lowercase. `None` = no match.
+fn fuzzy_score(label: &str, secondary: &str, query: &str) -> Option<i64> {
     let label_lower = label.to_ascii_lowercase();
     if let Some(pos) = label_lower.find(query) {
         return Some(2000 - pos as i64 * 2);
     }
-    if let Some(pos) = id.find(query) {
+    if !secondary.is_empty()
+        && let Some(pos) = secondary.to_ascii_lowercase().find(query)
+    {
         return Some(1000 - pos as i64);
     }
     let mut score = 500i64;
@@ -1636,6 +1611,24 @@ fn command_fuzzy_score(label: &str, id: &str, query: &str) -> Option<i64> {
         }
     }
     Some(score)
+}
+
+/// The searchable secondary text of a palette item: the visible secondary
+/// label (meta suffix after \u{1f} stripped), falling back to the target path
+/// for file-opening items so "users/dev" finds a project by its path.
+fn item_secondary_text(item: &CommandPaletteItem) -> String {
+    let secondary = item
+        .secondary_label
+        .as_deref()
+        .map(|s| s.split('\u{1f}').next().unwrap_or(s))
+        .unwrap_or("");
+    if !secondary.is_empty() {
+        return secondary.to_string();
+    }
+    match &item.action {
+        CommandPaletteAction::OpenFile(path) => path.to_string_lossy().into_owned(),
+        _ => String::new(),
+    }
 }
 
 /// Build the CommandPalette result list. Empty query: RECENT group (persisted
@@ -1666,7 +1659,7 @@ fn command_palette_items(query: &str, recents: &[String]) -> (Vec<CommandPalette
     let mut scored: Vec<(i64, usize)> = COMMAND_PALETTE_ACTIONS
         .iter()
         .enumerate()
-        .filter_map(|(idx, (id, label))| command_fuzzy_score(label, id, &q).map(|s| (s, idx)))
+        .filter_map(|(idx, (id, label))| fuzzy_score(label, id, &q).map(|s| (s, idx)))
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     let items = scored
@@ -1729,6 +1722,15 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
 ///   dưới dạng range 1-byte (hoặc char boundary).
 ///
 /// Kết quả dùng bởi renderer để tô màu `match_color` lên phần khớp.
+/// The ONE panel width every complex picker uses (file picker, command
+/// palette, recent projects, themes, live grep, history, symbols) — a picker
+/// with a different width immediately reads as a different component.
+fn complex_panel_width(overlay_width: f32) -> f32 {
+    let available = (overlay_width - 48.0).max(320.0);
+    let min_w = (overlay_width * 0.35).max(400.0);
+    (overlay_width * 0.62).clamp(min_w.min(available), available)
+}
+
 fn palette_max_items(mode: CommandPaletteMode) -> usize {
     match mode {
         CommandPaletteMode::LiveGrep => 10,
@@ -2323,6 +2325,80 @@ mod tests {
     }
 
     #[test]
+    fn all_complex_pickers_share_one_panel_width() {
+        let theme = ThemeConfig::builtin_dark();
+        let overlay = [0.0, 0.0, 1400.0, 900.0];
+        let width_of = |mode: CommandPaletteMode| {
+            let mut palette = CommandPalette::default();
+            palette.open_with_items(mode, vec![make_item("row")]);
+            palette
+                .render(&theme, overlay)
+                .expect("render model")
+                .panel_bounds[2]
+        };
+
+        let file_picker = width_of(CommandPaletteMode::FilePicker);
+        for mode in [
+            CommandPaletteMode::CommandPalette,
+            CommandPaletteMode::RecentProjects,
+            CommandPaletteMode::ThemeSelector,
+            CommandPaletteMode::LiveGrep,
+            CommandPaletteMode::DocumentSymbols,
+            CommandPaletteMode::FileHistory,
+        ] {
+            assert_eq!(
+                width_of(mode),
+                file_picker,
+                "{mode:?} must share the file picker's panel width"
+            );
+        }
+    }
+
+    #[test]
+    fn recent_projects_filter_is_fuzzy_over_name_and_path() {
+        let mut palette = CommandPalette::default();
+        palette.open_with_items(
+            CommandPaletteMode::RecentProjects,
+            vec![
+                CommandPaletteItem::recent_project(std::path::Path::new(
+                    "/Users/dev/other-project",
+                )),
+                CommandPaletteItem::recent_project(std::path::Path::new(
+                    "/Users/dev/netherize_editor",
+                )),
+            ],
+        );
+
+        // Subsequence on the project name ("nthrz" ⊂ "netherize_editor").
+        palette.query = "nthrz".to_string();
+        palette.refresh_results(None);
+        assert_eq!(palette.results.len(), 1);
+        assert_eq!(palette.results[0].label, "netherize_editor");
+
+        // Substring on the full path still matches too.
+        palette.query = "users/dev".to_string();
+        palette.refresh_results(None);
+        assert_eq!(palette.results.len(), 2);
+    }
+
+    #[test]
+    fn theme_selector_filter_is_fuzzy() {
+        let mut palette = CommandPalette::default();
+        palette.open_with_items(
+            CommandPaletteMode::ThemeSelector,
+            vec![
+                make_theme_item("gruvbox-dark"),
+                make_theme_item("nether-dark"),
+            ],
+        );
+
+        palette.query = "gvbx".to_string();
+        palette.refresh_results(None);
+        assert_eq!(palette.results.len(), 1);
+        assert_eq!(palette.results[0].label, "gruvbox-dark");
+    }
+
+    #[test]
     fn command_palette_render_model_carries_group_labels() {
         let theme = ThemeConfig::builtin_dark();
         let mut palette = CommandPalette::default();
@@ -2511,8 +2587,9 @@ mod tests {
             .render(&ThemeConfig::builtin_dark(), [0.0, 0.0, 1200.0, 800.0])
             .expect("populated render model");
 
-        assert_eq!(empty_model.panel_bounds, [240.0, 325.0, 720.0, 150.0]);
-        assert_eq!(populated_model.panel_bounds, [240.0, 40.0, 720.0, 720.0]);
+        // 744 = complex_panel_width(1200) — the single shared picker width.
+        assert_eq!(empty_model.panel_bounds, [228.0, 325.0, 744.0, 150.0]);
+        assert_eq!(populated_model.panel_bounds, [228.0, 40.0, 744.0, 720.0]);
         assert_eq!(
             empty_model.scroll_offset_rows,
             populated_model.scroll_offset_rows

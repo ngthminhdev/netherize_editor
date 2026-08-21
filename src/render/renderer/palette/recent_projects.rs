@@ -56,11 +56,8 @@ impl Renderer {
         // ── Header ─────────────────────────────────────────────────────────────
         let mut row_top = panel_y + model.panel_padding;
 
-        let badge_color = if is_theme_selector {
-            model.match_color
-        } else {
-            model.info_color
-        };
+        // Same accent badge as every other picker (see file_picker.rs).
+        let badge_color = model.match_color;
         let (badge_w, badge_h, badge_glyphs) = render_palette_badge(
             &model.title,
             &mut self.palette_text_system,

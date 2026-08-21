@@ -83,7 +83,7 @@ impl Renderer {
             row_top,
             font_size,
             line_h,
-            model.success_color,
+            model.match_color,
             self.theme.ui.bg.as_f32(),
         );
         glyphs.extend(badge_glyphs);

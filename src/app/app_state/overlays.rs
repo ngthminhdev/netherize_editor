@@ -2086,6 +2086,7 @@ pub(super) fn build_completion_display_items_with_cache(
                     text_edit_text: None,
                     additional_text_edits: Vec::new(),
                     kind: Some(symbol_kind_to_lsp_kind(&symbol.kind)),
+                    sort_text: None,
                     callable: symbol.callable,
                     has_parameters: symbol.has_parameters,
                     documentation: None,

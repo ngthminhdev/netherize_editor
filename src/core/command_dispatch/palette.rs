@@ -336,7 +336,11 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 true,
             )
         }
-        _ => unreachable!("palette::dispatch received non-palette command"),
+        // A routing mistake (mod.rs groups a command here without an arm)
+        // must never abort the editor — fail the dispatch loudly instead.
+        other => DispatchReport::failure(format!(
+            "Dispatch: palette::dispatch has no arm for {other:?} — routing bug"
+        )),
     }
 }
 

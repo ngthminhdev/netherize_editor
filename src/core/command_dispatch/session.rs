@@ -387,7 +387,11 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             let changed = changed | ctx.app_state.begin_visual_line_selection();
             DispatchReport::success("Dispatch: enter visual line mode", changed)
         }
-        _ => unreachable!("session::dispatch received non-session command"),
+        // A routing mistake (mod.rs groups a command here without an arm)
+        // must never abort the editor — fail the dispatch loudly instead.
+        other => DispatchReport::failure(format!(
+            "Dispatch: session::dispatch has no arm for {other:?} — routing bug"
+        )),
     }
 }
 

@@ -1911,7 +1911,7 @@ pub struct CompletionState {
 
 impl CompletionState {
     pub fn from_lsp_items(
-        items: Vec<LspCompletionItem>,
+        mut items: Vec<LspCompletionItem>,
         anchor_line: usize,
         anchor_col: usize,
         prefix_start_col: usize,
@@ -1919,6 +1919,14 @@ impl CompletionState {
         cache: &crate::lsp::WorkspaceSymbolCache,
         language_id: Option<&str>,
     ) -> Self {
+        // Honor the server's preferred order (LSP `sortText`, falling back to
+        // `label`). With no typed prefix this IS the visible order; with one,
+        // it stays the tiebreak behind the fuzzy score.
+        items.sort_by(|a, b| {
+            let a_key = a.sort_text.as_deref().unwrap_or(&a.label);
+            let b_key = b.sort_text.as_deref().unwrap_or(&b.label);
+            a_key.cmp(b_key).then_with(|| a.label.cmp(&b.label))
+        });
         let full_items = overlays::build_completion_display_items_with_cache(
             &items,
             &prefix,

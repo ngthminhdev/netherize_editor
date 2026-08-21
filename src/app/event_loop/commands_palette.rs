@@ -530,21 +530,21 @@ impl AppShell {
                     self.persistent_state.save();
                 }
 
-                // Restart Language Server is a fire-and-execute command that
-                // needs the event loop (it submits worker requests), so it can't
-                // run through the core dispatch path other palette commands use.
-                // Intercept it here, close the overlay, and run the restart.
+                // Enter on a command-palette row runs the command through the
+                // FULL event-loop path (`handle_command_with_count`), never the
+                // core-only dispatch inside `confirm_selection`. Core-only had
+                // two failure modes for event-loop commands: sub-dispatchers
+                // without an arm hit their `unreachable!` and aborted the app
+                // (real SIGABRT 2026-08-21), and passthrough commands returned
+                // "handled by event loop" with nobody actually handling them.
                 if matches!(command, Command::FilePickerConfirmSelection)
-                    && matches!(
-                        self.app_state.command_palette_mode(),
-                        Some(CommandPaletteMode::CommandPalette)
-                    )
-                    && matches!(
-                        self.app_state.command_palette_selected_action(),
-                        Some(crate::app::command_palette::CommandPaletteAction::ExecuteCommand(id))
-                            if id == crate::core::command_ids::LSP_RESTART
-                    )
+                    && self.app_state.command_palette_mode()
+                        == Some(CommandPaletteMode::CommandPalette)
+                    && let Some(crate::app::command_palette::CommandPaletteAction::ExecuteCommand(
+                        id,
+                    )) = self.app_state.command_palette_selected_action()
                 {
+                    let parsed = crate::core::command_ids::parse(&id, self.app_state.active_file());
                     let _ = self.app_state.close_command_palette();
                     if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
                         if result.changed {
@@ -553,7 +553,14 @@ impl AppShell {
                     }
                     self.focus_manager.set(FocusTarget::CenterEditor);
                     self.input_handler.clear_pending_prefix();
-                    return Some(self.handle_lsp_restart());
+                    self.clear_palette_ime_commit_suppression();
+                    return match parsed {
+                        Some(next) => Some(self.handle_command_with_count(next, 1)),
+                        None => {
+                            self.show_transient_toast(format!("Unknown command: {id}"));
+                            Some(true)
+                        }
+                    };
                 }
 
                 if matches!(command, Command::FilePickerConfirmSelection)

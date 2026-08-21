@@ -272,7 +272,11 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        _ => unreachable!("navigation::dispatch received non-navigation command"),
+        // A routing mistake (mod.rs groups a command here without an arm)
+        // must never abort the editor — fail the dispatch loudly instead.
+        other => DispatchReport::failure(format!(
+            "Dispatch: navigation::dispatch has no arm for {other:?} — routing bug"
+        )),
     }
 }
 

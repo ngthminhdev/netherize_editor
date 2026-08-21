@@ -879,7 +879,11 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        _ => unreachable!("editing::dispatch received non-editing command"),
+        // A routing mistake (mod.rs groups a command here without an arm)
+        // must never abort the editor — fail the dispatch loudly instead.
+        other => DispatchReport::failure(format!(
+            "Dispatch: editing::dispatch has no arm for {other:?} — routing bug"
+        )),
     }
 }
 

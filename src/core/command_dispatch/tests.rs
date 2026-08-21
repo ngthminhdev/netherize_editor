@@ -2248,3 +2248,30 @@ fn yank_flash_triggered_on_yank_commands() {
     assert_eq!(start2, 0);
     assert_eq!(end2, 5);
 }
+
+/// Every action in the command palette table must survive core dispatch.
+/// The palette lets the user Enter ANY of these; a command routed to a
+/// sub-dispatcher that lacks its arm hits that dispatcher's `unreachable!`
+/// and aborts the app (real crash: 2026-08-21, SIGABRT in confirm_selection).
+#[test]
+fn every_palette_action_dispatches_without_panicking() {
+    let mut crashed = Vec::new();
+    for (id, label) in crate::app::command_palette::COMMAND_PALETTE_ACTIONS {
+        let Some(command) = crate::core::command_ids::parse(id, None) else {
+            crashed.push(format!("{id} ({label}): does not parse"));
+            continue;
+        };
+        let result = std::panic::catch_unwind(|| {
+            let mut app_state = AppState::new(unique_temp_path("palette_action"));
+            dispatch_command(&mut app_state, command)
+        });
+        if result.is_err() {
+            crashed.push(format!("{id} ({label}): PANICKED in dispatch"));
+        }
+    }
+    assert!(
+        crashed.is_empty(),
+        "palette actions crash core dispatch:\n{}",
+        crashed.join("\n")
+    );
+}

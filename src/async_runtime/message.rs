@@ -535,6 +535,9 @@ pub struct LspCompletionItem {
     pub text_edit_text: Option<String>,
     pub additional_text_edits: Vec<LspTextEdit>,
     pub kind: Option<u32>,
+    /// LSP `sortText` — the server's preferred ordering key. Items without it
+    /// compare by `label` (LSP spec fallback).
+    pub sort_text: Option<String>,
     /// Whether accepting this item should produce a callable expression. `None`
     /// means the server/cache did not say either way.
     pub callable: Option<bool>,
