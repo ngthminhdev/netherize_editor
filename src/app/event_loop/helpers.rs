@@ -2023,3 +2023,110 @@ fn parse_git_head(head: &str) -> Option<String> {
         format!("detached: {}", &head[..short_len])
     })
 }
+
+/// `file — project — base` window title, degrading gracefully when parts are
+/// missing. Pure so it stays testable without a winit window.
+pub(super) fn format_window_title(
+    active_file: Option<&Path>,
+    workspace_root: Option<&Path>,
+    base_title: &str,
+) -> String {
+    let project = workspace_root
+        .and_then(|root| root.file_name())
+        .and_then(|name| name.to_str());
+    let file = active_file
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str());
+    match (file, project) {
+        (Some(file), Some(project)) => format!("{file} — {project} — {base_title}"),
+        (None, Some(project)) => format!("{project} — {base_title}"),
+        (Some(file), None) => format!("{file} — {base_title}"),
+        (None, None) => base_title.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct GitWorktree {
+    pub(super) path: PathBuf,
+    pub(super) branch: Option<String>,
+}
+
+/// Parse `git worktree list --porcelain` output into entries.
+pub(super) fn parse_git_worktrees(porcelain: &str) -> Vec<GitWorktree> {
+    let mut result = Vec::new();
+    let mut current: Option<GitWorktree> = None;
+    for line in porcelain.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            if let Some(done) = current.take() {
+                result.push(done);
+            }
+            current = Some(GitWorktree {
+                path: PathBuf::from(path.trim()),
+                branch: None,
+            });
+        } else if let Some(branch_ref) = line.strip_prefix("branch ")
+            && let Some(entry) = current.as_mut()
+        {
+            entry.branch = Some(
+                branch_ref
+                    .trim()
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(branch_ref.trim())
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(done) = current.take() {
+        result.push(done);
+    }
+    result
+}
+
+/// List this repo's worktrees via `git worktree list --porcelain`.
+pub(super) fn list_git_worktrees(root: &Path) -> Vec<GitWorktree> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["worktree", "list", "--porcelain"])
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            parse_git_worktrees(&String::from_utf8_lossy(&output.stdout))
+        }
+        _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod worktree_and_title_tests {
+    use super::*;
+
+    #[test]
+    fn parse_git_worktrees_reads_paths_and_short_branch_names() {
+        let porcelain = "\
+worktree /repo/main
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/main
+
+worktree /repo/wt-feature
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feature/spatial-canvas
+
+worktree /repo/wt-detached
+HEAD 3333333333333333333333333333333333333333
+detached
+";
+        let parsed = parse_git_worktrees(porcelain);
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].path, PathBuf::from("/repo/main"));
+        assert_eq!(parsed[0].branch.as_deref(), Some("main"));
+        assert_eq!(parsed[1].branch.as_deref(), Some("feature/spatial-canvas"));
+        assert_eq!(parsed[2].path, PathBuf::from("/repo/wt-detached"));
+        assert_eq!(parsed[2].branch, None);
+    }
+
+    #[test]
+    fn parse_git_worktrees_handles_empty_output() {
+        assert!(parse_git_worktrees("").is_empty());
+    }
+}

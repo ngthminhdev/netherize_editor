@@ -1,5 +1,57 @@
 use super::super::*;
+use crate::app::app_state::ExternalChangeReport;
 use crate::async_runtime::message::WorkerResultPayload;
+
+fn file_label(path: &std::path::Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+/// Surface what the external-change pipeline just did. Deletes outrank
+/// reloads; conflicts stay silent here because the confirmation prompt is
+/// already on screen.
+fn show_external_change_toasts(app: &mut AppShell, report: &ExternalChangeReport) {
+    if let Some(first) = report.deleted_paths.first() {
+        let extra = report.deleted_paths.len().saturating_sub(1);
+        let message = if extra == 0 {
+            format!("{} deleted on disk — buffer kept", file_label(first))
+        } else {
+            format!(
+                "{} (+{extra} more) deleted on disk — buffers kept",
+                file_label(first)
+            )
+        };
+        app.show_transient_toast_kind(message, ToastKind::Warning);
+        return;
+    }
+    if report.conflict_detected {
+        return;
+    }
+    let inactive = report.inactive_reloaded_paths.len();
+    let reloaded = inactive + usize::from(report.active_file_reloaded);
+    if reloaded == 0 {
+        return;
+    }
+    let message = if reloaded == 1 {
+        let label = if report.active_file_reloaded {
+            app.app_state.active_file().map(file_label)
+        } else {
+            report
+                .inactive_reloaded_paths
+                .first()
+                .map(|p| file_label(p))
+        };
+        match label {
+            Some(label) => format!("Reloaded {label} — changed on disk"),
+            None => "Reloaded 1 file — changed on disk".to_string(),
+        }
+    } else {
+        format!("Reloaded {reloaded} files — changed on disk")
+    };
+    app.show_transient_toast_kind(message, ToastKind::Info);
+}
 
 pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResultPayload) {
     if let WorkerResultPayload::FileSystemEvents { events, .. } = payload {
@@ -48,6 +100,7 @@ pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResult
                 {
                     let _ = app.begin_external_overwrite_confirmation(path);
                 }
+                show_external_change_toasts(app, &report);
             }
             Err(err) => {
                 eprintln!("[AppShell] fs-event apply failed: {err}");
@@ -88,6 +141,7 @@ pub(super) fn handle_external_files_read(app: &mut AppShell, payload: WorkerResu
         {
             let _ = app.begin_external_overwrite_confirmation(path);
         }
+        show_external_change_toasts(app, &report);
         if report.active_file_reloaded || !report.inactive_reloaded_paths.is_empty() {
             app.submit_active_buffer_git_baseline_refresh();
             app.editor_needs_layout = true;

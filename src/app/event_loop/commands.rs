@@ -604,6 +604,9 @@ impl AppShell {
         };
 
         let mut command = std::process::Command::new(exe_path);
+        // Without this the child would forward its open request right back to
+        // us over the single-instance socket and exit — no second window.
+        command.arg("--new-instance");
         if let Some(workspace_root) = self.app_state.workspace_root_path() {
             command.arg(workspace_root);
         }

@@ -204,6 +204,22 @@ impl AppState {
         Ok(())
     }
 
+    /// Git-worktree switcher: reuses the RecentProjects picker plumbing (same
+    /// confirm path — Enter switches workspace in place).
+    pub fn open_worktree_switch_palette(&mut self, worktrees: &[std::path::PathBuf]) {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items = worktrees
+            .iter()
+            .map(|path| {
+                let icon_source =
+                    crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
+                CommandPaletteItem::recent_project_with_meta(path, Some(icon_source.as_str()), None)
+            })
+            .collect();
+        self.command_palette
+            .open_with_items(CommandPaletteMode::RecentProjects, items);
+    }
+
     pub fn sync_welcome_recent_projects(&mut self, recent: &[std::path::PathBuf]) -> bool {
         use crate::app::command_palette::CommandPaletteItem;
         let items: Vec<_> = recent
@@ -1923,6 +1939,7 @@ impl AppState {
                                 event.path.display()
                             );
                             self.external_notice = Some(note.clone());
+                            report.deleted_paths.push(event.path.clone());
                             report.notices.push(note);
                         }
                     }
@@ -1967,6 +1984,7 @@ impl AppState {
                                     "inactive file deleted externally: {}",
                                     buffer.path.display()
                                 );
+                                report.deleted_paths.push(buffer.path.clone());
                                 report.notices.push(note);
                                 report.workspace_reloaded = true;
                             }

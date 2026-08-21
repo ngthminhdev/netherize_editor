@@ -42,6 +42,7 @@ pub mod code_graph_hud;
 mod editor;
 mod multi_cursor;
 mod overlays;
+pub(crate) use overlays::path_matches;
 mod palette;
 mod settings;
 mod state;
@@ -74,6 +75,9 @@ pub struct ExternalChangeReport {
     /// The workspace tree shape may have changed; the shell submits an async
     /// `RescanWorkspace` and applies fresh nodes via `apply_workspace_rescan`.
     pub workspace_rescan_needed: bool,
+    /// Open buffers whose backing file disappeared from disk (buffer kept in
+    /// memory) — surfaced to the user as a warning toast.
+    pub deleted_paths: Vec<PathBuf>,
     pub notices: Vec<String>,
 }
 

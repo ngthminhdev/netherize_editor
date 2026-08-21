@@ -79,6 +79,7 @@ pub const ESCAPE_MODE: &str = "mode.escape";
 // ── Workspace / Project management ───────────────────────────────────────────
 pub const OPEN_FOLDER: &str = "editor.open_folder";
 pub const OPEN_RECENT_PROJECTS: &str = "projects.recent";
+pub const OPEN_WORKTREES: &str = "projects.worktrees";
 
 // ── App-level UI ──────────────────────────────────────────────────────────────
 pub const TOGGLE_TERMINAL: &str = "app.toggle_terminal";
@@ -293,6 +294,7 @@ pub const PALETTE_DELETE_CHAR_FORWARD: &str = "palette.delete_char_forward";
 pub const ALL_IDS: &[&str] = &[
     OPEN_FOLDER,
     OPEN_RECENT_PROJECTS,
+    OPEN_WORKTREES,
     MOVE_LEFT,
     MOVE_RIGHT,
     MOVE_UP,
@@ -608,6 +610,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         )),
         OPEN_FOLDER => Some(Command::OpenFolder),
         OPEN_RECENT_PROJECTS => Some(Command::OpenRecentProjects),
+        OPEN_WORKTREES => Some(Command::OpenWorktreePalette),
         ENTER_NORMAL => Some(Command::SwitchMode(ModeEvent::EnterNormal)),
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),

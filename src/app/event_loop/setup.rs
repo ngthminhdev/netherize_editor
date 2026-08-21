@@ -219,6 +219,7 @@ impl AppShell {
             overlay_manager: OverlayManager::default(),
             clipboard: SystemClipboard::new(),
             window: None,
+            last_window_title: None,
             renderer: None,
             window_size: PhysicalSize::new(window_width, window_height),
             editor_needs_layout: true,
@@ -405,21 +406,20 @@ impl AppShell {
     ///   (e.g. "Netherize Editor").
     /// - Workspace attached: title becomes "<project-name> - <base title>"
     ///   (e.g. "my-project - Netherize Editor").
-    pub(super) fn update_window_title(&self) {
+    pub(super) fn update_window_title(&mut self) {
         let Some(window) = self.window.as_ref() else {
             return;
         };
-        let base_title = &self.ui_config.window.title;
-
-        if let Some(root) = self.app_state.workspace_root_path() {
-            let project_name = root
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Netherize Editor");
-            window.set_title(&format!("{project_name} - {base_title}"));
-        } else {
-            window.set_title(base_title);
+        let title = format_window_title(
+            self.app_state.active_file(),
+            self.app_state.workspace_root_path(),
+            &self.ui_config.window.title,
+        );
+        if self.last_window_title.as_deref() == Some(title.as_str()) {
+            return;
         }
+        window.set_title(&title);
+        self.last_window_title = Some(title);
     }
 
     pub(super) fn refresh_workspace_git_branch(&mut self) -> bool {

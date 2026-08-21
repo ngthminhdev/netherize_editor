@@ -87,7 +87,22 @@ impl AppShell {
                     .map(str::to_string)
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 Some(format!(
-                    "{label} changed externally while dirty. Overwrite with current buffer? (y/n)"
+                    "{label} changed on disk. y = save mine, n = load disk version (Esc = later)"
+                ))
+            }
+            PendingConfirmationAction::WorkspaceSwitch {
+                target,
+                dirty_count,
+                ..
+            } => {
+                let name = target
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| target.to_string_lossy().into_owned());
+                let noun = if *dirty_count == 1 { "file" } else { "files" };
+                Some(format!(
+                    "Save {dirty_count} unsaved {noun} before switching to {name}? (y = save all, n = discard)"
                 ))
             }
         }
@@ -170,6 +185,35 @@ impl AppShell {
         }
         if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
             eprintln!("[AppShell] dirty quit confirmation prompt failed: {err}");
+            self.pending_confirmation = None;
+            let _ = self.app_state.close_command_palette();
+            let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            return false;
+        }
+        true
+    }
+
+    pub(in crate::app::event_loop) fn begin_workspace_switch_confirmation(
+        &mut self,
+        target: PathBuf,
+        follow_files: Vec<PathBuf>,
+        dirty_count: usize,
+    ) -> bool {
+        self.pending_confirmation = Some(PendingConfirmation {
+            action: PendingConfirmationAction::WorkspaceSwitch {
+                target,
+                follow_files,
+                dirty_count,
+            },
+            return_focus: self.focus_manager.current(),
+        });
+        let prompt = self.pending_confirmation_prompt().unwrap_or_default();
+        if !self.open_prompt_overlay(CommandPaletteMode::BufferCloseConfirm) {
+            self.pending_confirmation = None;
+            return false;
+        }
+        if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
+            eprintln!("[AppShell] workspace switch confirmation prompt failed: {err}");
             self.pending_confirmation = None;
             let _ = self.app_state.close_command_palette();
             let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
@@ -518,6 +562,46 @@ impl AppShell {
         true
     }
 
+    pub(super) fn open_worktree_palette(&mut self) -> bool {
+        let Some(root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            self.show_transient_toast("Worktrees: no workspace open".to_string());
+            return false;
+        };
+        let worktrees: Vec<PathBuf> = list_git_worktrees(&root)
+            .into_iter()
+            .map(|worktree| worktree.path)
+            .filter(|path| !crate::app::app_state::path_matches(path, &root) && path.is_dir())
+            .collect();
+        if worktrees.is_empty() {
+            self.show_transient_toast(
+                "No other git worktrees. Create one with `git worktree add`.".to_string(),
+            );
+            return false;
+        }
+
+        let current_mode = self.app_state.current_mode();
+        if current_mode != EditorMode::PaletteFocus
+            && !self.app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+        {
+            return false;
+        }
+
+        self.app_state.open_worktree_switch_palette(&worktrees);
+
+        if current_mode != EditorMode::PaletteFocus
+            && let Err(err) = self.app_state.apply_mode_event(ModeEvent::OpenPalette)
+        {
+            let _ = self.app_state.close_command_palette();
+            eprintln!("[AppShell] worktree palette mode change failed: {err:?}");
+            return false;
+        }
+
+        if self.focus_manager.set(FocusTarget::OverlayLayer) {
+            self.input_handler.clear_pending_prefix();
+        }
+        true
+    }
+
     pub(super) fn confirm_recent_project_selection(&mut self) -> bool {
         let Some(crate::app::command_palette::CommandPaletteAction::OpenFile(path)) =
             self.app_state.command_palette_selected_action()
@@ -797,6 +881,25 @@ impl AppShell {
                     }
                 }
                 changed
+            }
+            PendingConfirmationAction::WorkspaceSwitch {
+                target,
+                follow_files,
+                ..
+            } => {
+                if confirmed {
+                    match self.save_all_dirty_buffers_for_quit() {
+                        Ok(_) => {}
+                        Err(err) => {
+                            self.show_transient_toast_kind(
+                                format!("Workspace switch cancelled\nCould not save: {err}"),
+                                ToastKind::Error,
+                            );
+                            return true;
+                        }
+                    }
+                }
+                changed | self.perform_workspace_switch(target, follow_files)
             }
         }
     }

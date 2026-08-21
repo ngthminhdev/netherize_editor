@@ -5201,3 +5201,273 @@ fn caret_lag_settles_to_zero_when_tween_completes() {
         "caret settles flush to its line"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Workspace switch dirty guard + remote open + external-change visibility
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn switch_guard_fixture(tag: &str) -> (AppShell, std::path::PathBuf, std::path::PathBuf) {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path =
+        std::env::temp_dir().join(format!("netherize_switch_{tag}_{}.txt", std::process::id()));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    let file_path = file_path.canonicalize().expect("canonicalize file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+    let target = std::env::temp_dir().join(format!(
+        "netherize_switch_target_{tag}_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&target).expect("create target dir");
+    let target = target.canonicalize().expect("canonicalize target");
+    (shell, file_path, target)
+}
+
+#[test]
+fn switch_workspace_with_dirty_buffer_prompts_instead_of_discarding() {
+    let (mut shell, file_path, target) = switch_guard_fixture("prompt");
+
+    assert!(shell.switch_workspace_to(target.clone()));
+
+    assert!(
+        shell.pending_confirmation.is_some(),
+        "dirty switch must ask before dropping buffers"
+    );
+    assert!(shell.app_state.is_dirty(), "unsaved edit must survive");
+    assert_ne!(
+        shell.app_state.workspace_root_path(),
+        Some(target.as_path()),
+        "workspace must not switch before the user answers"
+    );
+
+    let _ = std::fs::remove_file(file_path);
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn switch_workspace_confirmation_yes_saves_then_switches() {
+    let (mut shell, file_path, target) = switch_guard_fixture("yes");
+
+    assert!(shell.switch_workspace_to(target.clone()));
+    assert!(shell.respond_to_pending_confirmation(true));
+
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "!hello\n",
+        "y must save the dirty buffer before switching"
+    );
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(target.as_path())
+    );
+
+    let _ = std::fs::remove_file(file_path);
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn switch_workspace_confirmation_no_discards_and_switches() {
+    let (mut shell, file_path, target) = switch_guard_fixture("no");
+
+    assert!(shell.switch_workspace_to(target.clone()));
+    assert!(shell.respond_to_pending_confirmation(false));
+
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "hello\n",
+        "n must leave the file on disk untouched"
+    );
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(target.as_path())
+    );
+
+    let _ = std::fs::remove_file(file_path);
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn switch_workspace_clean_switches_immediately() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let target =
+        std::env::temp_dir().join(format!("netherize_switch_clean_{}", std::process::id()));
+    std::fs::create_dir_all(&target).expect("create target dir");
+    let target = target.canonicalize().expect("canonicalize target");
+
+    assert!(shell.switch_workspace_to(target.clone()));
+
+    assert!(shell.pending_confirmation.is_none());
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(target.as_path())
+    );
+
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn remote_open_file_opens_in_current_instance() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path =
+        std::env::temp_dir().join(format!("netherize_remote_file_{}.txt", std::process::id()));
+    std::fs::write(&file_path, "remote\n").expect("write file");
+    let file_path = file_path.canonicalize().expect("canonicalize file");
+
+    shell.handle_remote_open(vec![file_path.clone()]);
+
+    assert_eq!(shell.app_state.active_file(), Some(file_path.as_path()));
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn remote_open_dir_switches_workspace_when_clean() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let target = std::env::temp_dir().join(format!("netherize_remote_dir_{}", std::process::id()));
+    std::fs::create_dir_all(&target).expect("create target dir");
+    let target = target.canonicalize().expect("canonicalize target");
+
+    shell.handle_remote_open(vec![target.clone()]);
+
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(target.as_path())
+    );
+
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn remote_open_same_workspace_only_focuses() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = shell
+        .app_state
+        .workspace_root_path()
+        .expect("test shell has a workspace")
+        .to_path_buf();
+
+    shell.handle_remote_open(vec![root.clone()]);
+
+    assert!(shell.pending_confirmation.is_none());
+    assert_eq!(shell.app_state.workspace_root_path(), Some(root.as_path()));
+}
+
+#[test]
+fn external_reload_shows_info_toast() {
+    use crate::app::async_bridge::AsyncResultRouter;
+    use crate::async_runtime::message::{
+        ExternalFileRead, RequestTopic, WorkerResult, WorkerResultPayload,
+    };
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path =
+        std::env::temp_dir().join(format!("netherize_ext_reload_{}.txt", std::process::id()));
+    std::fs::write(&file_path, "before\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+
+    std::fs::write(&file_path, "after\n").expect("rewrite file");
+    shell.on_worker_result(WorkerResult {
+        request_id: 0,
+        revision_id: 0,
+        topic: RequestTopic::WorkspaceWatch,
+        payload: WorkerResultPayload::ExternalFilesRead {
+            files: vec![ExternalFileRead {
+                path: file_path.clone(),
+                content: Some("after\n".to_string()),
+                modified_time: std::fs::metadata(&file_path)
+                    .and_then(|m| m.modified())
+                    .ok(),
+            }],
+        },
+    });
+
+    assert_eq!(shell.app_state.text_string(), "after\n");
+    let toast = shell.transient_toast.as_ref().expect("reload toast shown");
+    assert_eq!(toast.kind, ToastKind::Info);
+    assert!(
+        toast.message.contains("Reloaded") && toast.message.contains("disk"),
+        "toast must say what happened: {}",
+        toast.message
+    );
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn external_delete_shows_warning_toast() {
+    use crate::app::async_bridge::AsyncResultRouter;
+    use crate::async_runtime::message::{
+        FileSystemChangeKind, FileSystemEvent, RequestTopic, WorkerResult, WorkerResultPayload,
+    };
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path =
+        std::env::temp_dir().join(format!("netherize_ext_delete_{}.txt", std::process::id()));
+    std::fs::write(&file_path, "doomed\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    std::fs::remove_file(&file_path).expect("delete file");
+
+    shell.on_worker_result(WorkerResult {
+        request_id: 0,
+        revision_id: 0,
+        topic: RequestTopic::WorkspaceWatch,
+        payload: WorkerResultPayload::FileSystemEvents {
+            root_path: std::env::temp_dir(),
+            events: vec![FileSystemEvent {
+                kind: FileSystemChangeKind::Delete,
+                path: file_path.clone(),
+                new_path: None,
+            }],
+        },
+    });
+
+    let toast = shell.transient_toast.as_ref().expect("delete toast shown");
+    assert_eq!(toast.kind, ToastKind::Warning);
+    assert!(
+        toast.message.contains("deleted"),
+        "toast must mention the delete: {}",
+        toast.message
+    );
+}
+
+#[test]
+fn external_overwrite_prompt_names_both_outcomes() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.pending_confirmation = Some(PendingConfirmation {
+        action: PendingConfirmationAction::ExternalOverwrite {
+            path: PathBuf::from("/ws/main.rs"),
+        },
+        return_focus: FocusTarget::CenterEditor,
+    });
+
+    let prompt = shell.pending_confirmation_prompt().expect("prompt text");
+    assert!(
+        prompt.contains("save mine") && prompt.contains("load disk"),
+        "both outcomes must be spelled out: {prompt}"
+    );
+}
+
+#[test]
+fn window_title_shows_file_and_project() {
+    let title = format_window_title(
+        Some(std::path::Path::new("/ws/proj/src/main.rs")),
+        Some(std::path::Path::new("/ws/proj")),
+        "Netherize Editor",
+    );
+    assert_eq!(title, "main.rs — proj — Netherize Editor");
+
+    let no_file = format_window_title(None, Some(std::path::Path::new("/ws/proj")), "Netherize");
+    assert_eq!(no_file, "proj — Netherize");
+
+    let bare = format_window_title(None, None, "Netherize");
+    assert_eq!(bare, "Netherize");
+}

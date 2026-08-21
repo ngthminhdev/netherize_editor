@@ -177,3 +177,10 @@
 
 ### 2026-08-10 — Dock resize keymap reachability
 - **Resize entry must mirror focus scopes in both keymap layers:** `<leader>r r` needs matching `normal`, `explorer`, `inspector`, `bottom_panel`, and `terminal_normal` entries in both `config/keymaps/default.toml` and `builtin_defaults()`. The focus must also allow leader sequences and `command_allowed_in_context` must admit `EnterResize`; missing any one layer makes a visible dock impossible to resize directly or breaks only the fallback profile. Outline maps to the `normal` sequence scope but its dedicated input handler must explicitly let an active leader sequence reach the keymap. Keep `h/j/k/l/H/L` modal by resolving `EditorMode::Resize` before focus-specific handlers.
+
+## Single-instance & workspace switch (2026-08-21)
+
+- Single-instance routing: `src/app/single_instance.rs`, socket at `user_config_root()/instance.sock`. Protocol = one JSON line (`Vec<PathBuf>`) + `b'1'` ack. `run()` forwards CLI paths and exits unless `--new-instance` is passed; `spawn_new_instance` MUST pass `--new-instance` or the child forwards right back and no window appears. `bind_at` connect-probes to distinguish a live sibling from a stale socket file.
+- `switch_workspace_to` routes through `switch_workspace_with_files` which guards dirty buffers with a `PendingConfirmationAction::WorkspaceSwitch` prompt (y = save all, n = discard, Esc = stay). `clear_workspace_session_state()` drops ALL buffers unconditionally — never call the switch pipeline around the guard.
+- `path_matches` (app_state/overlays.rs) falls back to canonical-parent + file-name compare when canonicalize fails; without this, Delete events through path aliases (/var vs /private/var, symlinked roots) never match the open buffer.
+- Worktree palette (`<leader>p w`, `projects.worktrees`) reuses `CommandPaletteMode::RecentProjects` plumbing — a dedicated mode needs ~20 match arms; do that only if the "Recent Projects" header label becomes a real problem.

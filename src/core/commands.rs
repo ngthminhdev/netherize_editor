@@ -142,6 +142,9 @@ pub enum Command {
     OpenFolder,
     /// Open command palette showing recent projects list.
     OpenRecentProjects,
+    /// Open command palette listing this repo's other git worktrees; Enter
+    /// switches the workspace to the selected worktree in place.
+    OpenWorktreePalette,
     /// Remove the selected entry from the recent projects list.
     RemoveRecentProject,
     OpenFilePicker,

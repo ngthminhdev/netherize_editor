@@ -2240,14 +2240,32 @@ pub(super) fn is_whole_word_match(text: &str, start: usize, end: usize) -> bool 
     left_ok && right_ok
 }
 
-pub(super) fn path_matches(left: &Path, right: &Path) -> bool {
+pub(crate) fn path_matches(left: &Path, right: &Path) -> bool {
     if left == right {
         return true;
     }
 
     match (left.canonicalize(), right.canonicalize()) {
         (Ok(left), Ok(right)) => left == right,
-        _ => false,
+        _ => {
+            // A deleted file can no longer canonicalize, which would make
+            // delete events through path aliases (/var vs /private/var,
+            // symlinked roots) miss their buffer. Fall back to comparing the
+            // canonical parent + file name.
+            let canonical_parent_and_name = |path: &Path| {
+                Some((
+                    path.parent()?.canonicalize().ok()?,
+                    path.file_name()?.to_owned(),
+                ))
+            };
+            match (
+                canonical_parent_and_name(left),
+                canonical_parent_and_name(right),
+            ) {
+                (Some(left), Some(right)) => left == right,
+                _ => false,
+            }
+        }
     }
 }
 

@@ -145,6 +145,73 @@ impl AppShell {
     }
 
     pub(in crate::app::event_loop) fn switch_workspace_to(&mut self, root_path: PathBuf) -> bool {
+        self.switch_workspace_with_files(root_path, Vec::new())
+    }
+
+    /// Switch workspace, then open `follow_files` in the new workspace. When
+    /// unsaved edits exist this asks first (save all / discard / stay) instead
+    /// of silently dropping them with the buffer list.
+    pub(in crate::app::event_loop) fn switch_workspace_with_files(
+        &mut self,
+        root_path: PathBuf,
+        follow_files: Vec<PathBuf>,
+    ) -> bool {
+        let dirty_count = self.app_state.dirty_buffer_count();
+        if dirty_count > 0 && self.pending_confirmation.is_none() {
+            return self.begin_workspace_switch_confirmation(root_path, follow_files, dirty_count);
+        }
+        self.perform_workspace_switch(root_path, follow_files)
+    }
+
+    /// A second launch handed us its CLI paths: focus this window, switch to
+    /// the requested project dir (if different), open the requested files.
+    pub(in crate::app::event_loop) fn handle_remote_open(&mut self, paths: Vec<PathBuf>) {
+        if let Some(window) = self.window.as_ref() {
+            window.focus_window();
+        }
+        let dir = paths.iter().find(|p| p.is_dir()).cloned();
+        let files: Vec<PathBuf> = paths.into_iter().filter(|p| p.is_file()).collect();
+
+        let same_workspace = |shell: &Self, dir: &Path| {
+            shell
+                .app_state
+                .workspace_root_path()
+                .is_some_and(|root| crate::app::app_state::path_matches(root, dir))
+        };
+        match dir {
+            Some(dir) if !same_workspace(self, &dir) => {
+                let name = dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("workspace");
+                self.show_transient_toast(format!("Opening {name}…"));
+                self.switch_workspace_with_files(dir, files);
+            }
+            _ => {
+                let mut opened_any = false;
+                for file in files {
+                    if let Err(err) = self.app_state.open_file(file.clone()) {
+                        eprintln!("[AppShell] remote open skipped ({}): {err}", file.display());
+                    } else {
+                        opened_any = true;
+                    }
+                }
+                if opened_any {
+                    self.invalidate_highlights_and_parse_active_buffer();
+                    self.submit_lsp_did_open_for_active_file();
+                    self.update_window_title();
+                }
+            }
+        }
+        self.editor_needs_layout = true;
+        self.request_redraw();
+    }
+
+    pub(in crate::app::event_loop) fn perform_workspace_switch(
+        &mut self,
+        root_path: PathBuf,
+        follow_files: Vec<PathBuf>,
+    ) -> bool {
         self.prepare_for_workspace_switch();
 
         if let Err(err) = self.app_state.attach_workspace(root_path.clone()) {
@@ -193,6 +260,19 @@ impl AppShell {
         self.submit_active_buffer_git_baseline_refresh();
 
         self.sync_lsp_server_for_workspace();
+
+        for file in follow_files {
+            if let Err(err) = self.app_state.open_file(file.clone()) {
+                eprintln!(
+                    "[AppShell] follow-file open skipped ({}): {err}",
+                    file.display()
+                );
+            }
+        }
+        if self.app_state.active_file().is_some() {
+            self.invalidate_highlights_and_parse_active_buffer();
+            self.submit_lsp_did_open_for_active_file();
+        }
 
         self.update_window_title();
 
@@ -314,6 +394,7 @@ impl AppShell {
                 }
                 Some(changed)
             }
+            Command::OpenWorktreePalette => Some(self.open_worktree_palette()),
             Command::ToggleLeftDock => {
                 let mut changed = self.panel_state.toggle_left();
                 if changed {

@@ -39,6 +39,9 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
 | Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
 | LeetCode test generation | ✅ Stratified case generation + AI verification |
+| Single-instance routing, `--new-instance`, remote open of dirs/files | `src/app/single_instance.rs`, `src/app/event_loop/mod.rs` (`run`), `src/app/event_loop/commands_explorer.rs` (`handle_remote_open`) | Socket protocol, startup forwarding, and the in-window open handling |
+| Workspace switch (Open Folder / recent / worktrees), dirty-switch guard | `src/app/event_loop/commands_explorer.rs` (`switch_workspace_with_files`), `src/app/event_loop/commands_prompts.rs` | Switch pipeline, save/discard confirmation, worktree palette |
+| External file change toasts / conflict prompt wording | `src/app/event_loop/async_results/filesystem.rs`, `src/app/app_state/palette.rs` | Toast aggregation sits on the external-change pipeline reports |
 | Spatial Canvas (NetherCanvas) | ✅ Navigable 2D code canvas with LSP-driven cards, auto-arrange, scope-aware editing |
 | Workbench panel slide animation | ✅ Hyprland-style timeline-based slide for docks + zen mode |
 | Solid caret (no blink) | ✅ Caret stays visible always |
@@ -154,6 +157,7 @@ netherize_editor/
 │   │   ├── match_ranges.rs        # Match range tracking for search/highlight
 │   │   ├── persistence.rs         # App state persistence (recent projects, etc.)
 │   │   ├── resolved_keymap.rs     # Merged runtime keymap from config layers
+│   │   ├── single_instance.rs     # Unix-socket single-instance routing (2nd launch → running window)
 │   │   └── async_bridge.rs        # Tokio ↔ winit message bridge
 │   │
 │   ├── core/                      # Editor semantics (mode, commands)

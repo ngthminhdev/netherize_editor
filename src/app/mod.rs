@@ -10,3 +10,4 @@ pub mod input_map;
 pub mod match_ranges;
 pub mod persistence;
 pub mod resolved_keymap;
+pub mod single_instance;

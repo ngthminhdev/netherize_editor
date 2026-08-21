@@ -1016,6 +1016,11 @@ command = "projects.recent"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>p w"
+command = "projects.worktrees"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>f f"
 command = "app.open_file_picker"
 

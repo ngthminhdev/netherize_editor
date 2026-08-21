@@ -452,7 +452,7 @@ mod tests {
             Some(crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm)
         );
         let prompt = shell.app_state.command_palette_query_text();
-        assert!(prompt.contains("Overwrite with current buffer? (y/n)"));
+        assert!(prompt.contains("y = save mine") && prompt.contains("n = load disk"));
 
         let _ = fs::remove_file(file_path);
     }

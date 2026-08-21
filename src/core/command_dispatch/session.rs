@@ -200,6 +200,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::SwitchTerminalTab(_)
         | Command::OpenFolder
         | Command::OpenRecentProjects
+        | Command::OpenWorktreePalette
         | Command::LspHover
         | Command::LspGoToDefinition
         | Command::LspPreviewDefinition

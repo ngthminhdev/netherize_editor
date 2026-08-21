@@ -75,8 +75,8 @@ mod welcome;
 use helpers::{
     build_preview_render_data, build_sidebar_rows, collect_explorer_entries,
     convert_worker_hover_blocks, detect_git_branch, diagnostic_spans_to_styled,
-    language_id_for_path, parse_hover_markdown_blocks, region_surface_color, scale_theme,
-    scale_ui_config, syntax_spans_to_styled,
+    format_window_title, language_id_for_path, list_git_worktrees, parse_hover_markdown_blocks,
+    region_surface_color, scale_theme, scale_ui_config, syntax_spans_to_styled,
 };
 use welcome::welcome_screen_content;
 
@@ -201,6 +201,9 @@ pub struct AppShell {
     pub overlay_manager: OverlayManager,
     clipboard: SystemClipboard,
     window: Option<Arc<Window>>,
+    /// Last title pushed to the OS window, so per-frame refreshes skip the
+    /// syscall when nothing changed.
+    last_window_title: Option<String>,
     renderer: Option<Renderer>,
     window_size: PhysicalSize<u32>,
     editor_needs_layout: bool,
@@ -454,6 +457,13 @@ enum PendingConfirmationAction {
     ExternalOverwrite {
         path: PathBuf,
     },
+    /// Workspace switch requested while unsaved edits exist: y = save all
+    /// first, n = discard and switch, Esc = stay.
+    WorkspaceSwitch {
+        target: PathBuf,
+        follow_files: Vec<PathBuf>,
+        dirty_count: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -555,6 +565,8 @@ pub enum AppEvent {
     TerminalOutputReady,
     AiInlineReady,
     WorkerMessageReady,
+    /// A second launch forwarded its CLI open request to this instance.
+    RemoteOpen(Vec<PathBuf>),
 }
 
 /// Trạng thái của một terminal tab.
@@ -603,9 +615,34 @@ impl TerminalTab {
 
 pub fn run() -> Result<(), winit::error::EventLoopError> {
     install_panic_recovery_hook();
+
+    // Single-instance routing: hand our CLI paths to an already-running
+    // instance (one dock icon, workspace switches in place) unless the user
+    // explicitly asked for a separate process.
+    #[cfg(unix)]
+    if !std::env::args().any(|arg| arg == "--new-instance") {
+        let paths = crate::app::single_instance::cli_open_paths();
+        let sock = crate::app::single_instance::default_socket_path();
+        if crate::app::single_instance::try_forward_at(&sock, &paths) {
+            println!("[netherize] open request forwarded to the running instance");
+            return Ok(());
+        }
+    }
+
     let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let event_proxy = event_loop.create_proxy();
+
+    #[cfg(unix)]
+    {
+        let sock = crate::app::single_instance::default_socket_path();
+        if let Some(listener) = crate::app::single_instance::bind_at(&sock) {
+            let remote_proxy = event_loop.create_proxy();
+            crate::app::single_instance::spawn_listener(listener, move |paths| {
+                let _ = remote_proxy.send_event(AppEvent::RemoteOpen(paths));
+            });
+        }
+    }
 
     let mut app = match AppShell::new(event_proxy) {
         Ok(app) => app,

@@ -2130,6 +2130,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_caret_blink() {
             self.request_redraw();
         }
+        // Keep "file — project" in the OS titlebar in sync with the active
+        // buffer; cached, so unchanged titles cost one string compare.
+        self.update_window_title();
         if self.tick_yank_flash() {
             self.request_redraw();
         }
@@ -2276,6 +2279,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 if self.pump_bridge() {
                     self.request_redraw();
                 }
+            }
+            AppEvent::RemoteOpen(paths) => {
+                self.handle_remote_open(paths);
             }
         }
     }
