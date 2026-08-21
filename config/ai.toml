@@ -1,26 +1,11 @@
 [inline_completion]
-enabled = true
+enabled = false
 debounce_ms = 150
 prefix_chars = 4000
 suffix_chars = 1500
 max_tokens = 160
 
 [inline_completion.provider]
-api_url = "http://localhost:20128/v1"
-model = "mistral/devstral-2512"
-api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
-endpoint_kind = "chat"
-
-# AI re-rank of the LSP completion popup. The model only reorders the language
-# server's own candidates by cursor context — it never invents or drops a
-# suggestion — so imports/correctness stay with the LSP while ordering gets
-# smarter. Set enabled = false to turn off.
-[completion_rerank]
-enabled = true
-debounce_ms = 120
-max_candidates = 20
-
-[completion_rerank.provider]
 api_url = "http://localhost:20128/v1"
 model = "mistral/devstral-2512"
 api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
@@ -34,4 +19,14 @@ api_url = "http://localhost:20128/v1"
 model = "mistral/mistral-large-latest"
 api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
 endpoint_kind = "chat"
-# reasoning_effort = "low"
+
+[completion_rerank]
+enabled = true
+debounce_ms = 120
+max_candidates = 20
+
+[completion_rerank.provider]
+api_url = "http://localhost:20128/v1"
+model = "mistral/devstral-2512"
+api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
+endpoint_kind = "chat"
