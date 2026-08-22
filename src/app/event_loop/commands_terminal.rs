@@ -557,6 +557,62 @@ impl AppShell {
     /// Kick off AI generation of 5 fresh test cases for the active problem.
     /// Reads the problem id from the file header, loads cached context, and
     /// submits a non-blocking worker request; results replace all cases.
+    /// Vim-style edit của shell input line từ T-COPY mode (Warp-style).
+    /// Dịch op sang readline sequence và ghi vào PTY — shell tự edit và echo
+    /// lại nên không bao giờ desync. `then_insert` (i/a/c/s...) quay về
+    /// TerminalFocus sau khi gửi bytes.
+    pub(super) fn terminal_line_edit(
+        &mut self,
+        kind: crate::core::commands::TerminalLineEditKind,
+        then_insert: bool,
+    ) -> bool {
+        let at_live_prompt = self
+            .focused_terminal_grid_mut()
+            .is_some_and(|grid| grid.scroll_offset == 0);
+        if !at_live_prompt || self.focused_terminal_session_id().is_none() {
+            self.show_transient_toast_kind(
+                "Terminal Edit\nScroll xuống live prompt (G) để sửa dòng lệnh.".to_string(),
+                ToastKind::Info,
+            );
+            return true;
+        }
+        let bytes = kind.readline_bytes();
+        if !bytes.is_empty() {
+            self.forward_to_pty(bytes);
+        }
+        if then_insert {
+            // Mirror đường thoát bằng Esc: clear search highlight + FocusTerminal.
+            if let Some(grid) = self.focused_terminal_grid_mut() {
+                grid.search_matches.clear();
+                grid.search_cursor = 0;
+            }
+            let report = self.dispatch_command_with_focused_terminal(
+                Command::SwitchMode(ModeEvent::FocusTerminal),
+                1,
+            );
+            if report.state_changed {
+                self.mark_focused_terminal_layout_dirty();
+            }
+        }
+        true
+    }
+
+    /// Readline bytes cho motion khi T-COPY đang ở live prompt — shell cursor
+    /// di chuyển thật thay vì virtual cursor. `None` → không phải shell motion.
+    pub(super) fn shell_motion_bytes(command: &Command) -> Option<&'static str> {
+        match command {
+            Command::MoveLeft => Some("\u{1b}[D"),
+            Command::MoveRight => Some("\u{1b}[C"),
+            Command::MoveWordForward => Some("\u{1b}f"),
+            Command::MoveWordBackward => Some("\u{1b}b"),
+            // readline không có "end of word" — Alt-f là xấp xỉ gần nhất.
+            Command::MoveWordEnd => Some("\u{1b}f"),
+            Command::MoveToLineStart => Some("\u{1}"),
+            Command::MoveToLineEnd => Some("\u{5}"),
+            _ => None,
+        }
+    }
+
     fn handle_test_runner_generate(&mut self) -> bool {
         use crate::runner::leetcode_adapter::language_key_for_extension;
         use crate::runner::leetcode_cache::{cache_dir, load_cache_in, parse_header};

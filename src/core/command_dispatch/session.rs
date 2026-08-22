@@ -173,6 +173,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::MoveFocusCycle
         | Command::FocusBack
         | Command::TerminalWriteInput(_)
+        | Command::TerminalLineEdit(_)
+        | Command::TerminalLineEditInsert(_)
         | Command::TerminalPaste
         | Command::ExplorerMoveUp
         | Command::ExplorerMoveDown

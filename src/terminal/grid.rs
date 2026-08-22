@@ -621,6 +621,15 @@ impl TerminalGrid {
         changed
     }
 
+    /// Đồng bộ virtual cursor (T-COPY) theo shell cursor thật sau khi PTY echo
+    /// làm cursor di chuyển — cần cho vim-style line editing qua readline,
+    /// nơi mỗi motion/edit được shell thực hiện rồi echo lại.
+    pub fn sync_virtual_cursor_to_shell(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.virtual_cursor = self.live_cursor_absolute_position();
+        }
+    }
+
     pub fn exit_normal_mode(&mut self) -> bool {
         let changed = self.selection_anchor.take().is_some();
         self.ensure_virtual_cursor_visible();
@@ -1784,6 +1793,33 @@ mod tests {
         assert_eq!(grid.cell_at(0, 2).ch, ' ');
         assert_eq!(grid.cell_at(0, 3).ch, 'L');
         assert_eq!(grid.cell_at(0, 4).ch, 'O');
+    }
+
+    #[test]
+    fn sync_virtual_cursor_follows_shell_cursor() {
+        // Vim-style line editing: shell echo làm cursor di chuyển (qua readline
+        // sequences), virtual cursor của T-COPY phải bám theo.
+        let mut grid = TerminalGrid::new(10, 3);
+        grid.feed_chunk("HELLO");
+        grid.enter_normal_mode();
+        assert_eq!(grid.virtual_cursor.col, 5);
+        // Shell cursor lùi 2 (như khi user bấm h h → ESC[D ESC[D được echo).
+        grid.feed_chunk("\x1b[2D");
+        grid.sync_virtual_cursor_to_shell();
+        assert_eq!(grid.virtual_cursor.col, 3);
+        assert_eq!(grid.virtual_cursor.row, 0);
+    }
+
+    #[test]
+    fn sync_virtual_cursor_keeps_selection_anchor() {
+        let mut grid = TerminalGrid::new(10, 3);
+        grid.feed_chunk("HELLO");
+        grid.enter_normal_mode();
+        grid.begin_selection();
+        grid.feed_chunk("\x1b[2D");
+        grid.sync_virtual_cursor_to_shell();
+        // Đang visual select → không nhảy virtual cursor theo shell.
+        assert_eq!(grid.virtual_cursor.col, 5);
     }
 
     #[test]

@@ -63,6 +63,59 @@ pub enum OperationTarget {
     CurrentLine,
 }
 
+/// Vim-style edit op trên shell input line (T-COPY mode, Warp-style).
+/// Được dịch sang readline/emacs escape sequences rồi ghi thẳng vào PTY —
+/// chính shell thực hiện edit và echo lại, nên không bao giờ desync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalLineEditKind {
+    /// `x` — xoá ký tự dưới cursor (`ESC[3~`, Delete key; an toàn trên dòng
+    /// trống, khác Ctrl-D vốn gửi EOF và đóng shell).
+    DeleteChar,
+    /// `X` — xoá ký tự trước cursor (DEL).
+    BackspaceChar,
+    /// `D` / `C` — kill tới cuối dòng (Ctrl-K).
+    KillToLineEnd,
+    /// `dd` / `cc` — kill toàn dòng (Ctrl-A Ctrl-K; portable cho bash + zsh).
+    KillLine,
+    /// `dw` / `cw` — kill tới cuối word (Alt-d).
+    KillWordForward,
+    /// `db` — kill ngược về đầu word (Alt-Backspace).
+    KillWordBackward,
+    /// `p` — paste từ kill ring của shell (Ctrl-Y). Chứa kết quả của các op
+    /// kill phía trên (x/X không vào kill ring — giống hạn chế của readline).
+    YankFromKillRing,
+    /// `u` — undo của shell (Ctrl-_).
+    Undo,
+    /// `i` — không edit, chỉ quay lại insert tại chỗ.
+    NoEdit,
+    /// `a` — qua phải 1 ký tự rồi insert.
+    MoveRight,
+    /// `I` — về đầu dòng (Ctrl-A) rồi insert.
+    MoveLineStart,
+    /// `A` — về cuối dòng (Ctrl-E) rồi insert.
+    MoveLineEnd,
+}
+
+impl TerminalLineEditKind {
+    /// Readline/emacs bytes ghi vào PTY (bash + zsh đều bind sẵn).
+    pub fn readline_bytes(self) -> &'static str {
+        match self {
+            Self::DeleteChar => "\u{1b}[3~",
+            Self::BackspaceChar => "\u{7f}",
+            Self::KillToLineEnd => "\u{b}",
+            Self::KillLine => "\u{1}\u{b}",
+            Self::KillWordForward => "\u{1b}d",
+            Self::KillWordBackward => "\u{1b}\u{7f}",
+            Self::YankFromKillRing => "\u{19}",
+            Self::Undo => "\u{1f}",
+            Self::NoEdit => "",
+            Self::MoveRight => "\u{1b}[C",
+            Self::MoveLineStart => "\u{1}",
+            Self::MoveLineEnd => "\u{5}",
+        }
+    }
+}
+
 /// Command là giao diện trung gian giữa input layer và editor core.
 /// Event loop chỉ chuyển phím -> command, không sửa state trực tiếp.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +283,11 @@ pub enum Command {
     TerminalSearchOpen,
     /// Raw terminal bytes/string payload routed through command path.
     TerminalWriteInput(String),
+    /// Vim-style edit của shell input line từ T-COPY mode (x/d/p/u...).
+    /// Chỉ tác động khi viewport đang ở live prompt (scroll_offset == 0).
+    TerminalLineEdit(TerminalLineEditKind),
+    /// Như `TerminalLineEdit` nhưng xong thì quay về TerminalFocus (i/a/c/s...).
+    TerminalLineEditInsert(TerminalLineEditKind),
     /// Paste system clipboard into the focused PTY session.
     TerminalPaste,
     /// Scroll terminal viewport up (towards scrollback history).

@@ -20,7 +20,7 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Native window lifecycle | ✅ Thresholded titlebar drag, clickable tabs, preference-aware double-click, safe dirty quit, remembered window frame |
 | File reliability | ✅ Atomic durable saves, save-error toast, 10 MiB interactive guard, dirty-buffer panic recovery |
 | File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation + theme-correct colors |
-| Embedded terminal (PTY) | ✅ ANSI parser + grid |
+| Embedded terminal (PTY) | ✅ ANSI parser + grid + vim line editing (Ctrl+Q → T-COPY: h/l/w/b/0/$, x/X/d/c/p/u/i/a/s tại live prompt) |
 | LSP client | ✅ Smart root detection + async stdio transport + Mason-style install prompt |
 | Config / theme (TOML runtime) | ✅ 83 built-in themes + repo profiles + user theme discovery + persisted runtime selection |
 | Command palette | ✅ Overlay UI with prompt prefix/query color split |

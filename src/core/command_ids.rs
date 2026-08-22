@@ -110,6 +110,23 @@ pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
 pub const TERMINAL_SEARCH_OPEN: &str = "terminal.search_open";
+// Vim-style shell line editing (T-COPY mode) — dịch sang readline sequences.
+pub const TERMINAL_LINE_DELETE_CHAR: &str = "terminal.line_delete_char";
+pub const TERMINAL_LINE_BACKSPACE_CHAR: &str = "terminal.line_backspace_char";
+pub const TERMINAL_LINE_KILL_TO_END: &str = "terminal.line_kill_to_end";
+pub const TERMINAL_LINE_KILL_LINE: &str = "terminal.line_kill_line";
+pub const TERMINAL_LINE_KILL_WORD_FORWARD: &str = "terminal.line_kill_word_forward";
+pub const TERMINAL_LINE_KILL_WORD_BACKWARD: &str = "terminal.line_kill_word_backward";
+pub const TERMINAL_LINE_YANK: &str = "terminal.line_yank";
+pub const TERMINAL_LINE_UNDO: &str = "terminal.line_undo";
+pub const TERMINAL_LINE_INSERT_AT_CURSOR: &str = "terminal.line_insert_at_cursor";
+pub const TERMINAL_LINE_APPEND_AFTER_CURSOR: &str = "terminal.line_append_after_cursor";
+pub const TERMINAL_LINE_INSERT_LINE_START: &str = "terminal.line_insert_line_start";
+pub const TERMINAL_LINE_APPEND_LINE_END: &str = "terminal.line_append_line_end";
+pub const TERMINAL_LINE_SUBSTITUTE_CHAR: &str = "terminal.line_substitute_char";
+pub const TERMINAL_LINE_CHANGE_LINE: &str = "terminal.line_change_line";
+pub const TERMINAL_LINE_CHANGE_WORD: &str = "terminal.line_change_word";
+pub const TERMINAL_LINE_CHANGE_TO_END: &str = "terminal.line_change_to_end";
 pub const TERMINAL_TAB_NEW: &str = "terminal.tab_new";
 pub const TERMINAL_TAB_CLOSE: &str = "terminal.tab_close";
 pub const TERMINAL_TAB_SWITCH_1: &str = "terminal.tab_switch_1";
@@ -403,6 +420,22 @@ pub const ALL_IDS: &[&str] = &[
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
     TERMINAL_SEARCH_OPEN,
+    TERMINAL_LINE_DELETE_CHAR,
+    TERMINAL_LINE_BACKSPACE_CHAR,
+    TERMINAL_LINE_KILL_TO_END,
+    TERMINAL_LINE_KILL_LINE,
+    TERMINAL_LINE_KILL_WORD_FORWARD,
+    TERMINAL_LINE_KILL_WORD_BACKWARD,
+    TERMINAL_LINE_YANK,
+    TERMINAL_LINE_UNDO,
+    TERMINAL_LINE_INSERT_AT_CURSOR,
+    TERMINAL_LINE_APPEND_AFTER_CURSOR,
+    TERMINAL_LINE_INSERT_LINE_START,
+    TERMINAL_LINE_APPEND_LINE_END,
+    TERMINAL_LINE_SUBSTITUTE_CHAR,
+    TERMINAL_LINE_CHANGE_LINE,
+    TERMINAL_LINE_CHANGE_WORD,
+    TERMINAL_LINE_CHANGE_TO_END,
     TERMINAL_TAB_NEW,
     TERMINAL_TAB_CLOSE,
     TERMINAL_TAB_SWITCH_1,
@@ -657,6 +690,54 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
         TERMINAL_SEARCH_OPEN => Some(Command::TerminalSearchOpen),
+        TERMINAL_LINE_DELETE_CHAR => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::DeleteChar,
+        )),
+        TERMINAL_LINE_BACKSPACE_CHAR => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::BackspaceChar,
+        )),
+        TERMINAL_LINE_KILL_TO_END => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::KillToLineEnd,
+        )),
+        TERMINAL_LINE_KILL_LINE => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::KillLine,
+        )),
+        TERMINAL_LINE_KILL_WORD_FORWARD => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::KillWordForward,
+        )),
+        TERMINAL_LINE_KILL_WORD_BACKWARD => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::KillWordBackward,
+        )),
+        TERMINAL_LINE_YANK => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::YankFromKillRing,
+        )),
+        TERMINAL_LINE_UNDO => Some(Command::TerminalLineEdit(
+            crate::core::commands::TerminalLineEditKind::Undo,
+        )),
+        TERMINAL_LINE_INSERT_AT_CURSOR => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::NoEdit,
+        )),
+        TERMINAL_LINE_APPEND_AFTER_CURSOR => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::MoveRight,
+        )),
+        TERMINAL_LINE_INSERT_LINE_START => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::MoveLineStart,
+        )),
+        TERMINAL_LINE_APPEND_LINE_END => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::MoveLineEnd,
+        )),
+        TERMINAL_LINE_SUBSTITUTE_CHAR => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::DeleteChar,
+        )),
+        TERMINAL_LINE_CHANGE_LINE => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::KillLine,
+        )),
+        TERMINAL_LINE_CHANGE_WORD => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::KillWordForward,
+        )),
+        TERMINAL_LINE_CHANGE_TO_END => Some(Command::TerminalLineEditInsert(
+            crate::core::commands::TerminalLineEditKind::KillToLineEnd,
+        )),
         TERMINAL_TAB_NEW => Some(Command::TerminalTabNew),
         TERMINAL_TAB_CLOSE => Some(Command::TerminalTabClose),
         TERMINAL_TAB_SWITCH_1 => Some(Command::SwitchTerminalTab(0)),

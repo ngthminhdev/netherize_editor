@@ -986,6 +986,74 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ch('V'), ENTER_VISUAL_LINE);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
+    // ── Vim-style shell line editing (Warp-style) ────────────────────────────
+    // Khi viewport ở live prompt (scroll_offset == 0), các op này dịch sang
+    // readline sequences và shell tự edit input line tại vị trí cursor.
+    // Khi đang scroll xem scrollback, h/l/w/b/e/0/$ giữ hành vi virtual cursor.
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyX),
+        TERMINAL_LINE_DELETE_CHAR,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        ch('X'),
+        TERMINAL_LINE_BACKSPACE_CHAR,
+    );
+    km.insert(Some("terminal_normal"), ch('D'), TERMINAL_LINE_KILL_TO_END);
+    km.insert_sequence(
+        Some("terminal_normal"),
+        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyD)]),
+        TERMINAL_LINE_KILL_LINE,
+    );
+    km.insert_sequence(
+        Some("terminal_normal"),
+        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyW)]),
+        TERMINAL_LINE_KILL_WORD_FORWARD,
+    );
+    km.insert_sequence(
+        Some("terminal_normal"),
+        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyB)]),
+        TERMINAL_LINE_KILL_WORD_BACKWARD,
+    );
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyP), TERMINAL_LINE_YANK);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyU), TERMINAL_LINE_UNDO);
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyI),
+        TERMINAL_LINE_INSERT_AT_CURSOR,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyA),
+        TERMINAL_LINE_APPEND_AFTER_CURSOR,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        ch('I'),
+        TERMINAL_LINE_INSERT_LINE_START,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        ch('A'),
+        TERMINAL_LINE_APPEND_LINE_END,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyS),
+        TERMINAL_LINE_SUBSTITUTE_CHAR,
+    );
+    km.insert_sequence(
+        Some("terminal_normal"),
+        seq(&[ph(KeyCode::KeyC), ph(KeyCode::KeyC)]),
+        TERMINAL_LINE_CHANGE_LINE,
+    );
+    km.insert_sequence(
+        Some("terminal_normal"),
+        seq(&[ph(KeyCode::KeyC), ph(KeyCode::KeyW)]),
+        TERMINAL_LINE_CHANGE_WORD,
+    );
+    km.insert(Some("terminal_normal"), ch('C'), TERMINAL_LINE_CHANGE_TO_END);
     km.insert(
         Some("terminal_normal"),
         cmd(KeyCode::KeyT),

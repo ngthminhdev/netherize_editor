@@ -124,6 +124,13 @@ pub(super) fn handle_terminal_result(
                     } else {
                         tab.grid.view_scroll_to_bottom();
                     }
+                    // Vim-style line editing: shell echo làm cursor di chuyển,
+                    // virtual cursor (T-COPY) phải bám theo khi ở live prompt.
+                    if app.app_state.current_mode() == EditorMode::TerminalNormal
+                        && tab.grid.scroll_offset == 0
+                    {
+                        tab.grid.sync_virtual_cursor_to_shell();
+                    }
                     app.terminal_needs_layout = true;
                     should_redraw = true;
                     break;
@@ -151,6 +158,11 @@ pub(super) fn handle_terminal_result(
                     grid.view_scroll_up(scrolled_rows);
                 } else {
                     grid.view_scroll_to_bottom();
+                }
+                if app.app_state.current_mode() == EditorMode::TerminalNormal
+                    && grid.scroll_offset == 0
+                {
+                    grid.sync_virtual_cursor_to_shell();
                 }
                 if app.app_state.active_terminal_session_id() == Some(session_id) {
                     app.buffer_terminal_needs_layout = true;

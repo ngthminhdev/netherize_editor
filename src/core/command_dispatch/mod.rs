@@ -379,6 +379,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::ToggleBottomDock
         | Command::ToggleLeftDock
         | Command::TerminalWriteInput(_)
+        | Command::TerminalLineEdit(_)
+        | Command::TerminalLineEditInsert(_)
         | Command::TerminalPaste
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown

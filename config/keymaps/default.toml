@@ -810,6 +810,88 @@ mode = "terminal_normal"
 key = "cmd+v"
 command = "terminal.paste"
 
+# Vim-style shell line editing (Warp-style): khi viewport ở live prompt,
+# các op này dịch sang readline sequences để shell tự edit input line.
+[[bindings]]
+mode = "terminal_normal"
+key = "x"
+command = "terminal.line_delete_char"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "X"
+command = "terminal.line_backspace_char"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "D"
+command = "terminal.line_kill_to_end"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "d d"
+command = "terminal.line_kill_line"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "d w"
+command = "terminal.line_kill_word_forward"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "d b"
+command = "terminal.line_kill_word_backward"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "p"
+command = "terminal.line_yank"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "u"
+command = "terminal.line_undo"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "i"
+command = "terminal.line_insert_at_cursor"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "a"
+command = "terminal.line_append_after_cursor"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "I"
+command = "terminal.line_insert_line_start"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "A"
+command = "terminal.line_append_line_end"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "s"
+command = "terminal.line_substitute_char"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "c c"
+command = "terminal.line_change_line"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "c w"
+command = "terminal.line_change_word"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "C"
+command = "terminal.line_change_to_end"
+
 [[bindings]]
 mode = "terminal_normal"
 key = "/"

@@ -393,7 +393,7 @@ fn zen_mode_active_forwards_escape_to_terminal_pty() {
 }
 
 #[test]
-fn non_zen_terminal_escape_does_not_forward_raw_pty() {
+fn non_zen_terminal_escape_leaves_terminal_focus() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context =
@@ -2014,7 +2014,7 @@ fn terminal_normal_does_not_forward_unbound_text_to_pty() {
         KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
     let now = std::time::Instant::now();
 
-    let mapped = handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, now);
+    let mapped = handler.route_normalized_input(char_input('q', KeyCode::KeyQ), &map, context, now);
     assert!(
         mapped.is_none(),
         "unbound terminal-normal key should be ignored"
