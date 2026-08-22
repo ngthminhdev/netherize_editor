@@ -809,6 +809,33 @@ impl AppState {
         true
     }
 
+    /// Close the fuzzy-picker tab AFTER its selection opened a file. By then
+    /// the picker is no longer the active buffer, so `close_current_buffer_now`
+    /// (which references uses BEFORE opening) can never reach it — and closing
+    /// before the dispatch would destroy the selection the confirm reads.
+    pub fn close_fuzzy_picker_buffer(&mut self) -> bool {
+        let Some(idx) = self
+            .buffers
+            .iter()
+            .position(|entry| matches!(entry.content, BufferContent::FuzzyPicker(_)))
+        else {
+            return false;
+        };
+        if self.active_buffer_index == Some(idx) {
+            // Still active (e.g. the open failed to switch) — use the normal
+            // close path so a neighbor gets activated.
+            return self.close_current_buffer().unwrap_or(false);
+        }
+        self.buffers.remove(idx);
+        if let Some(active) = self.active_buffer_index
+            && active > idx
+        {
+            self.active_buffer_index = Some(active - 1);
+        }
+        self.bump_revision();
+        true
+    }
+
     pub fn is_fuzzy_picker_active(&self) -> bool {
         self.active_buffer_index
             .and_then(|idx| self.buffers.get(idx))

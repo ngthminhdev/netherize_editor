@@ -14,8 +14,9 @@ use super::super::{
 };
 use super::{
     PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
-    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
-    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
+    palette_footer_content_height, palette_footer_height, palette_scroll_offset,
+    push_palette_icon_or_badge, render_palette_badge, render_palette_chrome, render_palette_footer,
+    render_palette_selection,
 };
 
 impl Renderer {
@@ -199,9 +200,14 @@ impl Renderer {
         let footer_h = palette_footer_height(line_h);
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
-        let scroll_offset = model
-            .scroll_offset_rows
-            .min(model.result_labels.len().saturating_sub(max_visible));
+        // Renderer-side scroll from the rows THIS body actually fits — the
+        // model's offset assumed a row count that drifts from ours.
+        let scroll_offset = palette_scroll_offset(
+            model.selected_index,
+            model.result_labels.len(),
+            max_visible,
+            |_| None::<String>,
+        );
 
         let empty_str = String::new();
         for (visible_idx, (name, ranges)) in model

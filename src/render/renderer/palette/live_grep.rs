@@ -18,8 +18,9 @@ use super::super::{
 };
 use super::{
     PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
-    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
-    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
+    palette_footer_content_height, palette_footer_height, palette_scroll_offset,
+    push_palette_icon_or_badge, render_palette_badge, render_palette_chrome, render_palette_footer,
+    render_palette_selection,
 };
 
 struct LiveGrepGroupHeaderParts {
@@ -134,10 +135,23 @@ impl Renderer {
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
 
         let group_header_h = line_h + 8.0;
+        let body_bottom = row_top + body_h;
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
-        let scroll_offset = model
-            .scroll_offset_rows
-            .min(model.result_labels.len().saturating_sub(max_visible));
+        // Renderer-side scroll: per-file group headers consume body height the
+        // model's offset knows nothing about — without this, Ctrl-N walked the
+        // selection off-screen for one press per header before scrolling.
+        let group_key = |idx: usize| -> Option<String> {
+            model
+                .result_labels
+                .get(idx)
+                .map(|header| header.split(':').next().unwrap_or(header).to_string())
+        };
+        let scroll_offset = palette_scroll_offset(
+            model.selected_index,
+            model.result_labels.len(),
+            max_visible,
+            group_key,
+        );
 
         let empty_str = String::new();
         let mut current_file_path: Option<String> = None;
@@ -172,6 +186,12 @@ impl Renderer {
                 is_new_group = true;
                 current_file_path = Some(file_path.to_string());
                 is_collapsed = model.collapsed_paths.contains(file_path);
+            }
+
+            // Hard clip against the footer: headers add height that
+            // `take(max_visible)` cannot see, so stop before overflowing.
+            if is_new_group && row_top + group_header_h > body_bottom {
+                break;
             }
 
             if is_new_group {
@@ -226,6 +246,10 @@ impl Renderer {
 
             if is_collapsed {
                 continue;
+            }
+
+            if row_top + row_h > body_bottom {
+                break;
             }
 
             if absolute_idx == model.selected_index {

@@ -12,7 +12,7 @@ use super::super::helpers::{
     clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_text,
     layout_panel_text_bold, rect_to_scissor,
 };
-use super::{render_palette_chrome, render_palette_selection};
+use super::{palette_scroll_offset, render_palette_chrome, render_palette_selection};
 
 impl Renderer {
     // ── Minimalist palette (Command / Symbol / VimCommand) ─────────────────────
@@ -454,9 +454,15 @@ impl Renderer {
         let max_visible = (((panel_h - model.panel_padding * 2.0 - prompt_h - 8.0) / row_h).floor()
             as usize)
             .max(1);
-        let scroll_offset = model
-            .scroll_offset_rows
-            .min(model.result_labels.len().saturating_sub(max_visible));
+        // Renderer-side scroll: the model's offset trusts a row count computed
+        // from a different prompt height, which let the selection walk below
+        // the last drawn row before scrolling kicked in.
+        let scroll_offset = palette_scroll_offset(
+            model.selected_index,
+            model.result_labels.len(),
+            max_visible,
+            |_| None::<String>,
+        );
 
         for (visible_idx, (label, ranges)) in model
             .result_labels

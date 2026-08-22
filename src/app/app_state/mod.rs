@@ -2114,65 +2114,57 @@ impl FuzzyState {
         true
     }
 
+    /// A row is navigable when its group is expanded, or when it is the FIRST
+    /// row of a collapsed group — that row doubles as the group header (the
+    /// renderer already rides the highlight on the header), so j/k can land
+    /// on it and the collapse toggle can re-expand the group.
+    fn item_is_navigable(&self, idx: usize) -> bool {
+        let Some(item) = self.results.get(idx) else {
+            return false;
+        };
+        let group = self.group_key_for_item(item);
+        if !self.collapsed_paths.contains(&group) {
+            return true;
+        }
+        idx == 0 || self.group_key_for_item(&self.results[idx - 1]) != group
+    }
+
     pub fn fuzzy_select_next(&mut self) -> bool {
-        let old_index = self.selected_index;
-        let mut new_index = old_index;
-        let len = self.results.len();
-
+        let mut idx = self.selected_index;
         loop {
-            if new_index + 1 < len {
-                new_index += 1;
-            } else {
-                break;
+            idx += 1;
+            if idx >= self.results.len() {
+                // Nothing visible below — stay put instead of landing on a
+                // hidden row of a collapsed tail group.
+                return false;
             }
-
-            let item = &self.results[new_index];
-            let group_key = self.group_key_for_item(item);
-
-            if !self.collapsed_paths.contains(&group_key) {
+            if self.item_is_navigable(idx) {
                 break;
             }
         }
-
-        if new_index != old_index {
-            self.selected_index = new_index;
-            self.preview_lines.clear();
-            self.preview_text.clear();
-            self.preview_spans.clear();
-            true
-        } else {
-            false
-        }
+        self.selected_index = idx;
+        self.preview_lines.clear();
+        self.preview_text.clear();
+        self.preview_spans.clear();
+        true
     }
 
     pub fn fuzzy_select_prev(&mut self) -> bool {
-        let old_index = self.selected_index;
-        let mut new_index = old_index;
-
+        let mut idx = self.selected_index;
         loop {
-            if new_index > 0 {
-                new_index -= 1;
-            } else {
-                break;
+            if idx == 0 {
+                return false;
             }
-
-            let item = &self.results[new_index];
-            let group_key = self.group_key_for_item(item);
-
-            if !self.collapsed_paths.contains(&group_key) {
+            idx -= 1;
+            if self.item_is_navigable(idx) {
                 break;
             }
         }
-
-        if new_index != old_index {
-            self.selected_index = new_index;
-            self.preview_lines.clear();
-            self.preview_text.clear();
-            self.preview_spans.clear();
-            true
-        } else {
-            false
-        }
+        self.selected_index = idx;
+        self.preview_lines.clear();
+        self.preview_text.clear();
+        self.preview_spans.clear();
+        true
     }
 }
 

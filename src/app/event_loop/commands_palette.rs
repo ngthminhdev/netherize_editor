@@ -639,17 +639,19 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
 
-                // Close fuzzy picker buffer for LiveGrep and FilePicker after opening the file,
-                // similar to how ReferencesOpenSelection works.
+                // Close the search/file-picker tab after opening the file,
+                // like ReferencesOpenSelection. The open switched the active
+                // buffer to the file, so find-and-close the picker wherever
+                // it sits instead of requiring it to still be active.
                 if report.success
                     && confirmed_from_fuzzy_picker
                     && matches!(
                         palette_mode_before,
                         Some(CommandPaletteMode::LiveGrep | CommandPaletteMode::FilePicker)
                     )
-                    && self.app_state.active_buffer_is_fuzzy_picker()
+                    && self.app_state.close_fuzzy_picker_buffer()
                 {
-                    let _ = self.close_current_buffer_now();
+                    self.editor_needs_layout = true;
                 }
 
                 // Command palette can open the LeetCode language picker without

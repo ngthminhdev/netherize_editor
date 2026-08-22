@@ -10,8 +10,9 @@ use crate::{
 
 use super::{
     PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
-    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
-    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
+    palette_footer_content_height, palette_footer_height, palette_scroll_offset,
+    push_palette_icon_or_badge, render_palette_badge, render_palette_chrome, render_palette_footer,
+    render_palette_selection,
 };
 
 use super::super::{
@@ -143,9 +144,31 @@ impl Renderer {
         let footer_h = palette_footer_height(line_h);
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
-        let scroll_offset = model
-            .scroll_offset_rows
-            .min(model.result_labels.len().saturating_sub(max_visible));
+        // Renderer-side scroll: group headers below consume visible slots the
+        // model's offset knows nothing about — without this, Ctrl-N walked the
+        // selection off-screen for one press per header before scrolling.
+        let group_key = |idx: usize| -> Option<String> {
+            if is_file_picker {
+                let label = model.result_labels.get(idx)?;
+                let file_path = label.split(':').next().unwrap_or(label);
+                std::path::Path::new(file_path)
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .map(|s| s.to_string())
+            } else {
+                model
+                    .row_group_labels
+                    .get(idx)
+                    .filter(|group| !group.is_empty())
+                    .cloned()
+            }
+        };
+        let scroll_offset = palette_scroll_offset(
+            model.selected_index,
+            model.result_labels.len(),
+            max_visible,
+            group_key,
+        );
 
         // Group results by parent folder for file picker modes
         let mut current_folder: Option<String> = None;
@@ -165,19 +188,8 @@ impl Renderer {
             // Group key: FilePicker groups by parent folder (collapsible);
             // other modes (CommandPalette) group by the model's per-row section
             // label (RECENT / COMMANDS — headers only, not collapsible).
-            let folder = if is_file_picker {
-                let file_path = label.split(':').next().unwrap_or(label);
-                std::path::Path::new(file_path)
-                    .parent()
-                    .and_then(|p| p.to_str())
-                    .map(|s| s.to_string())
-            } else {
-                model
-                    .row_group_labels
-                    .get(absolute_idx)
-                    .filter(|group| !group.is_empty())
-                    .cloned()
-            };
+            // Same closure as the scroll math above, so both always agree.
+            let folder = group_key(absolute_idx);
 
             // Render group header when the group changes
             let is_collapsed = if let Some(ref folder_str) = folder {

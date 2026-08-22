@@ -1868,6 +1868,60 @@ fn search_in_files_keeps_center_focus_for_fuzzy_buffer() {
 }
 
 #[test]
+fn search_tab_enter_opens_file_and_closes_the_search_tab() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let target = std::env::temp_dir().join(format!(
+        "netherize_search_tab_close_{}.rs",
+        std::process::id()
+    ));
+    std::fs::write(&target, "fn hit() {}\n").expect("write target");
+    // macOS: /var is a symlink to /private/var — open_file stores the
+    // canonical path, so compare against that.
+    let target = target.canonicalize().expect("canonicalize target");
+
+    assert!(shell.handle_command(Command::SearchInFiles));
+    assert!(shell.app_state.active_buffer_is_fuzzy_picker());
+
+    let item = crate::app::command_palette::CommandPaletteItem {
+        label: format!("{}:1", target.display()),
+        secondary_label: None,
+        icon: None,
+        action: crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+            path: target.clone(),
+            line: 1,
+            column: 0,
+        },
+        tone: crate::app::command_palette::CommandPaletteItemTone::Default,
+        preview_colors: Vec::new(),
+    };
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::LiveGrep,
+        "",
+        vec![item]
+    ));
+
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert_eq!(
+        shell
+            .app_state
+            .active_file()
+            .map(std::path::Path::to_path_buf),
+        Some(target.clone()),
+        "Enter must open the selected match"
+    );
+    assert!(
+        !shell.app_state.buffers().iter().any(|entry| matches!(
+            entry.content,
+            crate::app::app_state::BufferContent::FuzzyPicker(_)
+        )),
+        "Enter must also close the search tab (like the references tab)"
+    );
+
+    let _ = std::fs::remove_file(target);
+}
+
+#[test]
 fn welcome_recent_projects_can_navigate_without_opening_palette() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = std::env::temp_dir().join(format!(
@@ -5801,6 +5855,10 @@ fn space_r_r_then_h_resizes_the_dock_on_the_first_press() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.app_state = AppState::from_text(PathBuf::from("main.rs"), "fn main() {}\n");
     shell.panel_state.left.visible = true;
+    // The shell loads the REAL user layout override; if the user's left dock
+    // sits at the 160px clamp floor, `h` (decrease) is a legal no-op and the
+    // assert below reads as a phantom regression. Pin a mid-range width.
+    shell.panel_state.left.size_px = 400.0;
     shell.focus_manager.set(FocusTarget::CenterEditor);
     assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
 

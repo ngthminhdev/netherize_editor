@@ -29,6 +29,42 @@ pub(super) const PALETTE_FOOTER_EXTRA_H: f32 = 36.0;
 pub(super) const PALETTE_FOOTER_TOP_PAD: f32 = 10.0;
 pub(super) const PALETTE_FOOTER_BOTTOM_PAD: f32 = 18.0;
 
+/// Smallest scroll offset (in result rows) that keeps `selected_index`
+/// rendered inside a body of `max_slots` uniform row slots, where entering a
+/// new group draws a header that consumes one slot (the first visible row
+/// always opens its group). This is the renderers' own ground truth — the
+/// palette model's `scroll_offset_rows` ignores group headers, which made
+/// Ctrl-N walk the selection off-screen for 1–2 presses before scrolling.
+/// `group_of` returns a row's group key, or None for ungrouped modes.
+/// ponytail: rows hidden in collapsed groups still cost a slot, so collapsed
+/// lists may scroll a touch early — never late (the reported bug).
+pub(super) fn palette_scroll_offset(
+    selected_index: usize,
+    result_count: usize,
+    max_slots: usize,
+    mut group_of: impl FnMut(usize) -> Option<String>,
+) -> usize {
+    if result_count == 0 || max_slots == 0 {
+        return 0;
+    }
+    let selected = selected_index.min(result_count - 1);
+    let mut offset = selected;
+    let mut slots = 1 + usize::from(group_of(selected).is_some());
+    while offset > 0 {
+        let prev = offset - 1;
+        let prev_group = group_of(prev);
+        // Extending the window upward costs the row itself, plus one header
+        // slot when `prev` sits in a different group than the current start.
+        let cost = 1 + usize::from(prev_group.is_some() && prev_group != group_of(offset));
+        if slots + cost > max_slots {
+            break;
+        }
+        slots += cost;
+        offset = prev;
+    }
+    offset
+}
+
 pub(super) fn palette_footer_height(line_height: f32) -> f32 {
     line_height + PALETTE_FOOTER_EXTRA_H + 1.0
 }
@@ -407,5 +443,41 @@ impl Renderer {
         );
         self.palette_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+    }
+}
+
+#[cfg(test)]
+mod scroll_offset_tests {
+    use super::palette_scroll_offset;
+
+    #[test]
+    fn ungrouped_matches_selected_pinned_to_bottom() {
+        // Nothing scrolls while the selection fits the window.
+        assert_eq!(palette_scroll_offset(0, 50, 10, |_| None), 0);
+        assert_eq!(palette_scroll_offset(9, 50, 10, |_| None), 0);
+        // One past the window scrolls exactly one row — no dead presses.
+        assert_eq!(palette_scroll_offset(10, 50, 10, |_| None), 1);
+        assert_eq!(palette_scroll_offset(49, 50, 10, |_| None), 40);
+    }
+
+    #[test]
+    fn group_headers_consume_visible_slots() {
+        // 50 rows, 5 rows per group, 10 slots per window. The window always
+        // opens with the header of its first row's group, and each group
+        // boundary inside the window draws another header.
+        let group = |idx: usize| Some(format!("g{}", idx / 5));
+        // Rows 0..=7 + 2 headers fill all 10 slots exactly.
+        assert_eq!(palette_scroll_offset(7, 50, 10, group), 0);
+        // Row 8 no longer fits — must scroll NOW, not two presses later.
+        assert_eq!(palette_scroll_offset(8, 50, 10, group), 1);
+        assert_eq!(palette_scroll_offset(9, 50, 10, group), 2);
+    }
+
+    #[test]
+    fn empty_and_degenerate_inputs_do_not_scroll() {
+        assert_eq!(palette_scroll_offset(3, 0, 10, |_| None), 0);
+        assert_eq!(palette_scroll_offset(3, 10, 0, |_| None), 0);
+        // Out-of-range selection is clamped into the list.
+        assert_eq!(palette_scroll_offset(99, 5, 10, |_| None), 0);
     }
 }

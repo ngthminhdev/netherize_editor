@@ -4,6 +4,7 @@ use crate::{
 };
 use cosmic_text::Metrics;
 
+use super::super::components::{flat_keycap_palette, push_flat_keycap};
 use super::super::helpers::{
     clamp_monospace_text, estimate_monospace_width, layout_panel_text, layout_panel_text_bold,
     rect_to_scissor,
@@ -61,7 +62,9 @@ impl Renderer {
         divider[3] = divider[3].clamp(0.28, 0.42);
 
         let titlebar_h = line_height + 10.0 * s;
-        let header_h = titlebar_h + line_height * 4.0 + 72.0 * s;
+        // Header stack bottom = titlebar + 4×line_height + 82s (filter box bottom);
+        // 94s leaves a 12s gap so the first list row never overlaps the filter.
+        let header_h = titlebar_h + line_height * 4.0 + 94.0 * s;
         let content_top = panel_y + header_h;
         let content_bottom = panel_y + panel_h;
         let rows_bottom = content_bottom.max(content_top + line_height);
@@ -92,7 +95,7 @@ impl Renderer {
                 &mut self.atlas,
                 &self.queue,
                 inner_x,
-                panel_y + 5.0,
+                panel_y + 5.0 * s,
                 fg,
             ));
 
@@ -335,31 +338,20 @@ impl Renderer {
         let group_gap = 28.0 * s;
         let key_pad_x = 7.0 * s;
         let key_h = shortcut_h.max(shortcut_line_h + 7.0 * s);
+        // Same flat chip as help_keycaps/shortcut_hint — one keycap look app-wide.
+        let keycap_palette = flat_keycap_palette(fg, panel_bg);
+        let key_radius = (key_h * 0.22).clamp(3.0 * s, 6.0 * s);
         for (key, label) in shortcuts {
             let key_w = estimate_monospace_width(key, shortcut_font) + key_pad_x * 2.0;
             let label_w = estimate_monospace_width(label, shortcut_font);
             if shortcut_x + key_w + key_text_gap + label_w > inner_x + inner_w - 8.0 * s {
                 break;
             }
-            let mut key_outline = accent;
-            key_outline[3] = key_outline[3].max(0.82);
-            let mut key_fill = editor_bg;
-            key_fill[3] = key_fill[3].max(0.92);
-            chrome.push(
-                RegionDrawInstance::new([shortcut_x, shortcuts_y - 1.0, key_w, key_h], key_outline)
-                    .with_radius(4.0 * s),
-            );
-            chrome.push(
-                RegionDrawInstance::new(
-                    [
-                        shortcut_x + 1.5 * s,
-                        shortcuts_y + 0.5 * s,
-                        key_w - 3.0 * s,
-                        key_h - 3.0 * s,
-                    ],
-                    key_fill,
-                )
-                .with_radius(3.0 * s),
+            push_flat_keycap(
+                &mut chrome,
+                [shortcut_x, shortcuts_y - 1.0, key_w, key_h],
+                key_radius,
+                &keycap_palette,
             );
             glyphs.extend(layout_panel_text_bold(
                 key,
@@ -368,7 +360,7 @@ impl Renderer {
                 &self.queue,
                 shortcut_x + key_pad_x,
                 shortcuts_y + (key_h - shortcut_line_h) * 0.5,
-                accent,
+                keycap_palette.text,
             ));
             glyphs.extend(layout_panel_text(
                 label,
@@ -446,10 +438,13 @@ impl Renderer {
         }
 
         let summary_y = tabs_y + line_height + 12.0 * s;
-        chrome.push(RegionDrawInstance::new(
-            [inner_x, summary_y, inner_w, line_height + 18.0 * s],
-            overlay,
-        ));
+        chrome.push(
+            RegionDrawInstance::new(
+                [inner_x, summary_y, inner_w, line_height + 18.0 * s],
+                overlay,
+            )
+            .with_radius(4.0 * s),
+        );
         let installed_label = format!("⚡ {} installed", state.installed_count());
         glyphs.extend(layout_panel_text_bold(
             &installed_label,
@@ -508,10 +503,13 @@ impl Renderer {
         } else {
             editor_bg
         };
-        chrome.push(RegionDrawInstance::new(
-            [inner_x, filter_y, inner_w, line_height + 16.0 * s],
-            filter_bg,
-        ));
+        chrome.push(
+            RegionDrawInstance::new(
+                [inner_x, filter_y, inner_w, line_height + 16.0 * s],
+                filter_bg,
+            )
+            .with_radius(4.0 * s),
+        );
         if state.filter_focused {
             chrome.push(RegionDrawInstance::new(
                 [inner_x, filter_y, inner_w, 2.0 * s],
@@ -543,24 +541,30 @@ impl Renderer {
         let detail_h = (line_height * 4.0 + 42.0 * s).max(124.0 * s);
         let mut virtual_y = 0.0f32;
         let mut selected_virtual_y = 0.0f32;
+        // Row + expanded detail card, so expanding scrolls the card into view too.
+        let mut selected_extent = row_h;
         for entry in &entries {
             match *entry {
                 ExtensionRenderEntry::Section(_) => virtual_y += section_h,
                 ExtensionRenderEntry::Item(abs_idx) => {
+                    let expanded = state.items.get(abs_idx).is_some_and(|item| {
+                        state.expanded_binary.as_deref() == Some(item.binary.as_str())
+                    });
                     if state.selected_item_index() == Some(abs_idx) {
                         selected_virtual_y = virtual_y;
+                        if expanded {
+                            selected_extent = row_h + detail_h;
+                        }
                     }
                     virtual_y += row_h;
-                    if state.items.get(abs_idx).is_some_and(|item| {
-                        state.expanded_binary.as_deref() == Some(item.binary.as_str())
-                    }) {
+                    if expanded {
                         virtual_y += detail_h;
                     }
                 }
             }
         }
         let total_virtual_h = virtual_y;
-        let scroll_y = (selected_virtual_y + row_h - content_h + 8.0 * s).max(0.0);
+        let scroll_y = (selected_virtual_y + selected_extent - content_h + 8.0 * s).max(0.0);
         let scroll_y = scroll_y.min((total_virtual_h - content_h).max(0.0));
 
         if total_virtual_h > content_h {
@@ -592,7 +596,9 @@ impl Renderer {
         for entry in entries {
             match entry {
                 ExtensionRenderEntry::Section(category) => {
-                    if entry_y + section_h > content_top && entry_y < rows_bottom {
+                    // Fully-visible only: the overlay shares one scissor with the
+                    // header, so a straddling section would paint over the filter.
+                    if entry_y >= content_top && entry_y + section_h <= rows_bottom {
                         let title = match category {
                             ExtensionCategory::CliTools => "▹ CLI Tools",
                             ExtensionCategory::LanguageServers => "▹ Language Servers (LSP)",
@@ -625,17 +631,26 @@ impl Renderer {
                         entry_y += row_h;
                         continue;
                     };
-                    if entry_y + row_h > content_top && entry_y < rows_bottom {
-                        let is_selected = selected_abs == Some(abs_idx);
-                        chrome.push(RegionDrawInstance::new(
-                            [inner_x, entry_y, inner_w, row_h - 4.0 * s],
-                            if is_selected { selection } else { overlay },
-                        ));
+                    let is_selected = selected_abs == Some(abs_idx);
+                    // Fully-visible only (selected row exempt so tiny windows still
+                    // show something); partial rows would bleed over header/edges.
+                    let fully_visible = entry_y >= content_top && entry_y + row_h <= rows_bottom;
+                    if fully_visible || is_selected {
+                        chrome.push(
+                            RegionDrawInstance::new(
+                                [inner_x, entry_y, inner_w, row_h - 4.0 * s],
+                                if is_selected { selection } else { overlay },
+                            )
+                            .with_radius(4.0 * s),
+                        );
                         if is_selected {
-                            chrome.push(RegionDrawInstance::new(
-                                [inner_x, entry_y, 3.0 * s, row_h - 4.0 * s],
-                                accent,
-                            ));
+                            chrome.push(
+                                RegionDrawInstance::new(
+                                    [inner_x, entry_y, 3.0 * s, row_h - 4.0 * s],
+                                    accent,
+                                )
+                                .with_radius(1.5 * s),
+                            );
                         }
                         let status_color = if !state.deps_checked {
                             ghost
@@ -731,7 +746,12 @@ impl Renderer {
                         ));
                     }
                     entry_y += row_h;
-                    if state.expanded_binary.as_deref() == Some(item.binary.as_str()) {
+                    if state.expanded_binary.as_deref() == Some(item.binary.as_str())
+                        // ponytail: detail card hides when it can't fit fully;
+                        // clip via a dedicated rows scissor if that ever hurts.
+                        && entry_y >= content_top
+                        && entry_y + detail_h <= rows_bottom + 0.5
+                    {
                         let detail_y = entry_y;
                         let detail_color = with_alpha(selection, 0.56);
                         chrome.push(
@@ -822,6 +842,10 @@ impl Renderer {
                                 if item.installed { success } else { ghost },
                             ));
                         }
+                        entry_y += detail_h;
+                    } else if state.expanded_binary.as_deref() == Some(item.binary.as_str()) {
+                        // Card hidden off-screen: still advance so the on-screen
+                        // layout stays in sync with the virtual pre-pass.
                         entry_y += detail_h;
                     }
                 }

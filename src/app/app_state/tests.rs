@@ -2939,4 +2939,77 @@ mod tests {
         assert_eq!(state.text_string(), "} catch {\n    \n    body();");
         assert_eq!(state.cursor_line_col(), (1, 4));
     }
+
+    fn search_match_item(path: &str, line: u32) -> crate::app::command_palette::CommandPaletteItem {
+        crate::app::command_palette::CommandPaletteItem {
+            label: format!("{path}:{line}"),
+            secondary_label: None,
+            icon: None,
+            action: crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                path: std::path::PathBuf::from(path),
+                line,
+                column: 0,
+            },
+            tone: crate::app::command_palette::CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn fuzzy_j_k_stop_on_collapsed_group_anchor_row() {
+        use crate::app::{app_state::FuzzyState, command_palette::CommandPaletteMode};
+        // a.rs rows 0-2, b.rs rows 3-4, c.rs rows 5-6; collapse b.rs.
+        let mut state = FuzzyState::new(CommandPaletteMode::LiveGrep);
+        state.results = vec![
+            search_match_item("a.rs", 1),
+            search_match_item("a.rs", 2),
+            search_match_item("a.rs", 3),
+            search_match_item("b.rs", 1),
+            search_match_item("b.rs", 2),
+            search_match_item("c.rs", 1),
+            search_match_item("c.rs", 2),
+        ];
+        state.collapsed_paths.insert("b.rs".to_string());
+
+        state.selected_index = 5;
+        assert!(state.fuzzy_select_prev());
+        assert_eq!(
+            state.selected_index, 3,
+            "k must land on collapsed b's anchor row (its header) so it can be re-expanded"
+        );
+        assert!(state.fuzzy_select_prev());
+        assert_eq!(state.selected_index, 2);
+        assert!(state.fuzzy_select_next());
+        assert_eq!(
+            state.selected_index, 3,
+            "j must land on collapsed b's anchor row (its header)"
+        );
+        assert!(state.fuzzy_select_next());
+        assert_eq!(
+            state.selected_index, 5,
+            "j skips b's hidden non-anchor rows"
+        );
+    }
+
+    #[test]
+    fn fuzzy_j_never_lands_on_hidden_rows_of_collapsed_tail_group() {
+        use crate::app::{app_state::FuzzyState, command_palette::CommandPaletteMode};
+        let mut state = FuzzyState::new(CommandPaletteMode::LiveGrep);
+        state.results = vec![
+            search_match_item("a.rs", 1),
+            search_match_item("c.rs", 1),
+            search_match_item("c.rs", 2),
+            search_match_item("c.rs", 3),
+        ];
+        state.collapsed_paths.insert("c.rs".to_string());
+
+        state.selected_index = 0;
+        assert!(state.fuzzy_select_next());
+        assert_eq!(state.selected_index, 1, "j stops on collapsed c's anchor");
+        assert!(
+            !state.fuzzy_select_next(),
+            "no visible row below the collapsed tail — selection must not move onto hidden rows"
+        );
+        assert_eq!(state.selected_index, 1);
+    }
 }

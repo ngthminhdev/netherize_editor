@@ -6,7 +6,9 @@ use crate::{
 };
 
 use super::super::{
-    components::{ShortcutHintSegment, layout_shortcut_hint},
+    components::{
+        ShortcutHintSegment, flat_keycap_palette, layout_shortcut_hint, push_flat_keycap,
+    },
     helpers::{
         clamp_monospace_text, estimate_monospace_width, layout_panel_text, layout_panel_text_bold,
         rect_to_scissor,
@@ -747,34 +749,20 @@ impl Renderer {
             let key_text_gap = 10.0 * s;
             let group_gap = 22.0 * s;
             let key_pad_x = 7.0 * s;
+            // Same flat chip as help_keycaps/shortcut_hint — one keycap look app-wide.
+            let keycap_palette = flat_keycap_palette(fg, panel_bg);
+            let key_radius = (key_h * 0.22).clamp(3.0 * s, 6.0 * s);
             for (key, label) in setting_control_hint(item) {
                 let key_w = estimate_monospace_width(key, shortcut_font) + key_pad_x * 2.0;
                 let label_w = estimate_monospace_width(label, shortcut_font);
                 if shortcut_x + key_w + key_text_gap + label_w > left_x + left_w - 14.0 * s {
                     break;
                 }
-                let mut key_outline = accent;
-                key_outline[3] = key_outline[3].max(0.82);
-                let mut key_fill = editor_bg;
-                key_fill[3] = key_fill[3].max(0.92);
-                chrome.push(
-                    RegionDrawInstance::new(
-                        [shortcut_x, shortcuts_y - 1.0, key_w, key_h],
-                        key_outline,
-                    )
-                    .with_radius(4.0 * s),
-                );
-                chrome.push(
-                    RegionDrawInstance::new(
-                        [
-                            shortcut_x + 1.5 * s,
-                            shortcuts_y + 0.5 * s,
-                            key_w - 3.0 * s,
-                            key_h - 3.0 * s,
-                        ],
-                        key_fill,
-                    )
-                    .with_radius(3.0 * s),
+                push_flat_keycap(
+                    &mut chrome,
+                    [shortcut_x, shortcuts_y - 1.0, key_w, key_h],
+                    key_radius,
+                    &keycap_palette,
                 );
                 glyphs.extend(layout_panel_text_bold(
                     key,
@@ -783,7 +771,7 @@ impl Renderer {
                     &self.queue,
                     shortcut_x + key_pad_x,
                     shortcuts_y + (key_h - shortcut_line_h) * 0.5,
-                    accent,
+                    keycap_palette.text,
                 ));
                 glyphs.extend(layout_panel_text(
                     label,
@@ -885,7 +873,9 @@ impl Renderer {
             // Render section header if this item starts a new section and header is visible.
             if let Some(sec) = layout.sec_header {
                 let sec_abs_y = base_y + layout.sec_y;
-                if sec_abs_y + line_height > content_top && sec_abs_y < rows_bottom - 8.0 * s {
+                // Draw only fully visible headers — the overlay shares one scissor
+                // with the header/footer, so partial rows would paint over them.
+                if sec_abs_y >= content_top && sec_abs_y + line_height <= rows_bottom {
                     self.editor_overlay_text_system
                         .set_size(Some(key_col_w), Some(line_height));
                     glyphs.extend(layout_panel_text(
@@ -909,12 +899,15 @@ impl Renderer {
                 }
             }
 
-            // Skip items that are entirely outside the viewport.
-            if item_abs_y + row_h <= content_top || item_abs_y >= rows_bottom - 8.0 * s {
+            // Skip rows that are not fully inside the viewport: a straddling row
+            // would paint over the header hints / footer (single shared scissor).
+            // The selected row is exempt so tiny windows still show something —
+            // the scroll formula keeps it fully visible whenever it can fit.
+            let is_selected = idx == settings.selected_index;
+            let fully_visible = item_abs_y >= content_top && item_abs_y + row_h <= rows_bottom;
+            if !fully_visible && !is_selected {
                 continue;
             }
-
-            let is_selected = idx == settings.selected_index;
             if is_selected {
                 chrome.push(
                     RegionDrawInstance::new(
