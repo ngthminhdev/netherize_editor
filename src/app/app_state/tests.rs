@@ -2510,6 +2510,43 @@ mod tests {
         assert_eq!(state.text_string(), " bar ");
     }
 
+    /// Multi-cursor mutations must record highlight edits (byte deltas) like
+    /// single-cursor edits do, or stale tree-sitter spans paint the viewport wrong.
+    #[test]
+    fn multi_cursor_change_records_highlight_edits() {
+        let mut state = setup_multi_cursor("foo bar foo");
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next()); // primary sel [0,3)
+        assert!(state.multi_cursor_add_next()); // virtual sel [8,11)
+        let _ = state.take_highlight_edits();
+
+        assert!(state.multi_cursor_change());
+
+        // Deletes applied descending: [8,11) then [0,3).
+        assert_eq!(
+            state.take_highlight_edits(),
+            vec![HighlightEdit::delete(8, 11), HighlightEdit::delete(0, 3)]
+        );
+    }
+
+    #[test]
+    fn multi_insert_char_records_highlight_edits() {
+        let mut state = setup_multi_cursor("foo bar foo");
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_change()); // buffer " bar ", carets at 0 and 5
+        let _ = state.take_highlight_edits();
+
+        state.multi_insert_char('x');
+
+        // Inserts applied descending: at 5 then at 0.
+        assert_eq!(
+            state.take_highlight_edits(),
+            vec![HighlightEdit::insert(5, 1), HighlightEdit::insert(0, 1)]
+        );
+    }
+
     /// Replace-paste with text SHORTER than the selections: later carets must
     /// shift LEFT (negative suffix delta — regression for usize saturation).
     #[test]

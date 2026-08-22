@@ -422,6 +422,7 @@ impl AppState {
             if current_col < target_col {
                 let spaces_needed = target_col - current_col;
                 let spaces = " ".repeat(spaces_needed);
+                self.record_insert_highlight_edit(char_idx, &spaces);
                 self.apply_insert_raw(char_idx, &spaces);
                 char_idx += spaces_needed;
             }
@@ -493,6 +494,7 @@ impl AppState {
             if current_col < target_col {
                 let spaces_needed = target_col - current_col;
                 let spaces = " ".repeat(spaces_needed);
+                self.record_insert_highlight_edit(char_idx, &spaces);
                 self.apply_insert_raw(char_idx, &spaces);
                 char_idx += spaces_needed;
             }
@@ -576,9 +578,11 @@ impl AppState {
         positions.dedup();
 
         let n = positions.len();
+        let text = ch.to_string();
         for (k, &pos) in positions.iter().enumerate() {
             let insert_at = pos.min(len_chars + k); // rope grows by k prior inserts
-            self.apply_insert_raw(insert_at, &ch.to_string());
+            self.record_insert_highlight_edit(insert_at, &text);
+            self.apply_insert_raw(insert_at, &text);
         }
 
         // Update positions: cursor at original p[k] → p[k] + (n − k).
@@ -635,8 +639,10 @@ impl AppState {
         let inserted_len = text.chars().count();
         for (_, ds, dl) in &sites {
             if *dl > 0 {
+                self.record_delete_highlight_edit(*ds, *dl);
                 self.apply_delete_raw(*ds, *dl);
             }
+            self.record_insert_highlight_edit(*ds, text);
             self.apply_insert_raw(*ds, text);
         }
 
@@ -688,6 +694,7 @@ impl AppState {
                 continue;
             }
             let delete_at = orig_pos - 1 - deletions_done;
+            self.record_delete_highlight_edit(delete_at, 1);
             if self.apply_delete_raw(delete_at, 1).is_some() {
                 deletions_done += 1;
             }
@@ -758,12 +765,11 @@ impl AppState {
             return false;
         }
 
-        for &(start, end) in &ranges {
-            self.record_delete_highlight_edit(start, end - start);
-        }
-
+        // Record each edit right before applying it (descending), so the recorded
+        // sequence matches the sequential coordinate space apply_highlight_edits expects.
         ranges.sort_by(|a, b| b.0.cmp(&a.0));
         for &(start, end) in &ranges {
+            self.record_delete_highlight_edit(start, end - start);
             self.apply_delete_raw(start, end - start);
         }
 
@@ -836,6 +842,7 @@ impl AppState {
         ranges.sort_by(|a, b| b.0.cmp(&a.0));
 
         for &(s, e) in &ranges {
+            self.record_delete_highlight_edit(s, e - s);
             self.apply_delete_raw(s, e - s);
         }
 

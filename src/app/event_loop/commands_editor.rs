@@ -348,6 +348,8 @@ impl AppShell {
                 | Command::ChangeSelection
                 | Command::ChangeWordForward
                 | Command::ChangeWordBackward
+                | Command::MultiCursorChange
+                | Command::MultiCursorDelete
                 | Command::DeleteToLineEnd
                 | Command::ChangeToLineEnd
                 | Command::PasteAfter
