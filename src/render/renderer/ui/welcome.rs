@@ -403,7 +403,11 @@ impl Renderer {
         let meta_chips = [
             (version_label, fg, true),
             (format!("built {}", env!("BUILD_DATE")), fg_ghost, false),
-            (format!("Rust {}", env!("BUILD_RUSTC_VERSION")), fg_ghost, false),
+            (
+                format!("Rust {}", env!("BUILD_RUSTC_VERSION")),
+                fg_ghost,
+                false,
+            ),
         ];
         let meta_total_w: f32 = meta_chips
             .iter()

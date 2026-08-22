@@ -28,6 +28,7 @@ These tools enhance the editor experience but are not required for basic functio
 | **fzf** | Fuzzy finder for file picker & live grep | `brew install fzf` | `sudo apt install fzf` |
 | **rg** (ripgrep) | Fast text search for live grep | `brew install ripgrep` | `sudo apt install ripgrep` |
 | **lazygit** | Git TUI integration | `brew install lazygit` | `sudo apt install lazygit` |
+| **GitMin.app** | Optional target cho `gf` khi `[git] ui = "git_min"` trong `ui.toml` | build từ `~/Project/git_min`: `npm run app` | n/a (macOS-first) |
 | **lazydocker** | Docker TUI integration | `brew install lazydocker` | `sudo apt install lazydocker` |
 | **fd** | Fast file finder (alternative to find) | `brew install fd` | `sudo apt install fd-find` |
 | **bat** | Syntax-highlighted file previews | `brew install bat` | `sudo apt install bat` |

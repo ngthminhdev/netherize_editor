@@ -122,9 +122,8 @@ impl Renderer {
             // narrow panes; the symbol segments truncate before this block.
             let mut right_end = max_x;
             if header_w > geometry.font_size * 24.0 {
-                let (error_count, warning_count) = active_diagnostics
-                    .map(diagnostic_counts)
-                    .unwrap_or((0, 0));
+                let (error_count, warning_count) =
+                    active_diagnostics.map(diagnostic_counts).unwrap_or((0, 0));
                 let mut chips: Vec<(String, [f32; 4])> = Vec::new();
                 if error_count > 0 {
                     chips.push((format!("✗ {error_count}"), self.theme.ui.error.as_f32()));
@@ -138,8 +137,7 @@ impl Renderer {
                         .and_then(|root| path.strip_prefix(root).ok())
                         .unwrap_or(path);
                     let text = shown.display().to_string();
-                    let clamped =
-                        clamp_monospace_text(&text, header_w * 0.35, geometry.font_size);
+                    let clamped = clamp_monospace_text(&text, header_w * 0.35, geometry.font_size);
                     (!clamped.is_empty()).then_some(clamped)
                 });
                 let item_gap = estimate_monospace_width("  ", geometry.font_size);

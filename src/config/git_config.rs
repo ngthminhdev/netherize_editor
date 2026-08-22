@@ -53,7 +53,9 @@ impl GitConfig {
             match parse_git_ui(ui) {
                 Some(parsed) => config.ui = parsed,
                 None => {
-                    eprintln!("[git] unknown ui '{ui}' (expected \"lazygit\" | \"git_min\"), using lazygit");
+                    eprintln!(
+                        "[git] unknown ui '{ui}' (expected \"lazygit\" | \"git_min\"), using lazygit"
+                    );
                 }
             }
         }

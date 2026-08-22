@@ -126,7 +126,7 @@ netherize_editor/
 │   │   │   ├── commands_terminal.rs # Terminal/panel/focus commands
 │   │   │   ├── commands_explorer.rs # Explorer/sidebar/workspace commands
 │   │   │   ├── commands_palette.rs # Palette/open-file/open-buffer commands
-│   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI commands
+│   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI/git UI (lazygit|GitMin) commands
 │   │   │   ├── commands_ai_agent.rs # AI agent/chat panel commands
 │   │   │   ├── commands_canvas.rs # Spatial canvas commands
 │   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
@@ -610,6 +610,7 @@ Use this table when you want to jump straight to the likely file instead of read
 | Markdown preview | `src/render/renderer/ui/markdown_preview.rs`, `src/app/event_loop/commands.rs` | Markdown rendering and preview toggle |
 | LeetCode problem fetch, code runner | `src/runner/`, `src/app/event_loop/async_results/runner.rs`, `src/async_runtime/scheduler/leetcode_fetch.rs` | Runner logic, async results, and scheduler tasks |
 | Test runner behavior | `src/app/event_loop/commands_tests.rs`, `src/render/renderer/ui/test_runner.rs` | Test runner commands and rendering |
+| `gf` git UI target (lazygit PTY buffer vs GitMin app) | `src/config/git_config.rs`, `src/app/event_loop/commands_lsp.rs`, `~/.config/netherize/ui.toml` (`[git]`) | Config selects the backend; handler branches and spawns GitMin with the repo root as argv |
 | Live grep / workspace search | `src/app/event_loop/commands_palette.rs`, `src/render/renderer/palette/live_grep.rs`, `src/workspace/fuzzy.rs` | Search initiation, rendering, and fuzzy matching |
 | Spatial Canvas (NetherCanvas) | `src/canvas/`, `src/app/app_state/canvas.rs`, `src/app/app_state/canvas_edit.rs`, `src/app/event_loop/commands_canvas.rs`, `src/render/renderer/canvas.rs` | Canvas model, state, editing, commands, and rendering |
 | Workbench panel slide / motion | `src/workbench/motion.rs`, `src/app/event_loop/application.rs`, `src/config/ui_config.rs` | Motion timeline primitives, animation tick, and easing config |
