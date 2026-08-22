@@ -155,7 +155,6 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) pending_keys: String,
     pub(super) git_branch: String,
     pub(super) is_dirty: bool,
-    pub(super) active_file_name: String,
     pub(super) filetype: String,
     pub(super) search_match_position: Option<(usize, usize)>,
     pub(super) line: usize,

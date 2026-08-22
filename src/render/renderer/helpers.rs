@@ -423,7 +423,12 @@ mod tests {
 pub(super) fn is_mode_block_cursor(mode: EditorMode) -> bool {
     matches!(
         mode,
-        EditorMode::Normal | EditorMode::Visual | EditorMode::VisualBlock
+        EditorMode::Normal
+            | EditorMode::Visual
+            | EditorMode::VisualBlock
+            // Match phase keeps vim-style selections — render the block caret
+            // sitting on the last selected char exactly like Visual.
+            | EditorMode::MultiCursor
     )
 }
 

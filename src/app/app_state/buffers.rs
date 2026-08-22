@@ -642,6 +642,9 @@ impl AppState {
     }
 
     pub fn paste_after(&mut self, text: &str) -> bool {
+        if self.is_multi_cursor_mode() {
+            return self.multi_insert_text(text);
+        }
         let insert_text = text.to_string();
         if insert_text.is_empty() {
             return false;
@@ -672,6 +675,9 @@ impl AppState {
     }
 
     pub fn paste_before(&mut self, text: &str) -> bool {
+        if self.is_multi_cursor_mode() {
+            return self.multi_insert_text(text);
+        }
         let insert_text = text.to_string();
         if insert_text.is_empty() {
             return false;
@@ -693,6 +699,9 @@ impl AppState {
     }
 
     pub fn insert_text_at_cursor(&mut self, text: &str) -> bool {
+        if self.is_multi_cursor_mode() {
+            return self.multi_insert_text(text);
+        }
         let insert_text = text.to_string();
         if insert_text.is_empty() {
             return false;

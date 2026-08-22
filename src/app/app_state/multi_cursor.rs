@@ -560,6 +560,78 @@ impl AppState {
         self.bump_revision();
     }
 
+    /// Paste `text` at every cursor (MultiCursor/MultiInsert).
+    ///
+    /// Visual-p semantics: a cursor with an active selection has that selection
+    /// REPLACED by the text; a bare caret (MultiInsert phase) gets a plain
+    /// insert. Sites are processed in descending order so earlier edits never
+    /// shift later ones, and each caret ends up right after its pasted copy.
+    pub fn multi_insert_text(&mut self, text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+        self.ensure_current_transaction();
+
+        // (old_caret, del_start, del_len) per cursor — del_len 0 = pure insert.
+        let mut sites: Vec<(usize, usize, usize)> = self
+            .virtual_cursors
+            .iter()
+            .map(|vc| match (vc.selection_start, vc.selection_end) {
+                (Some(ss), Some(se)) if ss < se => {
+                    (vc.char_idx.min(se.saturating_sub(1)), ss, se - ss)
+                }
+                _ => (vc.char_idx, vc.char_idx, 0),
+            })
+            .collect();
+        let primary_site = match self.selection_anchor_char_idx {
+            Some(anchor) => {
+                let ss = anchor.min(self.cursor_char_idx);
+                let se = anchor.max(self.cursor_char_idx) + 1;
+                (self.cursor_char_idx.min(se.saturating_sub(1)), ss, se - ss)
+            }
+            None => (self.cursor_char_idx, self.cursor_char_idx, 0),
+        };
+        sites.push(primary_site);
+
+        // Descending by deletion start; collapse cursors sharing an identical site.
+        sites.sort_unstable_by_key(|&(_, ds, _)| std::cmp::Reverse(ds));
+        sites.dedup();
+
+        let inserted_len = text.chars().count();
+        for (_, ds, dl) in &sites {
+            if *dl > 0 {
+                self.apply_delete_raw(*ds, *dl);
+            }
+            self.apply_insert_raw(*ds, text);
+        }
+
+        // New caret for site k: end of its pasted copy, shifted by the net delta
+        // (insert − delete) of every later site — later starts are strictly
+        // smaller and the ranges are disjoint, so all of them shift it.
+        let mut suffix_shift = 0usize;
+        let mut updated: Vec<(usize, usize)> = Vec::with_capacity(sites.len());
+        for &(caret, ds, dl) in sites.iter().rev() {
+            let new_pos = ds + inserted_len + suffix_shift;
+            updated.push((caret, new_pos));
+            suffix_shift += inserted_len.saturating_sub(dl);
+        }
+        updated.reverse();
+        self.apply_position_updates(&updated);
+
+        // The paste consumes the selections.
+        self.selection_anchor_char_idx = None;
+        for vc in &mut self.virtual_cursors {
+            vc.selection_start = None;
+            vc.selection_end = None;
+        }
+
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     /// Backspace simultaneously at all cursor positions (MultiInsert mode).
     /// Follows the Ascending-Order Deletion rule.
     pub fn multi_backspace(&mut self) -> bool {
@@ -609,7 +681,7 @@ impl AppState {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    fn is_multi_cursor_mode(&self) -> bool {
+    pub(crate) fn is_multi_cursor_mode(&self) -> bool {
         matches!(
             self.mode_state.current(),
             EditorMode::MultiCursor | EditorMode::MultiInsert

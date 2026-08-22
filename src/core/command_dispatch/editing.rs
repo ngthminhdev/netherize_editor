@@ -963,6 +963,11 @@ fn dispatch_multi_insert(
 }
 
 fn replace_visual_selection_if_needed(ctx: &mut DispatchCtx<'_, '_, '_>) -> bool {
+    // Multi-cursor selections are handled (and consumed) by the multi-cursor
+    // paste path — clearing them here would lose the primary paste anchor.
+    if ctx.app_state.is_multi_cursor_mode() {
+        return false;
+    }
     let mut changed = false;
     if ctx.app_state.current_mode() == EditorMode::Visual {
         changed |= ctx.app_state.delete_visual_selection();

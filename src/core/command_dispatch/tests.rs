@@ -953,6 +953,52 @@ fn paste_before_replaces_visual_selection_from_clipboard() {
 }
 
 #[test]
+fn paste_after_in_multi_cursor_mode_replaces_all_selections() {
+    let mut app_state = AppState::from_text(unique_temp_path("mc_paste_after"), "foo bar foo");
+    let mut clipboard = MockClipboard {
+        text: "X".to_string(),
+    };
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // Ctrl+n twice: seed "foo" + add the second occurrence.
+    let _ = dispatch_command(&mut app_state, Command::MultiCursorAddNext);
+    let _ = dispatch_command(&mut app_state, Command::MultiCursorAddNext);
+
+    // Visual-p semantics: the clipboard text REPLACES every selected occurrence.
+    let paste =
+        dispatch_command_with_clipboard(&mut app_state, Command::PasteAfter, Some(&mut clipboard));
+    assert!(paste.success);
+    assert!(paste.state_changed);
+    assert_eq!(app_state.text_string(), "X bar X");
+
+    let undo = dispatch_command(&mut app_state, Command::Undo);
+    assert!(undo.state_changed);
+    assert_eq!(app_state.text_string(), "foo bar foo");
+}
+
+#[test]
+fn editor_paste_in_multi_insert_mode_fans_out_to_all_cursors() {
+    let mut app_state =
+        AppState::from_text(unique_temp_path("mc_paste_multiinsert"), "xfooy xfooy");
+    let mut clipboard = MockClipboard {
+        text: "Q".to_string(),
+    };
+
+    let _ = dispatch_command(&mut app_state, Command::MultiCursorAddNext);
+    let _ = dispatch_command(&mut app_state, Command::MultiCursorAddNext);
+    // `c` deletes both selections and enters MultiInsert.
+    let change = dispatch_command(&mut app_state, Command::MultiCursorChange);
+    assert!(change.state_changed);
+    assert_eq!(app_state.current_mode(), EditorMode::MultiInsert);
+
+    let paste =
+        dispatch_command_with_clipboard(&mut app_state, Command::EditorPaste, Some(&mut clipboard));
+    assert!(paste.success);
+    assert!(paste.state_changed);
+    assert_eq!(app_state.text_string(), "Q Q");
+}
+
+#[test]
 fn editor_paste_in_insert_mode_keeps_cursor_after_inserted_text() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_system_insert"), "abc");
     let mut clipboard = MockClipboard {

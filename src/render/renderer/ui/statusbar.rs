@@ -19,7 +19,7 @@ fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
 impl Renderer {
     /// Render the three-zone status bar.
     ///
-    /// Left Zone   (→): mode-pill · git-branch · dirty-dot · file-name · pending-keys
+    /// Left Zone   (→): mode-pill · git-branch · dirty-dot · pending-keys
     /// Right Zone  (←): lsp-progress · search · cursor · encoding · language · lsp-dot
     #[allow(clippy::too_many_arguments)]
     pub fn update_statusbar_content(
@@ -29,7 +29,6 @@ impl Renderer {
         pending_keys: &str,
         git_branch: &str,
         is_dirty: bool,
-        active_file_name: &str,
         filetype: &str,
         search_match_position: Option<(usize, usize)>,
         line: usize,
@@ -61,7 +60,6 @@ impl Renderer {
             pending_keys: pending_keys.to_string(),
             git_branch: git_branch.to_string(),
             is_dirty,
-            active_file_name: active_file_name.to_string(),
             filetype: filetype.to_string(),
             search_match_position,
             line,
@@ -102,7 +100,6 @@ impl Renderer {
         } else {
             (mode_display_label(mode), mode_pill_color(mode, &self.theme))
         };
-        let fg = self.theme.ui.fg.as_f32();
         let fg_dim = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.85);
         let fg_ghost = with_alpha(self.theme.ui.fg_ghost.as_f32(), 0.75);
         let accent = self.theme.ui.accent.as_f32();
@@ -240,22 +237,6 @@ impl Renderer {
                 dirty_color,
             ));
             left_x += dot_w + item_gap;
-        }
-
-        // ── Active file name ──────────────────────────────────────────────────────
-        let file_name = active_file_name.trim();
-        if !file_name.is_empty() {
-            let file_w = estimate_monospace_width(file_name, font_size);
-            glyphs.extend(layout_panel_text(
-                file_name,
-                &mut self.statusbar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                left_x,
-                origin_y,
-                fg,
-            ));
-            left_x += file_w + item_gap;
         }
 
         // left_zone_end is the x-coord after all fixed left items.

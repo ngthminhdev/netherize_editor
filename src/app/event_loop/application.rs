@@ -362,29 +362,6 @@ fn apply_platform_window_chrome(
     attrs
 }
 
-fn statusbar_source_path_label(
-    active_file: Option<&Path>,
-    workspace_root: Option<&Path>,
-) -> String {
-    let Some(path) = active_file else {
-        return String::new();
-    };
-
-    if let Some(root) = workspace_root
-        && let Ok(relative) = path.strip_prefix(root)
-    {
-        let relative = relative.display().to_string();
-        if !relative.is_empty() {
-            return relative;
-        }
-    }
-
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .map(str::to_owned)
-        .unwrap_or_else(|| path.display().to_string())
-}
-
 fn test_runner_runtime_label(path: Option<&Path>) -> &'static str {
     match path.and_then(Path::extension).and_then(|ext| ext.to_str()) {
         Some("js" | "mjs" | "cjs") => "Node.js",
@@ -3637,22 +3614,14 @@ impl AppShell {
             let mode = self.app_state.current_mode();
             let (line, col) = self.app_state.cursor_line_col();
             let pending_keys = self.input_handler.get_pending_keys();
-            let (filetype, git_branch, is_dirty, active_file_name, status_line, status_col) =
-                if show_welcome {
-                    ("Welcome", "", false, String::new(), 0, 0)
-                } else {
-                    let filetype = self.app_state.active_filetype_label();
-                    let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
-                    let is_dirty = self.app_state.is_dirty();
-                    // The in-card edit session (v2) never switches the active buffer,
-                    // so `active_file` already IS the gc-origin file the main editor
-                    // shows — no statusbar override needed.
-                    let active_file_name = statusbar_source_path_label(
-                        self.app_state.active_file(),
-                        self.app_state.workspace_root_path(),
-                    );
-                    (filetype, git_branch, is_dirty, active_file_name, line, col)
-                };
+            let (filetype, git_branch, is_dirty, status_line, status_col) = if show_welcome {
+                ("Welcome", "", false, 0, 0)
+            } else {
+                let filetype = self.app_state.active_filetype_label();
+                let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+                let is_dirty = self.app_state.is_dirty();
+                (filetype, git_branch, is_dirty, line, col)
+            };
             if let Some(renderer) = self.renderer.as_mut() {
                 let lsp_progress_label = self
                     .app_state
@@ -3723,7 +3692,6 @@ impl AppShell {
                     &pending_keys,
                     git_branch,
                     is_dirty,
-                    &active_file_name,
                     filetype,
                     self.app_state.active_search_match_position(),
                     status_line,
@@ -4118,8 +4086,7 @@ mod tests {
         AppShell, breadcrumb_segment_text, build_editor_breadcrumb_segments,
         build_editor_header_segments, editor_text_cache_key, focus_ring_instances,
         focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
-        sgr_wheel_sequence, statusbar_source_path_label, terminal_cell_at_position,
-        visible_region_bounds,
+        sgr_wheel_sequence, terminal_cell_at_position, visible_region_bounds,
     };
     use crate::app::app_state::AppState;
     use crate::async_runtime::message::{
@@ -4182,28 +4149,6 @@ mod tests {
             "panel regions should still render both outline and fill"
         );
         assert_eq!(instances[1].rect, [13.0, 25.0, 318.0, 178.0]);
-    }
-
-    #[test]
-    fn statusbar_source_path_label_prefers_workspace_relative_path() {
-        let root = Path::new("/tmp/demo");
-        let file = Path::new("/tmp/demo/src/app/main.rs");
-
-        assert_eq!(
-            statusbar_source_path_label(Some(file), Some(root)),
-            "src/app/main.rs"
-        );
-    }
-
-    #[test]
-    fn statusbar_source_path_label_falls_back_to_filename_outside_workspace() {
-        let root = Path::new("/tmp/demo");
-        let file = Path::new("/tmp/other/main.rs");
-
-        assert_eq!(
-            statusbar_source_path_label(Some(file), Some(root)),
-            "main.rs"
-        );
     }
 
     #[test]

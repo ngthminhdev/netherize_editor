@@ -1260,6 +1260,27 @@ mode = "multicursor"
 key = "d"
 command = "multicursor.delete"
 
+# p / P — paste REPLACE mọi selection (giống visual-p); paste fan-out qua multi_insert_text
+[[bindings]]
+mode = "multicursor"
+key = "p"
+command = "editor.paste_after"
+
+[[bindings]]
+mode = "multicursor"
+key = "P"
+command = "editor.paste_before"
+
+[[bindings]]
+mode = "multicursor"
+key = "ctrl+v"
+command = "editor.paste"
+
+[[bindings]]
+mode = "multicursor"
+key = "cmd+v"
+command = "editor.paste"
+
 [[bindings]]
 mode = "multicursor"
 key = "Escape"
@@ -1280,3 +1301,14 @@ command = "editor.backspace"
 mode = "multiinsert"
 key = "Enter"
 command = "editor.newline"
+
+# Paste (vd. sau `c` để thay thế selection bằng clipboard) fan-out mọi cursor
+[[bindings]]
+mode = "multiinsert"
+key = "ctrl+v"
+command = "editor.paste"
+
+[[bindings]]
+mode = "multiinsert"
+key = "cmd+v"
+command = "editor.paste"
