@@ -185,13 +185,15 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        Command::ScrollHalfPageUp | Command::ScrollHalfPageDown | Command::CenterCursorLine => {
-            DispatchReport::success_with_flags(
-                "Dispatch: scroll (handled by event loop)",
-                true,
-                false,
-            )
-        }
+        Command::ScrollHalfPageUp
+        | Command::ScrollHalfPageDown
+        | Command::CenterCursorLine
+        | Command::ScrollCursorLineTop
+        | Command::ScrollCursorLineBottom => DispatchReport::success_with_flags(
+            "Dispatch: scroll (handled by event loop)",
+            true,
+            false,
+        ),
         Command::LeapStart
         | Command::LeapActivate(_)
         | Command::LeapJump(_)

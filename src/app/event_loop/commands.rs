@@ -114,6 +114,21 @@ impl AppShell {
         changed
     }
 
+    /// `.` bookkeeping. Command-level replay: a successful text edit records
+    /// itself for `.`; typing (InsertChar/Newline/Backspace/Tab) and undo/redo
+    /// invalidate the record instead — insert *sessions* are not captured.
+    fn record_dot_repeat(&mut self, command: &Command) {
+        // Only typing and undo/redo invalidate the record; motions and other
+        // non-edit commands (vim semantics: edit, move, `.`) leave it alone.
+        if is_typing_command(command) || matches!(command, Command::Undo | Command::Redo) {
+            self.last_edit_command = None;
+            return;
+        }
+        if is_dot_repeatable(command) {
+            self.last_edit_command = Some(command.clone());
+        }
+    }
+
     fn reconcile_highlight_spans_with_pending_edits(&mut self) {
         let edits = self.app_state.take_highlight_edits();
         if edits.is_empty() {
@@ -258,7 +273,13 @@ impl AppShell {
     ) -> bool {
         let test_edit_before = self.app_state.test_field_edit.is_some();
         let layout_sig_before = self.panel_layout_signature();
+        // Single choke point for `.` bookkeeping — every dispatch path flows
+        // through here (the generic-editor arm has its own post-hook block).
+        let command_for_dot = command.clone();
         let res = self.handle_command_with_count_impl(command, repeat_count);
+        if res {
+            self.record_dot_repeat(&command_for_dot);
+        }
         let test_edit_after = self.app_state.test_field_edit.is_some();
         if test_edit_before && !test_edit_after {
             self.panel_state.right.visible = true;
@@ -288,6 +309,15 @@ impl AppShell {
     }
 
     fn handle_command_with_count_impl(&mut self, command: Command, repeat_count: usize) -> bool {
+        // `.` — replay the last recorded text-editing command (one level deep;
+        // replays are never re-recorded because RepeatLastChange is excluded).
+        if matches!(command, Command::RepeatLastChange) {
+            let Some(replay) = self.last_edit_command.clone() else {
+                return false;
+            };
+            return self.handle_command_with_count_impl(replay, repeat_count);
+        }
+
         if matches!(command, Command::NewInstance) {
             return self.spawn_new_instance();
         }
@@ -1222,4 +1252,64 @@ fn normalize_terminal_paste_text(text: &str) -> String {
     }
 
     normalized
+}
+
+/// Raw typing — invalidates the `.` record (insert sessions are not captured).
+fn is_typing_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::InsertChar(_)
+            | Command::InsertText(_)
+            | Command::Newline
+            | Command::Backspace
+            | Command::InsertTab
+            | Command::AiAcceptInline
+            | Command::AiAcceptInlineWord
+    )
+}
+
+/// Text-mutating, position-independent commands safe to replay via `.`.
+fn is_dot_repeatable(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::DeleteChar
+            | Command::DeleteSelection
+            | Command::DeleteCurrentLine
+            | Command::DeleteToLineEnd
+            | Command::DeleteWordForward
+            | Command::DeleteWordBackward
+            | Command::ChangeSelection
+            | Command::ChangeWordForward
+            | Command::ChangeWordBackward
+            | Command::ChangeToLineEnd
+            | Command::SubstituteLine
+            | Command::JoinLines
+            | Command::PasteAfter
+            | Command::PasteBefore
+            | Command::EditorPaste
+            | Command::PasteSystemClipboard
+            | Command::VisualPaste
+            | Command::ReplaceChar(_)
+            | Command::ToggleLineComment
+            | Command::ToggleSelectionComment
+            | Command::WrapSelectionWithStar
+            | Command::IndentSelection
+            | Command::OutdentSelection
+            | Command::ToggleCaseUnderCursor
+            | Command::LowercaseSelection
+            | Command::UppercaseSelection
+            | Command::IncrementNumberUnderCursor
+            | Command::DecrementNumberUnderCursor
+            | Command::InsertLineBelow
+            | Command::InsertLineAbove
+            | Command::AppendAtLineEnd
+            | Command::AppendAfterCursor
+            | Command::TextObjectAction { .. }
+    ) || matches!(
+        command,
+        Command::Operate {
+            op: crate::core::commands::Operator::Delete | crate::core::commands::Operator::Change,
+            ..
+        }
+    )
 }

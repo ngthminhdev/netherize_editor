@@ -2321,3 +2321,161 @@ fn every_palette_action_dispatches_without_panicking() {
         crashed.join("\n")
     );
 }
+
+// ── Editing utilities (polish) ────────────────────────────────────────────────
+
+#[test]
+fn indent_selection_prepends_unit_to_every_touched_line() {
+    let mut app_state = AppState::from_text(unique_temp_path("indent_sel"), "aaa\nbbb\nccc\n");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    app_state.move_down();
+    // Selection spans lines 0-1.
+
+    let report = dispatch_command(&mut app_state, Command::IndentSelection);
+    assert!(report.state_changed);
+    assert_eq!(app_state.text_string(), "    aaa\n    bbb\nccc\n");
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
+fn outdent_selection_removes_one_unit_from_every_touched_line() {
+    let mut app_state =
+        AppState::from_text(unique_temp_path("outdent_sel"), "    aaa\n      bbb\nccc");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    app_state.move_down();
+
+    let report = dispatch_command(&mut app_state, Command::OutdentSelection);
+    assert!(report.state_changed);
+    assert_eq!(app_state.text_string(), "aaa\n  bbb\nccc");
+}
+
+#[test]
+fn toggle_case_under_cursor_flips_and_advances() {
+    let mut app_state = AppState::from_text(unique_temp_path("toggle_case"), "aBc");
+    let _ = dispatch_command(&mut app_state, Command::ToggleCaseUnderCursor);
+    assert_eq!(app_state.text_string(), "ABc");
+    assert_eq!(app_state.cursor_line_col(), (0, 1));
+    let _ = dispatch_command(&mut app_state, Command::ToggleCaseUnderCursor);
+    assert_eq!(app_state.text_string(), "Abc");
+}
+
+#[test]
+fn uppercase_and_lowercase_selection_rewrite_range() {
+    let mut app_state = AppState::from_text(unique_temp_path("case_sel"), "hello world");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    for _ in 0..4 {
+        app_state.move_right();
+    }
+
+    let up = dispatch_command(&mut app_state, Command::UppercaseSelection);
+    assert!(up.state_changed);
+    assert_eq!(app_state.text_string(), "HELLO world");
+
+    // Reselect the same range with gv and lowercase it.
+    let reselect = dispatch_command(&mut app_state, Command::ReselectLastVisual);
+    assert!(reselect.state_changed);
+    let down = dispatch_command(&mut app_state, Command::LowercaseSelection);
+    assert!(down.state_changed);
+    assert_eq!(app_state.text_string(), "hello world");
+}
+
+#[test]
+fn gv_restores_selection_deleted_by_visual_d() {
+    // Regression: delete_visual_selection clears the anchor BEFORE the arm's
+    // mode event, so gv must be captured inside the helper itself.
+    let mut app_state = AppState::from_text(unique_temp_path("gv_after_d"), "hello world");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    for _ in 0..4 {
+        app_state.move_right();
+    }
+    let del = dispatch_command(&mut app_state, Command::DeleteSelection);
+    assert!(del.state_changed);
+    assert_eq!(app_state.text_string(), " world");
+
+    let reselect = dispatch_command(&mut app_state, Command::ReselectLastVisual);
+    assert!(reselect.state_changed);
+    let sel = app_state.visual_selection_range().expect("gv selection");
+    assert_eq!((sel.start_char, sel.end_char), (0, 5));
+}
+
+#[test]
+fn increment_number_with_cursor_mid_number_edits_whole_number() {
+    let mut app_state = AppState::from_text(unique_temp_path("incr_mid"), "1299");
+    for _ in 0..3 {
+        app_state.move_right(); // cursor on the final '9'
+    }
+    let _ = dispatch_command(&mut app_state, Command::IncrementNumberUnderCursor);
+    assert_eq!(app_state.text_string(), "1300");
+}
+
+#[test]
+fn increment_number_preserves_leading_zero_padding() {
+    let mut app_state = AppState::from_text(unique_temp_path("incr_num"), "id_007 end");
+    let _ = dispatch_command(&mut app_state, Command::IncrementNumberUnderCursor);
+    assert_eq!(app_state.text_string(), "id_008 end");
+
+    let _ = dispatch_command(&mut app_state, Command::DecrementNumberUnderCursor);
+    assert_eq!(app_state.text_string(), "id_007 end");
+
+    // Negative numbers keep their sign.
+    let mut neg = AppState::from_text(unique_temp_path("decr_neg"), "-3 items");
+    neg.move_right();
+    let _ = dispatch_command(&mut neg, Command::DecrementNumberUnderCursor);
+    assert_eq!(neg.text_string(), "-4 items");
+}
+
+#[test]
+fn gi_returns_to_last_insert_exit_position() {
+    let mut app_state = AppState::from_text(unique_temp_path("gi_test"), "abc\ndef");
+    let _ = dispatch_command(&mut app_state, Command::AppendAfterCursor);
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+    for _ in 0..2 {
+        app_state.move_right();
+    }
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // Jump elsewhere first.
+    let _ = dispatch_command(&mut app_state, Command::MoveToLastLine);
+
+    let report = dispatch_command(&mut app_state, Command::InsertAtLastEdit);
+    assert!(report.state_changed);
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+    assert_eq!(app_state.cursor_line_col(), (0, 3));
+}
+
+// ── Mouse support ─────────────────────────────────────────────────────────────
+
+#[test]
+fn place_caret_at_collapses_selection_and_moves_caret() {
+    let mut app_state = AppState::from_text(unique_temp_path("mouse_click"), "hello\nworld");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    app_state.move_down();
+    assert_eq!(app_state.current_mode(), EditorMode::Visual);
+
+    let target = app_state.text_string().find('w').unwrap();
+    assert!(app_state.place_caret_at(target));
+    assert_eq!(app_state.cursor_line_col(), (1, 0));
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+    assert!(app_state.visual_selection_range().is_none());
+}
+
+#[test]
+fn drag_select_to_builds_charwise_selection() {
+    let mut app_state = AppState::from_text(unique_temp_path("mouse_drag"), "abcdef");
+    assert!(app_state.drag_select_to(1, 4));
+    assert_eq!(app_state.current_mode(), EditorMode::Visual);
+    let sel = app_state
+        .visual_selection_range()
+        .expect("selection after drag");
+    assert_eq!((sel.start_char, sel.end_char), (1, 5));
+    assert_eq!(app_state.visual_selection_text(), Some("bcde".to_string()));
+}
+
+#[test]
+fn select_word_at_selects_word_under_point() {
+    let mut app_state = AppState::from_text(unique_temp_path("mouse_dblclick"), "foo bar");
+    let bar_pos = app_state.text_string().find('a').unwrap();
+    assert!(app_state.select_word_at(bar_pos));
+    assert_eq!(app_state.current_mode(), EditorMode::Visual);
+    assert_eq!(app_state.visual_selection_text(), Some("bar".to_string()));
+}

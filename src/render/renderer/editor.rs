@@ -243,3 +243,62 @@ pub(super) fn editor_viewport_geometry(
         origin_y,
     }
 }
+
+impl Renderer {
+    /// Mouse hit-test: map a screen pixel to an absolute char index inside the
+    /// editor text viewport. Mirrors `soft_wrap_visual_move_target`'s glyph
+    /// walk. Returns `None` when the point is outside the shaped text area
+    /// (header, gutter, or past EOF on an empty buffer).
+    pub fn hit_test_editor_char_index(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+        px: f32,
+        py: f32,
+    ) -> Option<usize> {
+        if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
+            return None;
+        }
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        if py < geometry.viewport_text_top {
+            return None;
+        }
+
+        let mut chosen: Option<(usize, usize)> = None;
+        let mut last_visible_line: Option<usize> = None;
+
+        for run in self.text_system.buffer().layout_runs() {
+            if app_state.is_line_folded(run.line_i) {
+                continue;
+            }
+            let top = geometry.origin_y + run.line_top
+                - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
+            if py >= top + run.line_height.max(1.0) {
+                last_visible_line = Some(run.line_i);
+                continue;
+            }
+            if py < top {
+                break; // runs are ordered top-down
+            }
+
+            // Inside this visual row — resolve the column from glyph extents.
+            let mut byte_in_line = run.glyphs.first().map(|g| g.start).unwrap_or(0);
+            for glyph in run.glyphs {
+                let mid = geometry.origin_x + glyph.x + glyph.w * 0.5;
+                if px <= mid {
+                    byte_in_line = glyph.start;
+                    break;
+                }
+                byte_in_line = glyph.end;
+            }
+            chosen = Some((run.line_i, byte_in_line));
+            break;
+        }
+
+        // Click below the shaped content → end of the last visible line
+        // (char_index_at clamps oversized byte offsets to the line length).
+        let (line_idx, byte_in_line) =
+            chosen.or_else(|| last_visible_line.map(|line| (line, usize::MAX)))?;
+        Some(app_state.char_index_at(line_idx, byte_in_line))
+    }
+}

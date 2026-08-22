@@ -127,6 +127,8 @@ impl AppState {
         }
 
         // Transition to MultiCursor before changing any cursor state.
+        // Direct mode_state.apply bypasses apply_mode_event's gv capture — do it here.
+        self.capture_last_visual_selection();
         if self.mode_state.apply(ModeEvent::EnterMultiCursor).is_err() {
             return false;
         }
@@ -191,6 +193,8 @@ impl AppState {
             };
 
             let whole_word = self.current_mode() != EditorMode::Visual;
+            // Direct mode_state.apply bypasses apply_mode_event's gv capture — do it here.
+            self.capture_last_visual_selection();
             if self.mode_state.apply(ModeEvent::EnterMultiCursor).is_err() {
                 return false;
             }
@@ -241,6 +245,37 @@ impl AppState {
         });
         self.mc_search_start = fe;
         self.merge_overlapping_cursors();
+        self.bump_revision();
+        true
+    }
+
+    /// Alt+Click — add a bare caret at `char_idx` without word matching.
+    /// Enters MultiCursor mode on the first click.
+    pub fn add_cursor_at(&mut self, char_idx: usize) -> bool {
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 {
+            return false;
+        }
+        if !matches!(
+            self.mode_state.current(),
+            EditorMode::Normal | EditorMode::MultiCursor
+        ) {
+            return false;
+        }
+        if self.mode_state.current() == EditorMode::Normal
+            && self.mode_state.apply(ModeEvent::EnterMultiCursor).is_err()
+        {
+            return false;
+        }
+        let pos = char_idx.min(len_chars);
+        if pos == self.cursor_char_idx || self.virtual_cursors.iter().any(|vc| vc.char_idx == pos) {
+            return true; // idempotent — cursor already there
+        }
+        self.virtual_cursors.push(VirtualCursor {
+            char_idx: pos,
+            selection_start: None,
+            selection_end: None,
+        });
         self.bump_revision();
         true
     }
@@ -608,12 +643,14 @@ impl AppState {
         // New caret for site k: end of its pasted copy, shifted by the net delta
         // (insert − delete) of every later site — later starts are strictly
         // smaller and the ranges are disjoint, so all of them shift it.
-        let mut suffix_shift = 0usize;
+        // Signed: pasting text SHORTER than the replaced selection shifts later
+        // sites left (negative delta) — usize saturation would strand carets.
+        let mut suffix_shift = 0isize;
         let mut updated: Vec<(usize, usize)> = Vec::with_capacity(sites.len());
         for &(caret, ds, dl) in sites.iter().rev() {
-            let new_pos = ds + inserted_len + suffix_shift;
-            updated.push((caret, new_pos));
-            suffix_shift += inserted_len.saturating_sub(dl);
+            let new_pos = (ds + inserted_len) as isize + suffix_shift;
+            updated.push((caret, new_pos.max(0) as usize));
+            suffix_shift += inserted_len as isize - dl as isize;
         }
         updated.reverse();
         self.apply_position_updates(&updated);

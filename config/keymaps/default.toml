@@ -314,6 +314,51 @@ mode = "normal"
 key = "P"
 command = "editor.paste_before"
 
+# `.` replay lại lệnh sửa text cuối (command-level)
+[[bindings]]
+mode = "normal"
+key = "."
+command = "editor.repeat_last_change"
+
+# ~ — đảo case ký tự dưới cursor
+[[bindings]]
+mode = "normal"
+key = "~"
+command = "editor.toggle_case"
+
+# Ctrl+a / Ctrl+x — tăng/giảm số dưới cursor
+[[bindings]]
+mode = "normal"
+key = "Ctrl+a"
+command = "editor.increment_number"
+
+[[bindings]]
+mode = "normal"
+key = "Ctrl+x"
+command = "editor.decrement_number"
+
+# zt / zb — cuộn dòng cursor lên đỉnh / xuống đáy viewport
+[[bindings]]
+mode = "normal"
+key = "z t"
+command = "editor.scroll_cursor_line_top"
+
+[[bindings]]
+mode = "normal"
+key = "z b"
+command = "editor.scroll_cursor_line_bottom"
+
+# gv — chọn lại visual selection cuối; gi — insert tại vị trí insert cuối
+[[bindings]]
+mode = "normal"
+key = "g v"
+command = "editor.reselect_last_visual"
+
+[[bindings]]
+mode = "normal"
+key = "g i"
+command = "editor.insert_at_last_edit"
+
 # X = xoá ký tự trước con trỏ (Vim X ≈ backspace trong normal mode)
 [[bindings]]
 mode = "normal"
@@ -559,6 +604,33 @@ command = "editor.delete_selection"
 mode = "visual"
 key = "y"
 command = "editor.yank_selection"
+
+# > / < — indent/outdent các dòng trong selection; Tab/Shift+Tab tương đương
+[[bindings]]
+mode = "visual"
+key = ">"
+command = "editor.indent_selection"
+
+[[bindings]]
+mode = "visual"
+key = "<"
+command = "editor.outdent_selection"
+
+[[bindings]]
+mode = "visual"
+key = "Tab"
+command = "editor.indent_selection"
+
+# u / U — đổi case selection
+[[bindings]]
+mode = "visual"
+key = "u"
+command = "editor.lowercase_selection"
+
+[[bindings]]
+mode = "visual"
+key = "U"
+command = "editor.uppercase_selection"
 
 [[bindings]]
 mode = "visual"

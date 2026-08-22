@@ -348,6 +348,14 @@ impl AppState {
         char_count
     }
 
+    /// Absolute char index for a (line, byte-in-line) hit — clamped safely.
+    pub fn char_index_at(&self, line_idx: usize, byte_in_line: usize) -> usize {
+        let total = self.text.len_lines().saturating_sub(1);
+        let line = line_idx.min(total);
+        let col = self.byte_to_char_in_line(line, byte_in_line);
+        self.text.line_to_char(line) + col
+    }
+
     pub fn move_to_first_non_whitespace(&mut self) -> bool {
         self.move_to_line_first_non_blank()
     }
@@ -1164,6 +1172,254 @@ impl AppState {
 
     pub fn snap_current_scroll_to_target(&mut self) {
         self.current_scroll_y = self.target_scroll_y;
+    }
+
+    // ── Editing utilities (polish) ────────────────────────────────────────────
+
+    fn indent_unit_str(&self) -> String {
+        if self.indent_config.insert_spaces {
+            " ".repeat(self.indent_config.tab_width.max(1) as usize)
+        } else {
+            "\t".to_string()
+        }
+    }
+
+    /// `>` in Visual — prepend one indent unit to every line the selection
+    /// touches. Lines are processed bottom-up so line-start indices stay valid.
+    pub fn indent_selection(&mut self) -> bool {
+        let Some(sel) = self.visual_selection_range() else {
+            return false;
+        };
+        let unit = self.indent_unit_str();
+        let total = self.text.len_lines();
+        let last_line = sel.end_line.min(total.saturating_sub(1));
+        let mut changed = false;
+        for line_idx in (sel.start_line..=last_line).rev() {
+            changed |= self.apply_insert(self.text.line_to_char(line_idx), unit.clone());
+        }
+        if changed {
+            self.cursor_char_idx = self.first_non_blank_or_line_start(sel.start_line);
+            let (_, col) = self.cursor_line_col();
+            self.target_col = col;
+            self.dirty = true;
+            self.bump_revision();
+        }
+        changed
+    }
+
+    /// `<` in Visual — remove one indent unit from every selection line.
+    pub fn outdent_selection(&mut self) -> bool {
+        let Some(sel) = self.visual_selection_range() else {
+            return false;
+        };
+        let width = self.indent_config.tab_width.max(1) as usize;
+        let total = self.text.len_lines();
+        let last_line = sel.end_line.min(total.saturating_sub(1));
+        let mut changed = false;
+        for line_idx in (sel.start_line..=last_line).rev() {
+            let line_start = self.text.line_to_char(line_idx);
+            let line_len_chars = self.text.line(line_idx).len_chars();
+            let lead_ws = self
+                .text
+                .slice(line_start..(line_start + line_len_chars).min(self.text.len_chars()));
+            let ws_chars: Vec<char> = lead_ws
+                .chars()
+                .take_while(|&c| c == ' ' || c == '\t')
+                .collect();
+            let remove = if ws_chars.first() == Some(&'\t') {
+                1
+            } else {
+                ws_chars.len().min(width)
+            };
+            if remove > 0 {
+                changed |= self.apply_delete(line_start, remove);
+            }
+        }
+        if changed {
+            self.cursor_char_idx = self.first_non_blank_or_line_start(sel.start_line);
+            let (_, col) = self.cursor_line_col();
+            self.target_col = col;
+            self.dirty = true;
+            self.bump_revision();
+        }
+        changed
+    }
+
+    /// `~` — flip the case of the char under the cursor and advance right.
+    pub fn toggle_case_under_cursor(&mut self) -> bool {
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 {
+            return false;
+        }
+        let idx = self.cursor_char_idx.min(len_chars - 1);
+        let ch = self.text.char(idx);
+        if ch == '\n' {
+            return false;
+        }
+        let flipped: String = if ch.is_uppercase() {
+            ch.to_lowercase().collect()
+        } else {
+            ch.to_uppercase().collect()
+        };
+        if !self.apply_delete(idx, 1) || !self.apply_insert(idx, flipped) {
+            return false;
+        }
+        self.cursor_char_idx = (idx + 1).min(len_chars.saturating_sub(1));
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    /// `u` / `U` in Visual — change the case of every selected char.
+    pub fn change_case_selection(&mut self, uppercase: bool) -> bool {
+        let Some(sel) = self.visual_selection_range() else {
+            return false;
+        };
+        let old: String = self.text.slice(sel.start_char..sel.end_char).to_string();
+        let mapped: String = old
+            .chars()
+            .flat_map(|c| {
+                if uppercase {
+                    c.to_uppercase().collect::<Vec<_>>()
+                } else {
+                    c.to_lowercase().collect::<Vec<_>>()
+                }
+            })
+            .collect();
+        if mapped == old {
+            return false;
+        }
+        let len = old.chars().count();
+        if !self.apply_delete(sel.start_char, len)
+            || !self.apply_insert(sel.start_char, mapped.clone())
+        {
+            return false;
+        }
+        self.cursor_char_idx = (sel.start_char + mapped.chars().count())
+            .saturating_sub(1)
+            .min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        // Anchor intentionally kept: the dispatch arm exits Visual via
+        // apply_mode_event first so `gv` can capture the pre-edit selection.
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    /// Ctrl+a / Ctrl+x — add `delta` to the decimal number at or after the
+    /// cursor on the same line. Preserves leading-zero padding ("007" → "008").
+    pub fn increment_number_under_cursor(&mut self, delta: i64) -> bool {
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 {
+            return false;
+        }
+        let cursor = self.cursor_char_idx.min(len_chars.saturating_sub(1));
+        let line_idx = self.text.char_to_line(cursor);
+        let line_start = self.text.line_to_char(line_idx);
+        let line_end = line_start + self.text.line(line_idx).len_chars();
+
+        // First digit at or after the cursor on this line.
+        let Some(digit_pos) = (cursor..line_end).find(|&i| self.text.char(i).is_ascii_digit())
+        else {
+            return false;
+        };
+        // Cursor may sit mid-number ("12|99") — walk left to the run's first
+        // digit so the WHOLE number is edited, not just the tail.
+        let mut first_digit = digit_pos;
+        while first_digit > line_start && self.text.char(first_digit - 1).is_ascii_digit() {
+            first_digit -= 1;
+        }
+        // Optional '-' glued to the left of the digit run.
+        let num_start = if first_digit > line_start && self.text.char(first_digit - 1) == '-' {
+            first_digit - 1
+        } else {
+            first_digit
+        };
+        let mut num_end = digit_pos;
+        while num_end < line_end && self.text.char(num_end).is_ascii_digit() {
+            num_end += 1;
+        }
+
+        let token: String = self.text.slice(num_start..num_end).to_string();
+        let negative = token.starts_with('-');
+        let digits_only = token.trim_start_matches('-').to_string();
+        let Ok(old_value): std::result::Result<i128, _> = digits_only.parse() else {
+            return false;
+        };
+        let signed_old = if negative { -old_value } else { old_value };
+        let new_value = signed_old + delta as i128;
+        let magnitude = new_value.abs().to_string();
+        // Vim-style: a multi-digit run with leading zeros keeps its original width.
+        let padded = if digits_only.len() > 1 && digits_only.starts_with('0') {
+            format!("{:0>width$}", magnitude, width = digits_only.len())
+        } else {
+            magnitude
+        };
+        let replacement = if new_value < 0 {
+            format!("-{padded}")
+        } else {
+            padded
+        };
+
+        if replacement == token {
+            return false;
+        }
+        let del_len = num_end - num_start;
+        if !self.apply_delete(num_start, del_len)
+            || !self.apply_insert(num_start, replacement.clone())
+        {
+            return false;
+        }
+        let new_end = num_start + replacement.chars().count();
+        self.cursor_char_idx = (new_end.saturating_sub(1)).min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    /// `gv` — restore the last Visual selection (range + linewise-ness).
+    pub fn reselect_last_visual(&mut self) -> bool {
+        let Some((start, end, linewise)) = self.last_visual_selection else {
+            return false;
+        };
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 || start >= len_chars {
+            return false;
+        }
+        if self.current_mode() != EditorMode::Visual
+            && self.can_apply_mode_event(ModeEvent::EnterVisual)
+        {
+            let _ = self.apply_mode_event(ModeEvent::EnterVisual);
+        }
+        self.visual_line_mode = linewise;
+        self.selection_anchor_char_idx = Some(start);
+        self.cursor_char_idx = end.saturating_sub(1).min(len_chars - 1);
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.bump_revision();
+        true
+    }
+
+    /// `gi` — jump to where Insert mode was last left, then enter Insert.
+    pub fn enter_insert_at_last_edit(&mut self) -> bool {
+        let Some(pos) = self.last_insert_char_idx else {
+            return false;
+        };
+        let len_chars = self.text.len_chars();
+        self.cursor_char_idx = pos.min(len_chars);
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        if self.can_apply_mode_event(ModeEvent::EnterInsert) {
+            let _ = self.apply_mode_event(ModeEvent::EnterInsert);
+            true
+        } else {
+            false
+        }
     }
 }
 

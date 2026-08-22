@@ -2510,6 +2510,25 @@ mod tests {
         assert_eq!(state.text_string(), " bar ");
     }
 
+    /// Replace-paste with text SHORTER than the selections: later carets must
+    /// shift LEFT (negative suffix delta — regression for usize saturation).
+    #[test]
+    fn multi_insert_replace_with_shorter_text_places_carets_after_each_copy() {
+        let mut state = setup_multi_cursor("foo foo tail");
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next()); // primary sel [0,3)
+        assert!(state.multi_cursor_add_next()); // virtual sel [4,7)
+
+        assert!(state.multi_insert_text("X"));
+        assert_eq!(state.text_string(), "X X tail");
+        assert_eq!(state.cursor_char_idx, 1, "primary caret right after its copy");
+        assert_eq!(
+            state.virtual_cursors()[0].char_idx,
+            3,
+            "virtual caret right after its copy, shifted left by the shrink"
+        );
+    }
+
     /// Three occurrences — verifies each virtual cursor position is independently
     /// adjusted by the total chars deleted below it.
     #[test]

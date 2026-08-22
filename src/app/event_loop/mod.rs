@@ -128,6 +128,12 @@ pub struct AppShell {
     right_agent_label: Option<String>,
     /// Selection index in the in-panel AI-agent picker (AI Chat tab, no agent).
     ai_agent_picker_selected: usize,
+    /// Last text-editing command recorded for `.` (RepeatLastChange) replay.
+    last_edit_command: Option<Command>,
+    /// Char index where an editor text drag started (mouse selection).
+    editor_text_drag_anchor: Option<usize>,
+    /// Previous editor-text press for the double-click word-select gesture.
+    last_editor_text_click: Option<(std::time::Instant, (f32, f32))>,
     /// When `Some`, this command string will be written into the right PTY
     /// immediately after `PtySpawned` is received for the right terminal.
     right_pty_startup_command: Option<String>,

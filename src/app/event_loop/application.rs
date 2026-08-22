@@ -1035,6 +1035,111 @@ impl AppShell {
     /// keyboard focus to the clicked region. A click in the center editor pane
     /// (canvas active, not on a card) returns to the main editor, leaving any
     /// in-card edit. Show/hide of the canvas stays F8's job.
+    /// Hit-test an editor-local screen point to an absolute char index.
+    /// Returns None when the point is outside the editor text viewport.
+    fn editor_char_hit_at(&self, x: f32, y: f32) -> Option<usize> {
+        // Canvas-active: the editor buffer is hidden — a center click belongs to
+        // the canvas / handle_click_focus (canvas→editor handoff), never a caret.
+        if self.should_show_welcome()
+            || self.app_state.active_buffer_is_terminal()
+            || self.app_state.is_canvas_active()
+        {
+            return None;
+        }
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let bounds = layout.model.find(RegionId::Center)?;
+        let center_bounds = [bounds.x, bounds.y, bounds.width, bounds.height];
+        if !(x >= center_bounds[0]
+            && x <= center_bounds[0] + center_bounds[2]
+            && y >= center_bounds[1]
+            && y <= center_bounds[1] + center_bounds[3])
+        {
+            return None;
+        }
+        self.renderer
+            .as_ref()?
+            .hit_test_editor_char_index(&self.app_state, center_bounds, x, y)
+    }
+
+    /// Left press inside the editor text area: place caret / select word /
+    /// add cursor (Alt). Returns true when the click was consumed.
+    fn handle_editor_text_mouse_press(&mut self) -> bool {
+        let Some((x, y)) = self.last_cursor_position else {
+            return false;
+        };
+        if !matches!(
+            self.app_state.current_mode(),
+            EditorMode::Normal
+                | EditorMode::Visual
+                | EditorMode::VisualBlock
+                | EditorMode::Insert
+                | EditorMode::MultiCursor
+                | EditorMode::MultiInsert
+        ) {
+            return false;
+        }
+        let Some(hit) = self.editor_char_hit_at(x, y) else {
+            return false;
+        };
+
+        // Consuming the click here skips handle_click_focus — route keyboard
+        // focus to the editor ourselves (click from sidebar/panel into text).
+        if self.focus_manager.current() != FocusTarget::CenterEditor {
+            self.focus_manager.set(FocusTarget::CenterEditor);
+            self.editor_needs_layout = true;
+            self.sidebar_needs_layout = true;
+        }
+
+        let now = std::time::Instant::now();
+        let double_click = self
+            .last_editor_text_click
+            .take()
+            .is_some_and(|(t, (px, py))| {
+                now.duration_since(t) < macos_double_click_interval()
+                    && ((px - x) * (px - x) + (py - y) * (py - y)).sqrt()
+                        < TITLEBAR_DOUBLE_CLICK_DISTANCE_PX
+            });
+        if !double_click {
+            self.last_editor_text_click = Some((now, (x, y)));
+        }
+
+        if self.input_handler.current_modifiers().alt_key()
+            && !matches!(self.app_state.current_mode(), EditorMode::Insert)
+        {
+            return self.app_state.add_cursor_at(hit);
+        }
+        if double_click {
+            return self.app_state.select_word_at(hit);
+        }
+        // Plain press: caret to the point; a following drag extends selection.
+        self.editor_text_drag_anchor = Some(hit);
+        self.app_state.place_caret_at(hit)
+    }
+
+    /// CursorMoved during an active editor text drag — extend the selection.
+    fn update_editor_text_drag(&mut self, x: f32, y: f32) -> bool {
+        let Some(anchor) = self.editor_text_drag_anchor else {
+            return false;
+        };
+        // Drag only makes sense from Normal-ish starts; Insert keeps its caret.
+        if matches!(
+            self.app_state.current_mode(),
+            EditorMode::Insert | EditorMode::MultiInsert
+        ) {
+            return false;
+        }
+        let Some(head) = self.editor_char_hit_at(x, y) else {
+            return false;
+        };
+        if head == anchor && self.app_state.current_mode() == EditorMode::Normal {
+            return false; // pointer hasn't moved past the press point yet
+        }
+        self.app_state.drag_select_to(anchor, head)
+    }
+
+    /// Left press inside the editor text area — see [`Self::handle_editor_text_mouse_press`].
     pub(super) fn handle_click_focus(&mut self) -> bool {
         use crate::workbench::region_model::RegionId;
         let Some((x, y)) = self.last_cursor_position else {
@@ -1934,6 +2039,8 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     if self.update_pointer_drag(cursor) {
                         self.request_redraw();
                     }
+                } else if self.update_editor_text_drag(cursor.0, cursor.1) {
+                    self.request_redraw();
                 } else if self.update_hover_affordance(cursor) {
                     self.request_redraw();
                 }
@@ -1984,6 +2091,15 @@ impl ApplicationHandler<AppEvent> for AppShell {
                         self.request_redraw();
                         return;
                     }
+                    if button == MouseButton::Left
+                        && state == ElementState::Released
+                        && self.editor_text_drag_anchor.take().is_some()
+                    {
+                        // Editor text selection drag finished; the Visual
+                        // selection persists until Esc / a new press.
+                        self.request_redraw();
+                        return;
+                    }
                     if self.handle_titlebar_mouse_release() {
                         self.request_redraw();
                         return;
@@ -2024,6 +2140,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed
                     && self.handle_bottom_tab_mouse_click()
+                {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_editor_text_mouse_press()
                 {
                     self.request_redraw();
                 } else if button == MouseButton::Left
@@ -4097,7 +4218,7 @@ mod tests {
         focus_manager::FocusTarget,
         region_model::{FlatRegion, RegionBounds, RegionId},
     };
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use winit::event::MouseButton;
 
     #[test]

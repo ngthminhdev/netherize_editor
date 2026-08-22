@@ -199,6 +199,13 @@ fn dispatch_command_with_clipboard_once(
             | Command::MultiCursorAppendAfter
             | Command::MultiCursorChange
             | Command::MultiCursorDelete
+            | Command::IndentSelection
+            | Command::OutdentSelection
+            | Command::ToggleCaseUnderCursor
+            | Command::LowercaseSelection
+            | Command::UppercaseSelection
+            | Command::IncrementNumberUnderCursor
+            | Command::DecrementNumberUnderCursor
     );
     if is_text_mutation && ctx.app_state.active_text_buffer_missing_on_disk() {
         return DispatchReport::success(
@@ -254,7 +261,26 @@ fn dispatch_command_with_clipboard_once(
         | Command::MultiCursorAppendAfter
         | Command::MultiCursorChange
         | Command::MultiCursorDelete
-        | Command::MultiCursorSelectAll => editing::dispatch(&mut ctx, command),
+        | Command::MultiCursorSelectAll
+        | Command::IndentSelection
+        | Command::OutdentSelection
+        | Command::ToggleCaseUnderCursor
+        | Command::LowercaseSelection
+        | Command::UppercaseSelection
+        | Command::IncrementNumberUnderCursor
+        | Command::DecrementNumberUnderCursor
+        | Command::ReselectLastVisual
+        | Command::InsertAtLastEdit => editing::dispatch(&mut ctx, command),
+        // `.` is replayed one level up by the event loop (needs its own state);
+        // direct core dispatch reports it as consumed-but-unchanged.
+        Command::RepeatLastChange => DispatchReport::success_with_flags(
+            "Dispatch: repeat_last_change handled by event loop",
+            true,
+            false,
+        ),
+        Command::ScrollCursorLineTop | Command::ScrollCursorLineBottom => {
+            editing::dispatch(&mut ctx, command)
+        }
         Command::MoveLeft
         | Command::MoveRight
         | Command::MoveUp

@@ -245,12 +245,33 @@ impl AppState {
         self.mode_state.can_apply(event)
     }
 
+    /// Record the live Visual selection as the `gv` target. Call while the
+    /// selection is still intact — i.e. BEFORE clearing the anchor or leaving
+    /// Visual mode (the anchor-clearing trap: helpers that clear
+    /// `selection_anchor_char_idx` first make this a no-op).
+    /// ponytail: gv restores char/line-wise only; VisualBlock has no
+    /// block-shaped record and is not captured.
+    pub fn capture_last_visual_selection(&mut self) {
+        if let Some(sel) = self.visual_selection_range() {
+            self.last_visual_selection =
+                Some((sel.start_char, sel.end_char, self.visual_line_mode));
+        }
+    }
+
     pub fn apply_mode_event(
         &mut self,
         event: ModeEvent,
     ) -> Result<ModeTransitionResult, ModeTransitionError> {
+        // Capture the selection while Visual mode is still active — replayed by `gv`.
+        if self.mode_state.current() == EditorMode::Visual
+            && !matches!(event, ModeEvent::EnterVisual | ModeEvent::EnterVisualBlock)
+        {
+            self.capture_last_visual_selection();
+        }
         let result = self.mode_state.apply(event)?;
         if result.from == EditorMode::Insert && result.to != EditorMode::Insert {
+            // Remember where typing stopped — target for `gi`.
+            self.last_insert_char_idx = Some(self.cursor_char_idx);
             let _ = self.commit_transaction();
             self.inline_suggestion = None;
         }
@@ -347,6 +368,8 @@ impl AppState {
             target_scroll_y: self.target_scroll_y,
             current_scroll_y: self.current_scroll_y,
             scroll_column: self.scroll_column,
+            last_visual_selection: self.last_visual_selection,
+            last_insert_char_idx: self.last_insert_char_idx,
         }
     }
 
@@ -373,6 +396,8 @@ impl AppState {
         self.current_scroll_y = state.current_scroll_y.min(max_scroll);
         self.scroll_column = state.scroll_column;
         self.visual_line_mode = state.visual_line_mode && self.selection_anchor_char_idx.is_some();
+        self.last_visual_selection = state.last_visual_selection;
+        self.last_insert_char_idx = state.last_insert_char_idx;
     }
 
     pub(super) fn ensure_current_transaction(&mut self) {
@@ -1448,6 +1473,8 @@ impl AppState {
         self.dirty = false;
         self.external_conflict = None;
         self.visual_line_mode = false;
+        self.last_visual_selection = None;
+        self.last_insert_char_idx = None;
         let _ = self.clear_semantic_symbol_highlights();
         self.clear_history();
         let _ = self.refresh_active_search_highlights();

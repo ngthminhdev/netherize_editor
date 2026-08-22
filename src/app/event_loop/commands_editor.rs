@@ -121,6 +121,8 @@ impl AppShell {
             Command::ScrollHalfPageUp
             | Command::ScrollHalfPageDown
             | Command::CenterCursorLine
+            | Command::ScrollCursorLineTop
+            | Command::ScrollCursorLineBottom
             | Command::MoveToFirstLine
             | Command::MoveToLastLine => {
                 let viewport_lines = self.editor_viewport_lines();
@@ -136,6 +138,16 @@ impl AppShell {
                     }
                     Command::CenterCursorLine => {
                         self.app_state.center_cursor_line_animated(viewport_lines);
+                    }
+                    Command::ScrollCursorLineTop => {
+                        let (cursor_line, _) = self.app_state.cursor_line_col();
+                        self.app_state.set_target_scroll_line(cursor_line);
+                    }
+                    Command::ScrollCursorLineBottom => {
+                        let (cursor_line, _) = self.app_state.cursor_line_col();
+                        self.app_state.set_target_scroll_line(
+                            cursor_line.saturating_sub(viewport_lines.saturating_sub(1)),
+                        );
                     }
                     Command::MoveToFirstLine => {
                         self.app_state.move_to_first_line();

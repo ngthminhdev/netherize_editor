@@ -523,6 +523,8 @@ impl AppState {
         let Some(selection) = self.visual_selection_range() else {
             return false;
         };
+        // Anchor is cleared below, before the caller's mode event — capture for gv now.
+        self.capture_last_visual_selection();
 
         let start = selection.start_char;
         let len = selection.end_char - selection.start_char;
@@ -554,6 +556,8 @@ impl AppState {
         let Some(selection) = self.visual_selection_range() else {
             return false;
         };
+        // Anchor is cleared below, before the caller's mode event — capture for gv now.
+        self.capture_last_visual_selection();
 
         self.apply_delete(
             selection.start_char,
@@ -564,6 +568,87 @@ impl AppState {
         self.target_col = col;
         self.selection_anchor_char_idx = None;
         self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    /// Mouse click — collapse any selection and move the caret to `char_idx`.
+    /// Exits Visual/MultiCursor modes (virtual cursors are auto-cleared by the
+    /// mode transition).
+    pub fn place_caret_at(&mut self, char_idx: usize) -> bool {
+        let len_chars = self.text.len_chars();
+        match self.current_mode() {
+            EditorMode::Visual | EditorMode::VisualBlock | EditorMode::MultiCursor => {
+                let _ = self.apply_mode_event(ModeEvent::EnterNormal);
+                let _ = self.clear_visual_selection();
+            }
+            _ => {}
+        }
+        self.cursor_char_idx = char_idx.min(len_chars);
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.selection_anchor_char_idx = None;
+        self.bump_revision();
+        true
+    }
+
+    /// Double-click — select the word at `char_idx` (Visual charwise).
+    pub fn select_word_at(&mut self, char_idx: usize) -> bool {
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 {
+            return false;
+        }
+        let pos = char_idx.min(len_chars - 1);
+        if self.text.char(pos) == '\n' {
+            return false;
+        }
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let mut start = pos;
+        while start > 0 && is_word_char(self.text.char(start - 1)) {
+            start -= 1;
+        }
+        let mut end = pos + 1;
+        while end < len_chars && is_word_char(self.text.char(end)) {
+            end += 1;
+        }
+        if !is_word_char(self.text.char(pos)) {
+            // On whitespace/punctuation — select that single char instead.
+            (start, end) = (pos, pos + 1);
+        }
+
+        if self.current_mode() != EditorMode::Visual {
+            if !self.can_apply_mode_event(ModeEvent::EnterVisual) {
+                return false;
+            }
+            let _ = self.apply_mode_event(ModeEvent::EnterVisual);
+        }
+        self.visual_line_mode = false;
+        self.selection_anchor_char_idx = Some(start);
+        self.cursor_char_idx = end - 1;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.bump_revision();
+        true
+    }
+
+    /// Mouse drag — anchor stays fixed, head follows the pointer. Enters Visual
+    /// charwise on the first movement.
+    pub fn drag_select_to(&mut self, anchor_char: usize, head_char: usize) -> bool {
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 {
+            return false;
+        }
+        if self.current_mode() != EditorMode::Visual {
+            if !self.can_apply_mode_event(ModeEvent::EnterVisual) {
+                return false;
+            }
+            let _ = self.apply_mode_event(ModeEvent::EnterVisual);
+            self.visual_line_mode = false;
+        }
+        self.selection_anchor_char_idx = Some(anchor_char.min(len_chars));
+        self.cursor_char_idx = head_char.min(len_chars - 1);
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
         self.bump_revision();
         true
     }

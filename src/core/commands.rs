@@ -589,6 +589,32 @@ pub enum Command {
     ToggleFoldAll,
     /// Collapse/expand file groups in FuzzyPicker and References buffers.
     ToggleCollapseExpand,
+
+    // ── Editing utilities (Module: Polish) ────────────────────────────────────
+    /// `>` in Visual — indent every line the selection touches by one unit.
+    IndentSelection,
+    /// `<` in Visual — outdent every line the selection touches by one unit.
+    OutdentSelection,
+    /// `~` in Normal — flip the case of the char under the cursor, move right.
+    ToggleCaseUnderCursor,
+    /// `u` in Visual — lowercase every char of the selection.
+    LowercaseSelection,
+    /// `U` in Visual — uppercase every char of the selection.
+    UppercaseSelection,
+    /// Ctrl+a in Normal — increment the decimal number under/after the cursor.
+    IncrementNumberUnderCursor,
+    /// Ctrl+x in Normal — decrement the decimal number under/after the cursor.
+    DecrementNumberUnderCursor,
+    /// `zt` — scroll so the cursor line becomes the top visible line.
+    ScrollCursorLineTop,
+    /// `zb` — scroll so the cursor line becomes the bottom visible line.
+    ScrollCursorLineBottom,
+    /// `gv` — reselect the last Visual selection (keeps linewise-ness).
+    ReselectLastVisual,
+    /// `gi` — move to where Insert mode was last left and enter Insert.
+    InsertAtLastEdit,
+    /// `.` — replay the last recorded text-editing command (command-level).
+    RepeatLastChange,
 }
 
 impl Command {

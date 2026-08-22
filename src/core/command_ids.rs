@@ -197,6 +197,20 @@ pub const MULTI_CURSOR_SELECT_ALL: &str = "multicursor.select_all";
 pub const TOGGLE_FOLD: &str = "editor.toggle_fold";
 pub const TOGGLE_FOLD_ALL: &str = "editor.toggle_fold_all";
 
+// ── Editing utilities (polish) ───────────────────────────────────────────────
+pub const INDENT_SELECTION: &str = "editor.indent_selection";
+pub const OUTDENT_SELECTION: &str = "editor.outdent_selection";
+pub const TOGGLE_CASE_UNDER_CURSOR: &str = "editor.toggle_case";
+pub const LOWERCASE_SELECTION: &str = "editor.lowercase_selection";
+pub const UPPERCASE_SELECTION: &str = "editor.uppercase_selection";
+pub const INCREMENT_NUMBER_UNDER_CURSOR: &str = "editor.increment_number";
+pub const DECREMENT_NUMBER_UNDER_CURSOR: &str = "editor.decrement_number";
+pub const SCROLL_CURSOR_LINE_TOP: &str = "editor.scroll_cursor_line_top";
+pub const SCROLL_CURSOR_LINE_BOTTOM: &str = "editor.scroll_cursor_line_bottom";
+pub const RESELECT_LAST_VISUAL: &str = "editor.reselect_last_visual";
+pub const INSERT_AT_LAST_EDIT: &str = "editor.insert_at_last_edit";
+pub const REPEAT_LAST_CHANGE: &str = "editor.repeat_last_change";
+
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
 pub const TOGGLE_MINIMAP: &str = "view.toggle_minimap";
@@ -513,6 +527,18 @@ pub const ALL_IDS: &[&str] = &[
     MULTI_CURSOR_CHANGE,
     MULTI_CURSOR_DELETE,
     MULTI_CURSOR_SELECT_ALL,
+    INDENT_SELECTION,
+    OUTDENT_SELECTION,
+    TOGGLE_CASE_UNDER_CURSOR,
+    LOWERCASE_SELECTION,
+    UPPERCASE_SELECTION,
+    INCREMENT_NUMBER_UNDER_CURSOR,
+    DECREMENT_NUMBER_UNDER_CURSOR,
+    SCROLL_CURSOR_LINE_TOP,
+    SCROLL_CURSOR_LINE_BOTTOM,
+    RESELECT_LAST_VISUAL,
+    INSERT_AT_LAST_EDIT,
+    REPEAT_LAST_CHANGE,
     TOGGLE_MARKDOWN_PREVIEW,
     TOGGLE_MINIMAP,
     CLOSE_SIDEBARS,
@@ -806,6 +832,18 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
         TOGGLE_FOLD => Some(Command::ToggleFold),
         TOGGLE_FOLD_ALL => Some(Command::ToggleFoldAll),
+        INDENT_SELECTION => Some(Command::IndentSelection),
+        OUTDENT_SELECTION => Some(Command::OutdentSelection),
+        TOGGLE_CASE_UNDER_CURSOR => Some(Command::ToggleCaseUnderCursor),
+        LOWERCASE_SELECTION => Some(Command::LowercaseSelection),
+        UPPERCASE_SELECTION => Some(Command::UppercaseSelection),
+        INCREMENT_NUMBER_UNDER_CURSOR => Some(Command::IncrementNumberUnderCursor),
+        DECREMENT_NUMBER_UNDER_CURSOR => Some(Command::DecrementNumberUnderCursor),
+        SCROLL_CURSOR_LINE_TOP => Some(Command::ScrollCursorLineTop),
+        SCROLL_CURSOR_LINE_BOTTOM => Some(Command::ScrollCursorLineBottom),
+        RESELECT_LAST_VISUAL => Some(Command::ReselectLastVisual),
+        INSERT_AT_LAST_EDIT => Some(Command::InsertAtLastEdit),
+        REPEAT_LAST_CHANGE => Some(Command::RepeatLastChange),
         _ => None,
     }
 }

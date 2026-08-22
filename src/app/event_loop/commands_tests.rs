@@ -5938,3 +5938,39 @@ fn gf_git_min_mode_outside_repo_skips_without_buffer() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn dot_repeat_replays_last_edit_command() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("dot-repeat.txt"), "abcdef");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+
+    // x deletes one char — recorded for `.`.
+    assert!(shell.handle_command(Command::DeleteChar));
+    assert_eq!(shell.app_state.text_string(), "bcdef");
+
+    // `.` replays it at the new cursor spot.
+    assert!(shell.handle_command(Command::RepeatLastChange));
+    assert_eq!(shell.app_state.text_string(), "cdef");
+
+    // Typing invalidates the record: `.` becomes a no-op.
+    assert!(shell.handle_command(Command::InsertChar('Z')));
+    let before = shell.app_state.text_string();
+    assert!(!shell.handle_command(Command::RepeatLastChange));
+    assert_eq!(shell.app_state.text_string(), before);
+}
+
+#[test]
+fn dot_repeat_survives_motions_and_repeats_indefinitely() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("dot-motion.txt"), "abcdef");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+
+    assert!(shell.handle_command(Command::DeleteChar)); // "bcdef"
+    // A motion between the edit and `.` must NOT clear the record (vim: edit, move, dot).
+    assert!(shell.handle_command(Command::MoveRight));
+    assert!(shell.handle_command(Command::RepeatLastChange)); // "bdef"
+    // And the record survives its own replay — `..` works.
+    assert!(shell.handle_command(Command::RepeatLastChange)); // "bef"
+    assert_eq!(shell.app_state.text_string(), "bef");
+}

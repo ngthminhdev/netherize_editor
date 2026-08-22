@@ -141,6 +141,10 @@ struct TextBufferViewState {
     target_scroll_y: f32,
     current_scroll_y: f32,
     scroll_column: usize,
+    // gv/gi targets are char offsets into THIS buffer's text — they must not
+    // leak across buffer switches.
+    last_visual_selection: Option<(usize, usize, bool)>,
+    last_insert_char_idx: Option<usize>,
 }
 
 impl Default for TextBufferViewState {
@@ -155,6 +159,8 @@ impl Default for TextBufferViewState {
             target_scroll_y: 0.0,
             current_scroll_y: 0.0,
             scroll_column: 0,
+            last_visual_selection: None,
+            last_insert_char_idx: None,
         }
     }
 }
@@ -2411,6 +2417,11 @@ pub struct AppState {
     yank_flash_range: Option<(usize, usize)>,
     /// Instant when the yank flash started, used to compute fade-out alpha.
     yank_flash_start: Option<Instant>,
+    /// Last Visual selection (start_char, end_char, linewise) captured when
+    /// leaving Visual mode — replayed by `gv`.
+    last_visual_selection: Option<(usize, usize, bool)>,
+    /// Cursor char index where Insert mode was last left — target for `gi`.
+    last_insert_char_idx: Option<usize>,
     /// Matching bracket character under the cursor, if the cursor is on a bracket.
     matched_bracket_pos: Option<usize>,
     /// Destination bracket of the most recent `%` jump.
@@ -2493,6 +2504,8 @@ impl AppState {
             test_field_edit: None,
             yank_flash_range: None,
             yank_flash_start: None,
+            last_visual_selection: None,
+            last_insert_char_idx: None,
             matched_bracket_pos: None,
             bracket_ripple_pos: None,
             bracket_ripple_start: None,
@@ -2556,6 +2569,8 @@ impl AppState {
             cursor_char_idx: 0,
             yank_flash_range: None,
             yank_flash_start: None,
+            last_visual_selection: None,
+            last_insert_char_idx: None,
             matched_bracket_pos: None,
             bracket_ripple_pos: None,
             bracket_ripple_start: None,

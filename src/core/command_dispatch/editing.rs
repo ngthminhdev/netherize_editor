@@ -798,6 +798,120 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ctx.commit_text_transaction(true);
             DispatchReport::success("Dispatch: deleted operation target", true)
         }
+        // ── Editing utilities (polish) ─────────────────────────────────────────
+        // zt/zb scroll runs in the event loop (needs viewport height); core-level
+        // dispatch just acknowledges the command.
+        Command::ScrollCursorLineTop | Command::ScrollCursorLineBottom => {
+            DispatchReport::success_with_flags(
+                "Dispatch: scroll cursor line (handled by event loop)",
+                true,
+                false,
+            )
+        }
+        Command::IndentSelection | Command::OutdentSelection => {
+            let outdent = matches!(command, Command::OutdentSelection);
+            let text_changed = if outdent {
+                ctx.app_state.outdent_selection()
+            } else {
+                ctx.app_state.indent_selection()
+            };
+            if !text_changed {
+                return DispatchReport::success_with_flags(
+                    "Dispatch: indent/outdent ignored",
+                    false,
+                    false,
+                );
+            }
+
+            let mut changed = true;
+            if ctx.app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                changed |= result.changed;
+            }
+            changed |= ctx.app_state.clear_visual_selection();
+            ctx.commit_text_transaction(changed);
+            DispatchReport::success(
+                if outdent {
+                    "Dispatch: outdented selection lines"
+                } else {
+                    "Dispatch: indented selection lines"
+                },
+                changed,
+            )
+        }
+        Command::LowercaseSelection | Command::UppercaseSelection => {
+            let uppercase = matches!(command, Command::UppercaseSelection);
+            let text_changed = ctx.app_state.change_case_selection(uppercase);
+            if !text_changed {
+                return DispatchReport::success_with_flags(
+                    "Dispatch: selection case change ignored",
+                    false,
+                    false,
+                );
+            }
+
+            let mut changed = true;
+            if ctx.app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                changed |= result.changed;
+            }
+            changed |= ctx.app_state.clear_visual_selection();
+            ctx.commit_text_transaction(changed);
+            DispatchReport::success(
+                if uppercase {
+                    "Dispatch: uppercased selection"
+                } else {
+                    "Dispatch: lowercased selection"
+                },
+                changed,
+            )
+        }
+        Command::ToggleCaseUnderCursor => {
+            let text_changed = ctx.app_state.toggle_case_under_cursor();
+            ctx.commit_text_transaction(text_changed);
+            DispatchReport::success("Dispatch: toggled char case", text_changed)
+        }
+        Command::IncrementNumberUnderCursor | Command::DecrementNumberUnderCursor => {
+            let delta = if matches!(command, Command::DecrementNumberUnderCursor) {
+                -1
+            } else {
+                1
+            };
+            let text_changed = ctx.app_state.increment_number_under_cursor(delta);
+            ctx.commit_text_transaction(text_changed);
+            DispatchReport::success(
+                if matches!(command, Command::DecrementNumberUnderCursor) {
+                    "Dispatch: decremented number under cursor"
+                } else {
+                    "Dispatch: incremented number under cursor"
+                },
+                text_changed,
+            )
+        }
+        Command::ReselectLastVisual => {
+            let changed = ctx.app_state.reselect_last_visual();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: reselected last visual selection"
+                } else {
+                    "Dispatch: gv ignored (no previous selection)"
+                },
+                changed,
+            )
+        }
+        Command::InsertAtLastEdit => {
+            let changed = ctx.app_state.enter_insert_at_last_edit();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: entered insert at last edit position"
+                } else {
+                    "Dispatch: gi ignored (no previous insert position)"
+                },
+                changed,
+            )
+        }
         // ── Multiple Cursors ──────────────────────────────────────────────────
         Command::MultiCursorAddNext => {
             // In MultiInsert mode, InsertChar/Backspace are intercepted above;
