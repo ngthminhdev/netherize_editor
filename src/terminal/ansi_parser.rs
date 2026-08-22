@@ -92,6 +92,12 @@ pub enum AnsiEvent {
     EraseDisplay(u8),
     /// Xoá tới cuối / đầu dòng.
     EraseLine(u8),
+    /// DCH (`ESC[nP`) — xoá n ký tự tại cursor, phần còn lại của dòng dồn sang trái.
+    DeleteChars(usize),
+    /// ICH (`ESC[n@`) — chèn n ô trống tại cursor, phần còn lại của dòng dồn sang phải.
+    InsertChars(usize),
+    /// ECH (`ESC[nX`) — xoá n ký tự tại cursor (blank, KHÔNG dồn dòng).
+    EraseChars(usize),
     /// CSI sequence không nhận ra — bỏ qua.
     Unknown,
 }
@@ -419,6 +425,16 @@ fn parse_csi(buf: &[u8], final_char: char) -> Vec<AnsiEvent> {
 
         // Erase Line
         'K' => vec![AnsiEvent::EraseLine(parse_first_param(param_str, 0) as u8)],
+
+        // DCH: Delete Character(s) — shell (TERM=xterm-256color) dùng khi backspace
+        // giữa dòng; thiếu nó thì ký tự đã xoá vẫn hiển thị cho tới khi bị ghi đè.
+        'P' => vec![AnsiEvent::DeleteChars(parse_first_param(param_str, 1))],
+
+        // ICH: Insert Character(s) — chèn ô trống tại cursor.
+        '@' => vec![AnsiEvent::InsertChars(parse_first_param(param_str, 1))],
+
+        // ECH: Erase Character(s) — blank n ô tại cursor, không dồn dòng.
+        'X' => vec![AnsiEvent::EraseChars(parse_first_param(param_str, 1))],
 
         // Private mode (ESC[?...h/l) — bỏ qua
         'h' | 'l' => vec![AnsiEvent::Unknown],

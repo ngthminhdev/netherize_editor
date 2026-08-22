@@ -374,6 +374,52 @@ impl TerminalGrid {
                 0
             }
 
+            AnsiEvent::DeleteChars(n) => {
+                // DCH: xoá n cell tại cursor, dồn phần còn lại của dòng sang trái,
+                // đệm blank vào cuối dòng. Clamp cho pending-wrap (cursor_col == cols).
+                let row_start = self.cursor_row * self.cols;
+                let col = self.cursor_col.min(self.cols.saturating_sub(1));
+                let n = n.min(self.cols - col);
+                if n > 0 {
+                    let start = row_start + col;
+                    let end = row_start + self.cols;
+                    self.cells.copy_within(start + n..end, start);
+                    for cell in &mut self.cells[end - n..end] {
+                        *cell = TerminalCell::blank();
+                    }
+                }
+                0
+            }
+
+            AnsiEvent::InsertChars(n) => {
+                // ICH: chèn n ô trống tại cursor, dồn phần còn lại sang phải
+                // (cell bị đẩy quá cuối dòng bị drop — đúng semantics xterm).
+                let row_start = self.cursor_row * self.cols;
+                let col = self.cursor_col.min(self.cols.saturating_sub(1));
+                let n = n.min(self.cols - col);
+                if n > 0 {
+                    let start = row_start + col;
+                    let end = row_start + self.cols;
+                    self.cells.copy_within(start..end - n, start + n);
+                    for cell in &mut self.cells[start..start + n] {
+                        *cell = TerminalCell::blank();
+                    }
+                }
+                0
+            }
+
+            AnsiEvent::EraseChars(n) => {
+                // ECH: blank n ô tại cursor, KHÔNG dồn dòng.
+                let row_start = self.cursor_row * self.cols;
+                let col = self.cursor_col.min(self.cols.saturating_sub(1));
+                let n = n.min(self.cols - col);
+                let start = row_start + col;
+                for cell in &mut self.cells[start..start + n] {
+                    *cell = TerminalCell::blank();
+                }
+                0
+            }
+
             AnsiEvent::Unknown => {
                 // Bỏ qua sequences không nhận ra.
                 0
@@ -1682,6 +1728,62 @@ mod tests {
         // Từ col 2 trở đi phải là blank.
         assert_eq!(grid.cell_at(0, 2).ch, ' ');
         assert_eq!(grid.cell_at(0, 4).ch, ' ');
+    }
+
+    #[test]
+    fn delete_chars_shifts_line_left() {
+        // DCH (`ESC[P`) — cách shell xoá ký tự giữa dòng với TERM=xterm-256color.
+        let mut grid = TerminalGrid::new(10, 3);
+        grid.feed_chunk("HELLO");
+        // Cursor về col 1 (giữa "ELLO"), xoá 1 ký tự → "HLLO".
+        grid.feed_chunk("\x1b[1;2H\x1b[P");
+        assert_eq!(grid.cell_at(0, 0).ch, 'H');
+        assert_eq!(grid.cell_at(0, 1).ch, 'L');
+        assert_eq!(grid.cell_at(0, 2).ch, 'L');
+        assert_eq!(grid.cell_at(0, 3).ch, 'O');
+        assert_eq!(grid.cell_at(0, 4).ch, ' ');
+    }
+
+    #[test]
+    fn delete_chars_multi_and_clamped_at_line_end() {
+        let mut grid = TerminalGrid::new(6, 2);
+        grid.feed_chunk("ABCDEF");
+        grid.feed_chunk("\x1b[1;2H\x1b[3P"); // xoá 3 từ col 1 → "AEF"
+        assert_eq!(grid.cell_at(0, 0).ch, 'A');
+        assert_eq!(grid.cell_at(0, 1).ch, 'E');
+        assert_eq!(grid.cell_at(0, 2).ch, 'F');
+        assert_eq!(grid.cell_at(0, 3).ch, ' ');
+        // Xoá nhiều hơn số cell còn lại → clamp, không panic.
+        grid.feed_chunk("\x1b[1;2H\x1b[99P");
+        assert_eq!(grid.cell_at(0, 0).ch, 'A');
+        assert_eq!(grid.cell_at(0, 1).ch, ' ');
+    }
+
+    #[test]
+    fn insert_chars_shifts_line_right() {
+        // ICH (`ESC[@`) — chèn ô trống tại cursor.
+        let mut grid = TerminalGrid::new(8, 2);
+        grid.feed_chunk("ABCD");
+        grid.feed_chunk("\x1b[1;2H\x1b[2@"); // chèn 2 ô tại col 1 → "A  BCD"
+        assert_eq!(grid.cell_at(0, 0).ch, 'A');
+        assert_eq!(grid.cell_at(0, 1).ch, ' ');
+        assert_eq!(grid.cell_at(0, 2).ch, ' ');
+        assert_eq!(grid.cell_at(0, 3).ch, 'B');
+        assert_eq!(grid.cell_at(0, 4).ch, 'C');
+        assert_eq!(grid.cell_at(0, 5).ch, 'D');
+    }
+
+    #[test]
+    fn erase_chars_blanks_without_shifting() {
+        // ECH (`ESC[X`) — blank n ô, phần sau giữ nguyên.
+        let mut grid = TerminalGrid::new(10, 2);
+        grid.feed_chunk("HELLO");
+        grid.feed_chunk("\x1b[1;2H\x1b[2X"); // blank 2 ô từ col 1 → "H  LO"
+        assert_eq!(grid.cell_at(0, 0).ch, 'H');
+        assert_eq!(grid.cell_at(0, 1).ch, ' ');
+        assert_eq!(grid.cell_at(0, 2).ch, ' ');
+        assert_eq!(grid.cell_at(0, 3).ch, 'L');
+        assert_eq!(grid.cell_at(0, 4).ch, 'O');
     }
 
     #[test]
