@@ -5888,3 +5888,53 @@ fn space_r_r_then_h_resizes_the_dock_on_the_first_press() {
         shell.panel_state.left.size_px
     );
 }
+
+#[test]
+fn gf_git_min_mode_missing_binary_sets_status_message() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!("netherize_gf_gitmin_{}", std::process::id()));
+    std::fs::create_dir_all(root.join(".git")).expect("create repo");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell.git_config.ui = crate::config::git_config::GitUi::GitMin;
+    // Đường dẫn tồn tại nhưng là thư mục → exec chắc chắn thất bại, không phụ
+    // thuộc việc máy có cài GitMin.app thật hay không.
+    shell.git_config.git_min_path = Some(root.clone());
+
+    let opened = shell.handle_command(Command::GitOpenLazygit);
+
+    assert!(!opened);
+    assert!(shell.pending_lazygit_buffer_index.is_none());
+    let toast = shell
+        .transient_toast
+        .as_ref()
+        .expect("launch failure toast");
+    assert!(
+        toast.message.contains("Failed to launch GitMin"),
+        "{}",
+        toast.message
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn gf_git_min_mode_outside_repo_skips_without_buffer() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!("netherize_gf_norepo_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("create plain dir");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell.git_config.ui = crate::config::git_config::GitUi::GitMin;
+
+    let opened = shell.handle_command(Command::GitOpenLazygit);
+
+    assert!(!opened);
+    assert!(shell.pending_lazygit_buffer_index.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}

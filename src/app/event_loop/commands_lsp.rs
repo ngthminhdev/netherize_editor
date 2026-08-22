@@ -310,6 +310,10 @@ impl AppShell {
             return false;
         };
 
+        if self.git_config.ui == crate::config::git_config::GitUi::GitMin {
+            return self.open_git_min_app(workspace_root);
+        }
+
         let buffer_index = self
             .app_state
             .open_terminal_buffer("[Lazygit]", Some(workspace_root.clone()));
@@ -331,6 +335,54 @@ impl AppShell {
         });
 
         true
+    }
+
+    /// `gf` khi `[git] ui = "git_min"`: spawn GitMin detached với repo root làm
+    /// argv. GitMin (single-instance) tự xử lý tab mới + focus khi đang chạy.
+    fn open_git_min_app(&mut self, workspace_root: PathBuf) -> bool {
+        use crate::config::git_config::find_git_repo_root;
+
+        let Some(repo_root) = find_git_repo_root(&workspace_root) else {
+            eprintln!(
+                "[AppShell] git_min open skipped: no git repo above {}",
+                workspace_root.display()
+            );
+            self.show_transient_toast_kind("Not inside a git repository", ToastKind::Error);
+            return false;
+        };
+
+        let Some(binary) = self.git_config.resolved_binary() else {
+            eprintln!("[AppShell] GitMin.app not found");
+            self.show_transient_toast_kind(
+                "GitMin not found — install it or set [git] git_min_path in ~/.config/netherize/ui.toml",
+                ToastKind::Error,
+            );
+            return false;
+        };
+
+        match std::process::Command::new(&binary)
+            .arg(&repo_root)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            // ponytail: reap thread thay vì tokio — spawn là fire-and-forget,
+            // upgrade lên worker topic nếu sau này cần biết exit status.
+            Ok(mut child) => {
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                true
+            }
+            Err(err) => {
+                eprintln!("[AppShell] failed to launch GitMin: {err}");
+                self.show_transient_toast_kind(
+                    format!("Failed to launch GitMin: {err}"),
+                    ToastKind::Error,
+                );
+                false
+            }
+        }
     }
 
     pub(super) fn open_lazydocker_buffer(&mut self) -> bool {
