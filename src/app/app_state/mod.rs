@@ -1605,7 +1605,12 @@ fn build_help_lines(
         "diagnostics.open_picker",
         "Diagnostics picker",
     );
-    append_help_binding(&mut lines, bindings, "git.open_lazygit", "Open lazygit");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "git.open_lazygit",
+        "Open git UI (lazygit | GitMin)",
+    );
     append_help_binding(&mut lines, bindings, "git.blame_line", "Git blame line");
     append_help_binding(
         &mut lines,
@@ -1792,7 +1797,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "terminal.tab_switch_8" => "Terminal tab 8",
         "terminal.tab_switch_9" => "Terminal tab 9",
         // ── Git ───────────────────────────────────────────────────────────
-        "git.open_lazygit" => "Open lazygit",
+        "git.open_lazygit" => "Open git UI (lazygit | GitMin)",
         "git.open_lazydocker" => "Open lazydocker",
         "git.blame_line" => "Git blame line",
         // ── Diagnostics ───────────────────────────────────────────────────

@@ -1,6 +1,19 @@
 use super::super::*;
 use crate::async_runtime::message::WorkerResultPayload;
 
+/// CLI tools đáng cảnh báo trên UI. Khi `gf` trỏ sang GitMin, thiếu lazygit
+/// không còn là vấn đề của user.
+fn critical_cli_tools(git_ui: crate::config::git_config::GitUi) -> &'static [&'static str] {
+    match git_ui {
+        crate::config::git_config::GitUi::Lazygit => {
+            &["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"]
+        }
+        crate::config::git_config::GitUi::GitMin => {
+            &["fzf", "lazydocker", "rg", "fd", "bat", "delta"]
+        }
+    }
+}
+
 pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayload) {
     match payload {
         WorkerResultPayload::SystemDepCheckResult { missing } => {
@@ -14,7 +27,7 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 state.deps_checked = true;
             }
 
-            let cli_tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
+            let cli_tools = critical_cli_tools(app.git_config.ui);
             let critical_missing: Vec<String> = missing_names
                 .iter()
                 .filter(|tool| cli_tools.contains(&tool.as_str()))
@@ -184,4 +197,16 @@ pub(super) fn handle_extension_command_finished(
     }
     app.editor_needs_layout = true;
     app.request_redraw();
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::git_config::GitUi;
+
+    #[test]
+    fn lazygit_excluded_when_git_min_is_target() {
+        assert!(super::critical_cli_tools(GitUi::Lazygit).contains(&"lazygit"));
+        assert!(!super::critical_cli_tools(GitUi::GitMin).contains(&"lazygit"));
+        assert!(super::critical_cli_tools(GitUi::GitMin).contains(&"fzf"));
+    }
 }
