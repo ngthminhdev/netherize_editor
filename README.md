@@ -15,7 +15,7 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | GPU renderer (wgpu) | ✅ Renders text, cursor, gutter, sidebar, statusbar |
 | Glyph atlas (texture packing) | ✅ Shelf-packer, uploaded to GPU |
 | Text shaping (cosmic-text) | ✅ Rich text + syntax spans |
-| Syntax highlighting (tree-sitter) | ✅ 17 languages (Rust / JS / TS / JSX / TSX / Go / Python / Dart / Java / Bash / JSON / YAML / TOML / Markdown / SQL / XML / Dockerfile / Proto) |
+| Syntax highlighting (tree-sitter) | ✅ 17 languages (Rust / JS / TS / JSX / TSX / Go / Python / Dart / Java / Bash / JSON / YAML / Markdown / SQL / XML / Dockerfile / Proto) |
 | Workbench layout engine | ✅ Region-based, resizable splits |
 | Native window lifecycle | ✅ Thresholded titlebar drag, clickable tabs, preference-aware double-click, safe dirty quit, remembered window frame |
 | File reliability | ✅ Atomic durable saves, save-error toast, 10 MiB interactive guard, dirty-buffer panic recovery |
@@ -149,6 +149,7 @@ netherize_editor/
 │   │   │   ├── helpers.rs         # Input map utilities
 │   │   │   └── tests.rs           # Input map tests
 │   │   ├── ai_agents.rs           # AI agent integration
+│   │   ├── cli_install.rs         # `netherize` CLI symlink installer (PATH management)
 │   │   ├── clipboard.rs           # Clipboard read/write (arboard wrapper)
 │   │   ├── command_palette.rs     # Command palette state + filtering
 │   │   ├── file_picker.rs         # File picker state + fuzzy results
@@ -206,9 +207,11 @@ netherize_editor/
 │   │   │   ├── editor/            # Editor components
 │   │   │   │   ├── buffers.rs     # Buffer rendering
 │   │   │   │   ├── buffers/       # Buffer sub-components
+│   │   │   │   │   └── diagnostics.rs  # Inline squiggle + hover diagnostic rendering
 │   │   │   │   ├── selections.rs  # Selection highlight rendering
 │   │   │   │   ├── overlays.rs    # Editor overlays
 │   │   │   │   ├── overlays/      # Overlay sub-components
+│   │   │   │   │   └── diagnostic_hover.rs  # Diagnostic hover popup
 │   │   │   │   ├── completion.rs  # Completion popup rendering
 │   │   │   │   ├── extensions.rs  # Editor extension rendering
 │   │   │   │   ├── fuzzy.rs       # Fuzzy match rendering
@@ -229,6 +232,7 @@ netherize_editor/
 │   │   │   │   └── shortcut_hint.rs
 │   │   │   ├── lifecycle/         # GPU frame management
 │   │   │   │   └── frame.rs
+│   │   │   ├── canvas.rs          # NetherCanvas GPU rendering (cards, chrome)
 │   │   │   ├── components.rs      # Common UI component primitives
 │   │   │   └── helpers.rs         # Shared pure helpers for render modules
 │   │   ├── caret.rs               # Cursor/caret rendering
@@ -291,7 +295,8 @@ netherize_editor/
 │   │   ├── mod.rs
 │   │   ├── model.rs               # CanvasBlock, CanvasCamera, CanvasState — pure data model
 │   │   ├── layout.rs              # Auto-arrange algorithm (column wrap + inward fill)
-│   │   └── navigation.rs          # Spatial navigation helpers (nearest-block search)
+│   │   ├── navigation.rs          # Spatial navigation helpers (nearest-block search)
+│   │   └── interaction.rs         # CanvasInteraction focus states (Navigate / EditCard)
 │   │
 │   ├── workbench/                 # UI layout + panel management
 │   │   ├── layout_engine.rs       # WorkbenchLayoutEngine — computes RegionModel from panel sizes
@@ -302,6 +307,7 @@ netherize_editor/
 │   │   ├── inspector_panel.rs     # Inspector/Right sidebar panel
 │   │   ├── text_coordinate_map.rs # Text ↔ pixel coordinate mapping
 │   │   ├── motion.rs              # Timeline-based motion primitives (ease, spring, slide)
+│   │   ├── pointer_drag.rs        # Pointer drag routing (dock resize, hover highlight)
 │   │   ├── debug_state.rs         # Debug/development state tracking
 │   │   └── mod.rs
 │   │
@@ -366,9 +372,6 @@ netherize_editor/
 │   │   ├── ai_config.rs           # AI service configuration
 │   │   └── mod.rs
 │   │
-│   ├── platform/                  # Platform-specific code (empty, reserved)
-│   └── bin/                       # Additional binary targets (empty, reserved)
-│
 ├── config/
 │   ├── themes/                    # 83 built-in theme profiles
 │   │   ├── default-dark.toml      # Default dark theme
@@ -418,6 +421,7 @@ netherize_editor/
 │   ├── MODULE12_HANDOFF_COMPACT.md  # Handoff notes for Module 12 (Phase 2+3)
 │   ├── FVM_LSP_FIX.md             # FVM LSP fix documentation
 │   ├── perf_profiling.md          # Performance profiling guide
+│   ├── project-knowledge/         # Curated lessons + bug history (lessons.md, buglog.json)
 │   └── superpowers/               # Superpowers documentation
 │
 ├── Cargo.toml
