@@ -38,6 +38,10 @@ pub enum SettingItem {
     IndentInsertSpaces {
         enabled: bool,
     },
+    /// `gf` target — true = GitMin app, false = lazygit PTY buffer.
+    GitUiTarget {
+        git_min: bool,
+    },
     InlineSuggestion {
         enabled: bool,
     },
@@ -114,6 +118,7 @@ impl SettingItem {
             Self::LineHeight { .. } => "Line Height",
             Self::IndentTabWidth { .. } => "Tab Width",
             Self::IndentInsertSpaces { .. } => "Indent Style",
+            Self::GitUiTarget { .. } => "Git UI",
             Self::InlineSuggestion { .. } => "Inline Completion",
             Self::LeetCodeAi { .. } => "LeetCode AI",
             Self::LeetCodeAiApiUrl { .. } => "LeetCode AI Endpoint",
@@ -186,6 +191,7 @@ impl SettingsState {
         line_height: f32,
         tab_width: u8,
         insert_spaces: bool,
+        git_ui_git_min: bool,
         left_width: i32,
         right_width: i32,
         bottom_height: i32,
@@ -229,6 +235,9 @@ impl SettingsState {
                 },
                 SettingItem::IndentInsertSpaces {
                     enabled: insert_spaces,
+                },
+                SettingItem::GitUiTarget {
+                    git_min: git_ui_git_min,
                 },
                 // AI
                 SettingItem::InlineSuggestion {
@@ -392,6 +401,7 @@ impl SettingsState {
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }
+            | SettingItem::GitUiTarget { .. }
             | SettingItem::InlineSuggestion { .. }
             | SettingItem::LeetCodeAi { .. } => return false,
         };

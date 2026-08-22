@@ -60,6 +60,7 @@ impl AppShell {
                     self.base_theme.editor.line_height,
                     self.ui_config.indent.tab_width,
                     self.ui_config.indent.insert_spaces,
+                    self.git_config.ui == crate::config::git_config::GitUi::GitMin,
                     self.ui_config.docks.left.size_px.round() as i32,
                     self.ui_config.docks.right.size_px.round() as i32,
                     self.ui_config.docks.bottom.size_px.round() as i32,

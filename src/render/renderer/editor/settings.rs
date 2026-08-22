@@ -46,9 +46,9 @@ impl SettingItem {
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
             }
-            Self::IndentTabWidth { .. } | Self::IndentInsertSpaces { .. } => {
-                SettingsSection::Editor
-            }
+            Self::IndentTabWidth { .. }
+            | Self::IndentInsertSpaces { .. }
+            | Self::GitUiTarget { .. } => SettingsSection::Editor,
             Self::InlineSuggestion { .. }
             | Self::LeetCodeAi { .. }
             | Self::LeetCodeAiApiUrl { .. }
@@ -90,6 +90,9 @@ impl SettingItem {
             }
             Self::IndentInsertSpaces { .. } => {
                 "Press Enter to toggle: spaces keep indent visible; tabs compress display."
+            }
+            Self::GitUiTarget { .. } => {
+                "Press Enter to toggle what gf opens: lazygit PTY buffer or the GitMin app."
             }
             Self::InlineSuggestion { .. } => {
                 "Press Enter to toggle AI inline completion from config/ai.toml."
@@ -172,6 +175,12 @@ impl SettingItem {
             | Self::EnableOutline { enabled } => {
                 if *enabled { "true" } else { "false" }.to_string()
             }
+            Self::GitUiTarget { git_min } => if *git_min {
+                "\"GitMin\""
+            } else {
+                "\"lazygit\""
+            }
+            .to_string(),
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
             | Self::BottomPanelHeight { current } => current.to_string(),
@@ -217,6 +226,9 @@ impl SettingItem {
             Self::IndentTabWidth { current } => format!("{current} spaces"),
             Self::IndentInsertSpaces { enabled } => {
                 if *enabled { "Spaces" } else { "Tabs" }.to_string()
+            }
+            Self::GitUiTarget { git_min } => {
+                if *git_min { "GitMin" } else { "lazygit" }.to_string()
             }
             Self::InlineSuggestion { enabled } => {
                 if *enabled { "Enabled" } else { "Disabled" }.to_string()

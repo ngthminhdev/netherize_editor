@@ -90,6 +90,35 @@ impl GitConfig {
             .flatten()
             .find(|candidate| candidate.exists())
     }
+
+    /// Ghi `[git] ui` vào user override `ui.toml`, giữ nguyên mọi section khác.
+    pub fn save_ui_target(&self) -> Result<(), String> {
+        Self::write_ui_target_to(&user_config_root().join("ui.toml"), self.ui)
+    }
+
+    /// Bản testable: ghi target vào file TOML bất kỳ mà không đụng section khác.
+    pub fn write_ui_target_to(path: &Path, ui: GitUi) -> Result<(), String> {
+        let mut root = match std::fs::read_to_string(path) {
+            Ok(content) => content
+                .parse::<toml::Table>()
+                .map_err(|err| format!("parse error in {}: {err}", path.display()))?,
+            Err(_) => toml::Table::new(),
+        };
+        let git = root
+            .entry("git")
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| format!("[git] section in {} is not a table", path.display()))?;
+        let ui_str = match ui {
+            GitUi::Lazygit => "lazygit",
+            GitUi::GitMin => "git_min",
+        };
+        git.insert("ui".to_string(), toml::Value::String(ui_str.to_string()));
+        let text = toml::to_string_pretty(&root)
+            .map_err(|err| format!("serialize ui config failed: {err}"))?;
+        crate::app::persistence::atomic_write(path, text)
+            .map_err(|err| format!("write ui config failed: {err}"))
+    }
 }
 
 /// Walk up từ `start` tìm thư mục chứa `.git` (dir thường, file với worktree).
@@ -181,5 +210,63 @@ mod tests {
     #[test]
     fn find_git_repo_root_none_outside_repo() {
         assert_eq!(find_git_repo_root(Path::new("/")), None);
+    }
+
+    #[test]
+    fn write_ui_target_preserves_other_sections() {
+        let dir = unique_temp_dir("save");
+        let path = dir.join("ui.toml");
+        fs::create_dir_all(&dir).expect("create dir");
+        fs::write(
+            &path,
+            "[editor]\nfont_size = 14\n\n[git]\nui = \"lazygit\"\ngit_min_path = \"/tmp/x\"\n",
+        )
+        .expect("seed toml");
+
+        GitConfig::write_ui_target_to(&path, GitUi::GitMin).expect("save");
+
+        let value = fs::read_to_string(&path)
+            .expect("read back")
+            .parse::<toml::Table>()
+            .expect("parse back");
+        assert_eq!(
+            value
+                .get("git")
+                .and_then(|g| g.get("ui"))
+                .and_then(|v| v.as_str()),
+            Some("git_min")
+        );
+        // Section khác và key khác trong [git] phải còn nguyên.
+        assert_eq!(
+            value
+                .get("editor")
+                .and_then(|e| e.get("font_size"))
+                .and_then(|v| v.as_integer()),
+            Some(14)
+        );
+        assert_eq!(
+            value
+                .get("git")
+                .and_then(|g| g.get("git_min_path"))
+                .and_then(|v| v.as_str()),
+            Some("/tmp/x")
+        );
+
+        // File chưa tồn tại → tạo mới chỉ với [git].
+        let fresh = dir.join("fresh.toml");
+        GitConfig::write_ui_target_to(&fresh, GitUi::Lazygit).expect("create");
+        let value = fs::read_to_string(&fresh)
+            .expect("read fresh")
+            .parse::<toml::Table>()
+            .expect("parse fresh");
+        assert_eq!(
+            value
+                .get("git")
+                .and_then(|g| g.get("ui"))
+                .and_then(|v| v.as_str()),
+            Some("lazygit")
+        );
+
+        let _ = fs::remove_dir_all(dir);
     }
 }

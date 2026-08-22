@@ -458,6 +458,27 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 true
             }
+            crate::app::app_state::SettingItem::GitUiTarget { git_min } => {
+                let next = !git_min;
+                self.git_config.ui = if next {
+                    crate::config::git_config::GitUi::GitMin
+                } else {
+                    crate::config::git_config::GitUi::Lazygit
+                };
+                if let Err(err) = self.git_config.save_ui_target() {
+                    eprintln!("[settings] failed to save git ui target: {err}");
+                    return false;
+                }
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::GitUiTarget { git_min }) =
+                        state.selected_item_mut()
+                {
+                    *git_min = next;
+                }
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
             crate::app::app_state::SettingItem::EnableOutline { enabled } => {
                 let next = !enabled;
                 self.ui_config.enable_outline = next;
