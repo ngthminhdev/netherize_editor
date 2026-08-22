@@ -20,7 +20,6 @@ impl Renderer {
     /// Render the three-zone status bar.
     ///
     /// Left Zone   (→): mode-pill · git-branch · dirty-dot · file-name · pending-keys
-    /// Diag Zone (⊕): error/warning badges, centered in remaining space
     /// Right Zone  (←): lsp-progress · search · cursor · encoding · language · lsp-dot
     #[allow(clippy::too_many_arguments)]
     pub fn update_statusbar_content(
@@ -35,8 +34,6 @@ impl Renderer {
         search_match_position: Option<(usize, usize)>,
         line: usize,
         col: usize,
-        diagnostics_errors: usize,
-        diagnostics_warnings: usize,
         lsp_loading: bool,
         lsp_loading_frame: u8,
         lsp_progress: Option<&str>,
@@ -69,8 +66,6 @@ impl Renderer {
             search_match_position,
             line,
             col,
-            diagnostics_errors,
-            diagnostics_warnings,
             lsp_loading,
             lsp_loading_frame,
             lsp_progress: lsp_progress.map(str::to_string),
@@ -117,7 +112,6 @@ impl Renderer {
         let warning_fg = self.theme.ui.warning.as_f32();
         let success_fg = self.theme.ui.success.as_f32();
         let dirty_color = self.theme.ui.dirty_indicator.as_f32();
-        let badge_border = with_alpha(self.theme.ui.border_color.as_f32(), 0.9);
         let amber: [f32; 4] = [0.95, 0.65, 0.15, 0.90];
 
         let mut glyphs: Vec<crate::render::glyph_instance::GlyphInstance> = Vec::new();
@@ -369,119 +363,8 @@ impl Renderer {
         let right_start =
             (bounds[0] + bounds[2] - right_pad - total_right_w).max(left_zone_end + item_gap);
 
-        // ══════════════════════════════════════════════════════════════════════════
-        // DIAG ZONE — centered on screen, clamped between the two side zones
-        // ══════════════════════════════════════════════════════════════════════════
-        let show_errors = diagnostics_errors > 0;
-        let show_warnings = diagnostics_warnings > 0;
-        let badge_height = (pill_height - 2.0).max(8.0);
-        let badge_y = bounds[1] + (bounds[3] - badge_height) * 0.5;
-        let badge_radius = if self.round_ui { 5.0 } else { 0.0 };
-        let between_gap = (font_size * 0.5).max(5.0);
-
-        let err_text = if show_errors {
-            format!(" ✗ {} ", diagnostics_errors)
-        } else {
-            String::new()
-        };
-        let warn_text = if show_warnings {
-            format!(" ⚠ {} ", diagnostics_warnings)
-        } else {
-            String::new()
-        };
-        let err_w = if show_errors {
-            estimate_monospace_width(&err_text, font_size)
-        } else {
-            0.0
-        };
-        let warn_w = if show_warnings {
-            estimate_monospace_width(&warn_text, font_size)
-        } else {
-            0.0
-        };
-        let pair_gap = if show_errors && show_warnings {
-            between_gap
-        } else {
-            0.0
-        };
-        let diag_total_w = err_w + pair_gap + warn_w;
-
-        if diag_total_w > 0.0 {
-            let screen_center = bounds[0] + bounds[2] * 0.5;
-            let diag_ideal_x = screen_center - diag_total_w * 0.5;
-            let diag_min_x = left_zone_end;
-            let diag_max_x = (right_start - diag_total_w - item_gap).max(diag_min_x);
-            let diag_x = diag_ideal_x.clamp(diag_min_x, diag_max_x);
-
-            let mut dx = diag_x;
-            if show_errors {
-                let fill = with_alpha(error_fg, 0.12);
-                chrome.push(
-                    RegionDrawInstance::new([dx, badge_y, err_w, badge_height], fill)
-                        .with_radius(badge_radius),
-                );
-                chrome.push(
-                    RegionDrawInstance::new(
-                        [
-                            dx + 1.0,
-                            badge_y + 1.0,
-                            (err_w - 2.0).max(0.0),
-                            (badge_height - 2.0).max(0.0),
-                        ],
-                        badge_border,
-                    )
-                    .with_radius((badge_radius - 1.0).max(0.0)),
-                );
-                glyphs.extend(layout_panel_text(
-                    &err_text,
-                    &mut self.statusbar_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    dx,
-                    origin_y,
-                    error_fg,
-                ));
-                dx += err_w + pair_gap;
-            }
-            if show_warnings {
-                let fill = with_alpha(warning_fg, 0.12);
-                chrome.push(
-                    RegionDrawInstance::new([dx, badge_y, warn_w, badge_height], fill)
-                        .with_radius(badge_radius),
-                );
-                chrome.push(
-                    RegionDrawInstance::new(
-                        [
-                            dx + 1.0,
-                            badge_y + 1.0,
-                            (warn_w - 2.0).max(0.0),
-                            (badge_height - 2.0).max(0.0),
-                        ],
-                        badge_border,
-                    )
-                    .with_radius((badge_radius - 1.0).max(0.0)),
-                );
-                glyphs.extend(layout_panel_text(
-                    &warn_text,
-                    &mut self.statusbar_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    dx,
-                    origin_y,
-                    warning_fg,
-                ));
-            }
-        }
-
-        // ── Pending keys (between file name and diag/right zone) ─────────────────
-        let pending_right_bound = if diag_total_w > 0.0 {
-            let screen_center = bounds[0] + bounds[2] * 0.5;
-            let diag_ideal_x = screen_center - diag_total_w * 0.5;
-            let diag_max_x = (right_start - diag_total_w - item_gap).max(left_zone_end);
-            diag_ideal_x.clamp(left_zone_end, diag_max_x)
-        } else {
-            right_start
-        };
+        // ── Pending keys (between file name and right zone) ──────────────────────
+        let pending_right_bound = right_start;
         let pending_maxw = (pending_right_bound - left_zone_end - item_gap).max(0.0);
         let pending_text = clamp_monospace_text(pending_keys, pending_maxw, font_size);
         if !pending_text.is_empty() {
@@ -538,8 +421,6 @@ impl Renderer {
                 LspStatusIndicator::Running(_) => {
                     if lsp_progress.is_some() {
                         amber
-                    } else if diagnostics_errors > 0 {
-                        error_fg
                     } else {
                         success_fg
                     }

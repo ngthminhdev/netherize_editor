@@ -3637,53 +3637,22 @@ impl AppShell {
             let mode = self.app_state.current_mode();
             let (line, col) = self.app_state.cursor_line_col();
             let pending_keys = self.input_handler.get_pending_keys();
-            let (
-                filetype,
-                git_branch,
-                is_dirty,
-                active_file_name,
-                status_line,
-                status_col,
-                diagnostics_errors,
-                diagnostics_warnings,
-            ) = if show_welcome {
-                ("Welcome", "", false, String::new(), 0, 0, 0, 0)
-            } else {
-                let filetype = self.app_state.active_filetype_label();
-                let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
-                let is_dirty = self.app_state.is_dirty();
-                // The in-card edit session (v2) never switches the active buffer,
-                // so `active_file` already IS the gc-origin file the main editor
-                // shows — no statusbar override needed.
-                let active_file_name = statusbar_source_path_label(
-                    self.app_state.active_file(),
-                    self.app_state.workspace_root_path(),
-                );
-                let (diagnostics_errors, diagnostics_warnings) = self
-                    .app_state
-                    .active_file()
-                    .and_then(|path| self.app_state.diagnostics_for_path(path))
-                    .map(|items| {
-                        items
-                            .iter()
-                            .fold((0usize, 0usize), |(e, w), item| match item.severity {
-                                Some(1) => (e + 1, w),
-                                Some(2) => (e, w + 1),
-                                _ => (e, w),
-                            })
-                    })
-                    .unwrap_or((0, 0));
-                (
-                    filetype,
-                    git_branch,
-                    is_dirty,
-                    active_file_name,
-                    line,
-                    col,
-                    diagnostics_errors,
-                    diagnostics_warnings,
-                )
-            };
+            let (filetype, git_branch, is_dirty, active_file_name, status_line, status_col) =
+                if show_welcome {
+                    ("Welcome", "", false, String::new(), 0, 0)
+                } else {
+                    let filetype = self.app_state.active_filetype_label();
+                    let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+                    let is_dirty = self.app_state.is_dirty();
+                    // The in-card edit session (v2) never switches the active buffer,
+                    // so `active_file` already IS the gc-origin file the main editor
+                    // shows — no statusbar override needed.
+                    let active_file_name = statusbar_source_path_label(
+                        self.app_state.active_file(),
+                        self.app_state.workspace_root_path(),
+                    );
+                    (filetype, git_branch, is_dirty, active_file_name, line, col)
+                };
             if let Some(renderer) = self.renderer.as_mut() {
                 let lsp_progress_label = self
                     .app_state
@@ -3759,8 +3728,6 @@ impl AppShell {
                     self.app_state.active_search_match_position(),
                     status_line,
                     status_col,
-                    diagnostics_errors,
-                    diagnostics_warnings,
                     self.pending_lsp_server.is_some(),
                     self.lsp_loading_frame,
                     lsp_progress_label.as_deref(),
