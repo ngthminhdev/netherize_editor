@@ -194,6 +194,7 @@ pub struct AppShell {
     theme: ThemeConfig,
     ui_config: UiConfig,
     ai_config: AiConfig,
+    git_config: crate::config::git_config::GitConfig,
     runtime_scale: f32,
     layout_engine: WorkbenchLayoutEngine,
     panel_state: WorkbenchPanelState,

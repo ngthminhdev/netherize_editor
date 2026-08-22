@@ -105,6 +105,7 @@ impl AppShell {
             ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
         let ai_config = AiConfig::load();
         let ui_config = UiConfig::load_active();
+        let git_config = crate::config::git_config::GitConfig::load_active();
         // Sync explicitly user-set editor metrics from ui.toml → base_theme so that
         // apply_scaled_runtime_config() renders with the persisted values, not the
         // theme-file defaults.  Fields absent from ui.toml leave base_theme unchanged.
@@ -212,6 +213,7 @@ impl AppShell {
             theme,
             ui_config,
             ai_config,
+            git_config,
             runtime_scale: 0.0,
             layout_engine,
             panel_state,
