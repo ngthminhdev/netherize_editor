@@ -325,9 +325,22 @@ impl Renderer {
         };
 
         let cx = bounds[0] + left_w * 0.5;
-        let hero_top = body_top + sx(48.0);
         let logo_max_w = sx(170.0).min((left_w - sx(88.0)).max(sx(120.0)));
         let logo_max_h = sx(170.0);
+        // Vertically center the hero column instead of anchoring it to the top:
+        // logo + title/tagline/meta offsets (86) + meta→cards gap (58) + START
+        // header (22) + 3 action cards with gaps. Mirrors the draw code below.
+        let projected_logo_h = bundled_logo()
+            .map(|logo| {
+                let scale = (logo_max_w / logo.width as f32)
+                    .min(logo_max_h / logo.height.max(1) as f32)
+                    .min(1.0);
+                (logo.height as f32 * scale).max(1.0)
+            })
+            .unwrap_or(sx(120.0));
+        let left_content_h =
+            projected_logo_h + sx(86.0 + 58.0 + 22.0) + sx(58.0) * 3.0 + sx(10.0) * 2.0;
+        let hero_top = centered_content_top(body_top, body_h, left_content_h, sx(48.0));
         let logo_y = hero_top + sx(6.0);
         let mut logo_height = sx(120.0);
 
@@ -389,8 +402,8 @@ impl Renderer {
         let version_label = self.welcome_version.clone();
         let meta_chips = [
             (version_label, fg, true),
-            ("built 2026-05-16".to_string(), fg_ghost, false),
-            ("Rust 1.82.0".to_string(), fg_ghost, false),
+            (format!("built {}", env!("BUILD_DATE")), fg_ghost, false),
+            (format!("Rust {}", env!("BUILD_RUSTC_VERSION")), fg_ghost, false),
         ];
         let meta_total_w: f32 = meta_chips
             .iter()
@@ -591,7 +604,20 @@ impl Renderer {
 
         let rx = divider_x + sx(28.0);
         let rw = bounds[0] + bounds[2] - rx - sx(32.0);
-        let mut y = body_top + sx(36.0);
+        // Center the right column too: header (25) + empty-state hint (74) or
+        // recent rows (44 each) + gap (34) + MORE ACTIONS header (24) + 5 cards.
+        let shown_recent = recent_projects.len().min(5) as f32;
+        let right_content_h = sx(25.0)
+            + if recent_projects.is_empty() {
+                sx(74.0)
+            } else {
+                0.0
+            }
+            + shown_recent * sx(44.0)
+            + sx(34.0)
+            + sx(24.0)
+            + 5.0 * (sx(54.0) + sx(10.0));
+        let mut y = centered_content_top(body_top, body_h, right_content_h, sx(36.0));
         line(
             self,
             &mut glyphs,
@@ -1015,4 +1041,41 @@ impl Renderer {
     }
 
     // ── TopBar ─────────────────────────────────────────────────────────────────
+}
+
+/// Top edge that vertically centers `content_h` inside a region, never closer
+/// than `min_offset` to the region top (tall content keeps the old top-anchored
+/// layout instead of clipping).
+fn centered_content_top(region_top: f32, region_h: f32, content_h: f32, min_offset: f32) -> f32 {
+    region_top + ((region_h - content_h) * 0.5).max(min_offset)
+}
+
+#[cfg(test)]
+mod welcome_layout_tests {
+    #[test]
+    fn build_date_env_is_iso_date() {
+        let date = env!("BUILD_DATE");
+        let bytes = date.as_bytes();
+        assert_eq!(bytes.len(), 10, "BUILD_DATE not YYYY-MM-DD: {date}");
+        for (i, b) in bytes.iter().enumerate() {
+            if i == 4 || i == 7 {
+                assert_eq!(*b, b'-', "BUILD_DATE not YYYY-MM-DD: {date}");
+            } else {
+                assert!(b.is_ascii_digit(), "BUILD_DATE not YYYY-MM-DD: {date}");
+            }
+        }
+    }
+
+    #[test]
+    fn centers_content_when_space_allows() {
+        assert_eq!(
+            super::centered_content_top(100.0, 1000.0, 400.0, 48.0),
+            400.0
+        );
+    }
+
+    #[test]
+    fn clamps_to_min_offset_when_content_fills_region() {
+        assert_eq!(super::centered_content_top(0.0, 500.0, 480.0, 48.0), 48.0);
+    }
 }

@@ -34,6 +34,23 @@ use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
 const EDITOR_BREADCRUMB_FRAME_INSET_X: f32 = 4.0;
+
+/// (errors, warnings) — LSP severity `None` counts as warning, matching the
+/// `unwrap_or` rule used for the diagnostic line highlights below.
+fn diagnostic_counts(
+    diagnostics: &[crate::async_runtime::message::LspDiagnostic],
+) -> (usize, usize) {
+    let mut errors = 0;
+    let mut warnings = 0;
+    for diagnostic in diagnostics {
+        match diagnostic.severity.unwrap_or(DIAGNOSTIC_SEVERITY_WARNING) {
+            DIAGNOSTIC_SEVERITY_ERROR => errors += 1,
+            DIAGNOSTIC_SEVERITY_WARNING => warnings += 1,
+            _ => {}
+        }
+    }
+    (errors, warnings)
+}
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
@@ -99,6 +116,61 @@ impl Renderer {
             let icon_size = (geometry.line_height * 0.82).min(geometry.font_size * 1.3);
             let icon_gap = (geometry.font_size * 0.35).max(4.0);
             let icon_y = header_y + ((header_h - icon_size).max(0.0) * 0.5);
+
+            // Right side of the breadcrumb row (was dead space): workspace-
+            // relative path + diagnostics counts, right-aligned. Skipped on
+            // narrow panes; the symbol segments truncate before this block.
+            let mut right_end = max_x;
+            if header_w > geometry.font_size * 24.0 {
+                let (error_count, warning_count) = active_diagnostics
+                    .map(diagnostic_counts)
+                    .unwrap_or((0, 0));
+                let mut chips: Vec<(String, [f32; 4])> = Vec::new();
+                if error_count > 0 {
+                    chips.push((format!("✗ {error_count}"), self.theme.ui.error.as_f32()));
+                }
+                if warning_count > 0 {
+                    chips.push((format!("⚠ {warning_count}"), self.theme.ui.warning.as_f32()));
+                }
+                let rel_path_label = app_state.active_file().and_then(|path| {
+                    let shown = app_state
+                        .workspace_root_path()
+                        .and_then(|root| path.strip_prefix(root).ok())
+                        .unwrap_or(path);
+                    let text = shown.display().to_string();
+                    let clamped =
+                        clamp_monospace_text(&text, header_w * 0.35, geometry.font_size);
+                    (!clamped.is_empty()).then_some(clamped)
+                });
+                let item_gap = estimate_monospace_width("  ", geometry.font_size);
+                for (text, color) in chips.iter().rev() {
+                    right_end -= estimate_monospace_width(text, geometry.font_size);
+                    glyphs.extend(layout_panel_text(
+                        text,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        right_end,
+                        text_y,
+                        *color,
+                    ));
+                    right_end -= item_gap;
+                }
+                if let Some(path_label) = rel_path_label {
+                    right_end -= estimate_monospace_width(&path_label, geometry.font_size);
+                    glyphs.extend(layout_panel_text(
+                        &path_label,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        right_end,
+                        text_y,
+                        self.theme.ui.fg_ghost.as_f32(),
+                    ));
+                    right_end -= item_gap;
+                }
+            }
+            let max_x = right_end.min(max_x).max(geometry.viewport_text_left);
 
             for (index, segment) in self.editor_breadcrumb_segments.iter().enumerate() {
                 let is_last = index + 1 == self.editor_breadcrumb_segments.len();
@@ -1641,5 +1713,37 @@ mod tests {
     fn strip_markdown_keeps_plain_text() {
         let input = "just plain text here";
         assert_eq!(super::strip_markdown_inline(input), "just plain text here");
+    }
+
+    #[test]
+    fn diagnostic_counts_split_errors_and_warnings() {
+        use crate::async_runtime::message::{LspDiagnostic, LspPosition, LspRange};
+        let diag = |severity| LspDiagnostic {
+            range: LspRange {
+                start: LspPosition {
+                    line: 0,
+                    character: 0,
+                },
+                end: LspPosition {
+                    line: 0,
+                    character: 1,
+                },
+            },
+            severity,
+            code: None,
+            source: None,
+            message: String::new(),
+            tags: Vec::new(),
+        };
+        // Severity None counts as warning (same unwrap_or rule as the overlay
+        // highlights); info/hint (3/4) are excluded from the breadcrumb chips.
+        let diags = [
+            diag(Some(1)),
+            diag(Some(2)),
+            diag(Some(2)),
+            diag(None),
+            diag(Some(3)),
+        ];
+        assert_eq!(super::diagnostic_counts(&diags), (1, 3));
     }
 }

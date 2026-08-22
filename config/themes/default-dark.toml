@@ -111,7 +111,7 @@ keyword = "#EACD61"       # Gold (Default Dark identity)
 # Operators such as `=`, `+`, `&&`, `->`, `!`, `??`.
 operator = "#EACD61"      # Blue-gray (Default Dark palette)
 # Punctuation such as commas, braces, and separators.
-punctuation = "#d0d7e466"
+punctuation = "#d0d7e499"
 
 # ── Giá trị (Literals) ──
 # String literals.
