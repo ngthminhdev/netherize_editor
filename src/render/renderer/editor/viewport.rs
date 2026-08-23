@@ -547,6 +547,8 @@ impl Renderer {
             || self.last_shaped_spans_fingerprint != spans_fp
             || (self.last_shaped_viewport_width - width).abs() > 0.5
             || tab_width_changed;
+        let __probe_timing = std::env::var_os("NETH_PERF_PROBE").is_some();
+        let __t0 = std::time::Instant::now();
         if needs_reshape {
             // Truncate auto-folded long lines to 100 chars + "..." before shaping
             let (display_text, adjusted_spans) = truncate_folded_lines(text, spans, app_state);
@@ -561,7 +563,9 @@ impl Renderer {
         } else {
             self.text_system.set_size(Some(width), None);
         }
+        let __t_reshape = __t0.elapsed();
 
+        let __t1 = std::time::Instant::now();
         let visual_scroll_y = visual_y_for_logical_scroll_with_folds(
             &self.text_system,
             app_state.current_scroll_y.max(0.0),
@@ -584,7 +588,9 @@ impl Renderer {
             + geometry.line_height
             + virtual_gap_y;
         let viewport_clip = Some((clip_top, clip_bottom));
+        let __t_visual_y = __t1.elapsed();
 
+        let __t2 = std::time::Instant::now();
         let result = rebuild_layout_projection(
             app_state,
             &mut self.text_system,
@@ -670,6 +676,19 @@ impl Renderer {
                     &[],
                 );
             }
+        }
+
+        let __t_projection = __t2.elapsed();
+        if __probe_timing && __t0.elapsed().as_millis() > 100 {
+            eprintln!(
+                "[perf_timing] update_editor_content total={:.0}ms reshape={:.0}ms (needs_reshape={}) visual_y={:.0}ms projection={:.0}ms rev={}",
+                __t0.elapsed().as_secs_f64() * 1000.0,
+                __t_reshape.as_secs_f64() * 1000.0,
+                needs_reshape,
+                __t_visual_y.as_secs_f64() * 1000.0,
+                __t_projection.as_secs_f64() * 1000.0,
+                current_revision,
+            );
         }
 
         self.text_pipeline

@@ -5,7 +5,7 @@ fn opening_a_file_larger_than_the_interactive_limit_is_rejected_before_reading()
     let path =
         std::env::temp_dir().join(format!("netherize-large-file-{}.txt", std::process::id()));
     let file = std::fs::File::create(&path).expect("create large file fixture");
-    file.set_len(10 * 1024 * 1024 + 1)
+    file.set_len(5 * 1024 * 1024 + 1)
         .expect("make sparse large file fixture");
     let mut state = AppState::new(PathBuf::new());
 
@@ -13,7 +13,7 @@ fn opening_a_file_larger_than_the_interactive_limit_is_rejected_before_reading()
         .open_file(path.clone())
         .expect_err("large file must be rejected");
 
-    assert!(error.contains("10 MiB"), "unexpected error: {error}");
+    assert!(error.contains("5 MiB"), "unexpected error: {error}");
     assert!(
         state.buffers().is_empty(),
         "a rejected file must not leave a dead tab behind"

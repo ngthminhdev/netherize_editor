@@ -29,10 +29,10 @@ use winit::dpi::PhysicalSize;
 
 // ── Scenario constants ────────────────────────────────────────────────────────
 const SCENARIO_ITERATIONS: usize = 100;
-// Editor hard-refuses interactive files > 10 MiB (INTERACTIVE_TEXT_FILE_LIMIT_BYTES),
+// Editor hard-refuses interactive files > 5 MiB (INTERACTIVE_TEXT_FILE_LIMIT_BYTES),
 // so this bench uses the largest openable size just under the cap.
-const LARGE_FILE_BYTES: usize = 10 * 1024 * 1024 - 64 * 1024;
-const LARGE_FILE_NAME: &str = "netherize_e2e_bench_10mb.log";
+const LARGE_FILE_BYTES: usize = 5 * 1024 * 1024 - 64 * 1024;
+const LARGE_FILE_NAME: &str = "netherize_e2e_bench_large.log";
 const WINDOW_WIDTH: u32 = 4080;
 const WINDOW_HEIGHT: u32 = 2482;
 const UNDO_BURST_CHARS: usize = 200;
@@ -69,7 +69,7 @@ fn open_large_file_state(scratch_name: &str) -> (AppState, Instant) {
     // reported fake sub-millisecond numbers for a no-op open.
     state
         .open_file(ensure_large_log_file().clone())
-        .expect("open large benchmark file (must be under 10 MiB cap)");
+        .expect("open large benchmark file (must be under 5 MiB cap)");
     let _ = state.text_len_bytes();
     let _ = state.cursor_line_col();
     (state, t0)
@@ -442,7 +442,7 @@ fn scenario_content_grep() -> (FrameSamples, usize) {
     (samples, hits)
 }
 
-// ── Scenario 12: User-supplied 100 MB log vs the 10 MiB interactive cap ──────
+// ── Scenario 12: User-supplied 100 MB log vs the 5 MiB interactive cap ──────
 fn scenario_open_user_100mb() -> (FrameSamples, String) {
     let path = PathBuf::from("large.log");
     let mut samples = FrameSamples::new(3);
@@ -527,7 +527,7 @@ fn write_json_report(stats: &[ScenarioStat], mem: &[(&str, ResourceSample)]) {
         "target_fps": 120,
         "target_frame_ms": 8.0,
         "window": { "width": WINDOW_WIDTH, "height": WINDOW_HEIGHT },
-        "large_file_cap_bytes": 10 * 1024 * 1024,
+        "large_file_cap_bytes": 5 * 1024 * 1024,
         "scenarios": scenarios,
         "memory_cpu": memory,
     });
@@ -612,7 +612,7 @@ fn main() {
     println!("=== Netherize Editor – E2E CPU Benchmark ===");
     println!("    Target: avg_frame_ms <= 8.00ms for 120 FPS");
     println!(
-        "    Resolution: {}x{} | Large-file cap: 10 MiB (editor limit)\n",
+        "    Resolution: {}x{} | Large-file cap: 5 MiB (editor limit)\n",
         WINDOW_WIDTH, WINDOW_HEIGHT
     );
 
@@ -628,7 +628,7 @@ fn main() {
 
     const TOTAL_STEPS: usize = 12;
 
-    run_step!(1, TOTAL_STEPS, "Loading 10MB file (5 iters)");
+    run_step!(1, TOTAL_STEPS, "Loading 5MB file (5 iters)");
     let load = scenario_load_large_file();
     mem_points.push(("after_open_large_file", sample_resources(&mut resource_cache)));
     println!("done");
@@ -653,11 +653,11 @@ fn main() {
     mem_points.push(("after_undo_redo", undo_resource));
     println!("done");
 
-    run_step!(6, TOTAL_STEPS, "Buffer search (whole 10MB)");
+    run_step!(6, TOTAL_STEPS, "Buffer search (whole 5MB)");
     let (search, search_matches) = scenario_search_buffer();
     println!("done ({} matches)", search_matches);
 
-    run_step!(7, TOTAL_STEPS, "Save 10MB buffer (3 iters)");
+    run_step!(7, TOTAL_STEPS, "Save 5MB buffer (3 iters)");
     let mut save_resource = ResourceSample::default();
     let (save, save_throughput) = scenario_save_file(&mut save_resource);
     println!("done ({:.0} MB/s)", save_throughput);

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use cosmic_text::{
-    Attrs, Buffer, CacheKey, Color, Family, FontSystem, Metrics, Shaping, SwashCache, SwashImage,
-    Wrap, fontdb,
+    Attrs, AttrsList, Buffer, BufferLine, CacheKey, Color, Family, FontSystem, LineEnding,
+    LineIter, Metrics, Scroll, Shaping, SwashCache, SwashImage, Wrap, fontdb,
 };
 
 const BUNDLED_GOOGLE_SANS_CODE_FONT: &[u8] =
@@ -233,8 +233,53 @@ impl TextSystem {
             Attrs::new().color(Self::rgba_u8_to_color(color_rgba)),
             family,
         );
-        self.buffer
-            .set_text(&mut self.font_system, text, &attrs, Shaping::Advanced, None);
+        // Per-line diff thay vì `Buffer::set_text` (clear + reshape TOÀN BỘ buffer):
+        // `BufferLine::set_text` giữ nguyên shaping khi text/ending/attrs không đổi,
+        // nên gõ 1 phím trên buffer lớn chỉ reshape đúng dòng bị sửa thay vì trả
+        // ~800ms reshape mọi dòng mỗi keystroke (cold-edit spike, handoff §4.3).
+        // ponytail: chèn/xoá newline làm lệch index → mọi dòng phía sau reshape lại;
+        // nâng cấp là line-identity theo rope (virtualized shaping, blocker #2).
+        let mut line_i = 0usize;
+        for (range, ending) in LineIter::new(text) {
+            let attrs_list = AttrsList::new(&attrs);
+            match self.buffer.lines.get_mut(line_i) {
+                Some(line) => {
+                    line.set_text(&text[range], ending, attrs_list);
+                }
+                None => self.buffer.lines.push(BufferLine::new(
+                    &text[range],
+                    ending,
+                    attrs_list,
+                    Shaping::Advanced,
+                )),
+            }
+            line_i += 1;
+        }
+        // Giữ contract của upstream set_text: luôn kết thúc bằng một dòng
+        // LineEnding::None (caret đứng được sau newline cuối).
+        let needs_trailing = line_i == 0
+            || self
+                .buffer
+                .lines
+                .get(line_i - 1)
+                .is_none_or(|line| line.ending() != LineEnding::None);
+        if needs_trailing {
+            let attrs_list = AttrsList::new(&attrs);
+            match self.buffer.lines.get_mut(line_i) {
+                Some(line) => {
+                    line.set_text("", LineEnding::None, attrs_list);
+                }
+                None => self.buffer.lines.push(BufferLine::new(
+                    "",
+                    LineEnding::None,
+                    attrs_list,
+                    Shaping::Advanced,
+                )),
+            }
+            line_i += 1;
+        }
+        self.buffer.lines.truncate(line_i);
+        self.buffer.set_scroll(Scroll::default());
         self.buffer.shape_until_scroll(&mut self.font_system, false);
     }
 
@@ -718,6 +763,33 @@ mod tests {
             width_with_four < width_with_eight,
             "tab width should shrink shaped tab advance: four={width_with_four}, eight={width_with_eight}"
         );
+    }
+
+    #[test]
+    fn incremental_set_text_with_color_matches_full_set_text_semantics() {
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(900.0), None);
+        let color = [0xF0, 0xF0, 0xF0, 0xFF];
+
+        // Trailing-newline contract: một dòng rỗng LineEnding::None ở cuối.
+        system.set_text_with_color("abc\n", color);
+        assert_eq!(system.buffer().layout_runs().count(), 2);
+
+        // Sửa một dòng giữa buffer: nội dung mới phải hiện ra, số dòng đúng.
+        system.set_text_with_color("abc\ndef\nghi", color);
+        assert_eq!(system.buffer().layout_runs().count(), 3);
+        system.set_text_with_color("abc\nXYZ\nghi", color);
+        let lines: Vec<String> = system
+            .buffer()
+            .lines
+            .iter()
+            .map(|l| l.text().to_string())
+            .collect();
+        assert_eq!(lines, ["abc", "XYZ", "ghi"]);
+
+        // Thu ngắn buffer phải truncate dòng thừa.
+        system.set_text_with_color("solo", color);
+        assert_eq!(system.buffer().layout_runs().count(), 1);
+        assert_eq!(system.buffer().lines.len(), 1);
     }
 
     #[test]

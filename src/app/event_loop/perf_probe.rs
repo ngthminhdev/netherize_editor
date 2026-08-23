@@ -170,8 +170,8 @@ impl SysinfoSampler {
 }
 
 fn ensure_large_log_file() -> PathBuf {
-    const BYTES: usize = 10 * 1024 * 1024 - 64 * 1024;
-    let path = std::env::temp_dir().join("netherize_probe_10mb.log");
+    const BYTES: usize = 5 * 1024 * 1024 - 64 * 1024;
+    let path = std::env::temp_dir().join("netherize_probe_large.log");
     let ok_size = fs::metadata(&path).map(|m| m.len() as usize == BYTES).unwrap_or(false);
     if !ok_size {
         let mut file = fs::File::create(&path).expect("create probe log");
@@ -216,7 +216,7 @@ impl AppShell {
                 let opened = self.app_state.open_file(path);
                 self.perf_probe.open_large_ms =
                     Some(t0.elapsed().as_secs_f64() * 1_000.0);
-                debug_assert!(opened.is_ok(), "probe log must be under the 10 MiB cap");
+                debug_assert!(opened.is_ok(), "probe log must be under the 5 MiB cap");
                 self.perf_probe.rss_after_load_mb = Some(self.perf_probe.resources.sample().0);
                 // Park mid-file so typing + scroll exercise the big buffer.
                 let _ = self.app_state.jump_to_line_and_column(150_000, 40);
@@ -511,11 +511,6 @@ fn max_of(samples: &[f64]) -> Option<f64> {
     samples.iter().cloned().fold(None::<f64>, |acc, v| {
         Some(acc.map_or(v, |m: f64| m.max(v)))
     })
-}
-
-fn fps_from(intervals_ms: &[f64]) -> Option<f64> {
-    let _ = intervals_ms;
-    None
 }
 
 fn iso_now() -> String {

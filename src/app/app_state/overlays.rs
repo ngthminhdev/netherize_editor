@@ -1,6 +1,6 @@
 use super::*;
 
-const INTERACTIVE_TEXT_FILE_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
+const INTERACTIVE_TEXT_FILE_LIMIT_BYTES: u64 = 5 * 1024 * 1024;
 
 pub(super) fn ensure_interactive_text_file_size(path: &Path) -> Result<(), String> {
     let bytes = std::fs::metadata(path)
@@ -8,9 +8,10 @@ pub(super) fn ensure_interactive_text_file_size(path: &Path) -> Result<(), Strin
         .len();
     if bytes > INTERACTIVE_TEXT_FILE_LIMIT_BYTES {
         return Err(format!(
-            "Cannot open {:?} ({:.1} MB): interactive editing supports files up to 10 MiB",
+            "Cannot open {:?} ({:.1} MB): interactive editing supports files up to {} MiB",
             path.file_name().unwrap_or(path.as_os_str()),
-            bytes as f64 / (1024.0 * 1024.0)
+            bytes as f64 / (1024.0 * 1024.0),
+            INTERACTIVE_TEXT_FILE_LIMIT_BYTES / (1024 * 1024)
         ));
     }
     Ok(())
