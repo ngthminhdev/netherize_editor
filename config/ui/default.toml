@@ -79,7 +79,7 @@ overlay_duration_ms = 280
 curve = "ease_out_cubic"
 
 [welcome]
-version = "v1.1.0-alpha"
+version = "v1.1.0"
 card_max_width = 560.0
 card_padding_x = 42.0
 card_padding_y = 34.0

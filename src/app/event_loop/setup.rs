@@ -953,13 +953,20 @@ impl AppShell {
     }
 
     pub(super) fn editor_viewport_lines(&self) -> usize {
-        if let Some(bounds) = self.last_editor_bounds {
-            let line_height = self.theme.editor.line_height;
-            let padding = 14.0 * 2.0 + line_height;
-            ((bounds[3] - padding) / line_height).floor() as usize
-        } else {
-            20
-        }
+        let line_height = self.theme.editor.line_height;
+        let Some(bounds) = self.last_editor_bounds else {
+            return 20;
+        };
+        // Mirror the renderer's clip geometry (`editor_viewport_geometry`): text
+        // rows live between the optional breadcrumb row and the bottom padding.
+        // The old constant (28 + line_height) ignored the breadcrumb row, so
+        // `zb` scrolled one line too far and clipped the cursor line off-screen.
+        let chrome = self
+            .renderer
+            .as_ref()
+            .map(|renderer| renderer.editor_text_vertical_chrome())
+            .unwrap_or(28.0 + line_height);
+        ((bounds[3] - chrome).max(0.0) / line_height).floor() as usize
     }
 
     pub(super) fn sidebar_tree_viewport_height(&self, bounds: [f32; 4]) -> f32 {

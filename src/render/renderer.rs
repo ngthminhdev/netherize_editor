@@ -109,7 +109,6 @@ pub struct TopbarTab {
 pub(super) struct TopbarLayoutKey {
     pub(super) tabs: Vec<TopbarTab>,
     pub(super) active_buffer_index: Option<usize>,
-    pub(super) project_name: String,
     pub(super) center_x: f32,
     pub(super) bounds: [f32; 4],
 }
@@ -153,6 +152,8 @@ pub(super) struct StatusbarLayoutKey {
     /// (`CANVAS` / `CANVAS·EDIT`); `None` shows the normal editor-mode pill.
     pub(super) canvas_label: Option<String>,
     pub(super) pending_keys: String,
+    /// Workspace root folder name shown between the mode pill and git branch.
+    pub(super) folder_name: String,
     pub(super) git_branch: String,
     pub(super) is_dirty: bool,
     pub(super) filetype: String,

@@ -587,11 +587,14 @@ fn build_editor_header_segments(
     theme: &ThemeConfig,
 ) -> Vec<crate::render::renderer::EditorBreadcrumbSegment> {
     let mut segments = Vec::new();
-    if let Some(name) = path
-        .and_then(|path| path.file_name())
-        .and_then(|name| name.to_str())
-    {
-        let file_icon = theme.icon_theme_for_path(path.unwrap(), false, false);
+    // No file open (all tabs closed) → no breadcrumb at all. Without this the
+    // symbol segments built from `cached_document_symbols` of the last closed
+    // file would keep rendering over the empty scratch state.
+    let Some(path) = path else {
+        return segments;
+    };
+    if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+        let file_icon = theme.icon_theme_for_path(path, false, false);
         segments.push(crate::render::renderer::EditorBreadcrumbSegment {
             text: name.to_string(),
             color: file_icon.color.as_f32(),
@@ -762,10 +765,21 @@ impl AppShell {
             (DragTarget::PanelEdge(side), DragAnchor::Panel { start_size }) => {
                 let vp = self.viewport_size();
                 let new = apply_panel_drag(side, start_size, dx, dy, vp);
+                // ui_config stores unscaled config units; panel_state is physical px.
+                let config_new = new / self.runtime_scale.max(0.5);
                 match side {
-                    PanelSide::Left => self.panel_state.left.size_px = new,
-                    PanelSide::Right => self.panel_state.right.size_px = new,
-                    PanelSide::Bottom => self.panel_state.bottom.size_px = new,
+                    PanelSide::Left => {
+                        self.panel_state.left.size_px = new;
+                        self.ui_config.docks.left.size_px = config_new;
+                    }
+                    PanelSide::Right => {
+                        self.panel_state.right.size_px = new;
+                        self.ui_config.docks.right.size_px = config_new;
+                    }
+                    PanelSide::Bottom => {
+                        self.panel_state.bottom.size_px = new;
+                        self.ui_config.docks.bottom.size_px = config_new;
+                    }
                 }
                 true
             }
@@ -815,7 +829,16 @@ impl AppShell {
 
     /// Finish any active drag.
     fn end_pointer_drag(&mut self) -> bool {
-        self.active_drag.take().is_some()
+        use crate::workbench::pointer_drag::DragTarget;
+        let finished = self.active_drag.take();
+        // Persist once per completed dock resize (config was synced per-frame).
+        if matches!(
+            finished.as_ref().map(|d| &d.target),
+            Some(DragTarget::PanelEdge(_))
+        ) {
+            let _ = self.ui_config.save_user_override();
+        }
+        finished.is_some()
     }
 
     /// While not dragging, hit-test the cursor and update the OS cursor shape +
@@ -3654,6 +3677,15 @@ impl AppShell {
             region_instances.extend(renderer.editor_chrome_instances().iter().copied());
         }
 
+        let folder_name = if show_welcome {
+            ""
+        } else {
+            self.app_state
+                .workspace_root_path()
+                .and_then(|root| root.file_name().and_then(|name| name.to_str()))
+                .unwrap_or("")
+        };
+
         if let Some(top) = layout.model.find(RegionId::TopBar) {
             let top_bounds = [top.x, top.y, top.width, top.height];
             let tabs = self
@@ -3708,21 +3740,12 @@ impl AppShell {
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
-                let project_name = if show_welcome {
-                    ""
-                } else {
-                    self.app_state
-                        .workspace_root_path()
-                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
-                        .unwrap_or("")
-                };
                 let center_x = visible_region_bounds(&flat_regions, RegionId::Center)
                     .map(|b| b[0])
                     .unwrap_or(0.0);
                 let tab_quads = renderer.update_topbar_content(
                     &tabs,
                     self.app_state.active_buffer_index(),
-                    project_name,
                     center_x,
                     top_bounds,
                 );
@@ -3811,6 +3834,7 @@ impl AppShell {
                     mode,
                     canvas_label,
                     &pending_keys,
+                    folder_name,
                     git_branch,
                     is_dirty,
                     filetype,

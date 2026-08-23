@@ -21,6 +21,8 @@ use crate::{
 };
 use cosmic_text::Metrics;
 
+use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_PAD_Y, EDITOR_BREADCRUMB_TOP_INSET};
+
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
     layout_panel_rich_text, layout_panel_text, layout_panel_text_italic, rect_to_scissor,
@@ -386,6 +388,20 @@ fn truncate_folded_lines(
 }
 
 impl Renderer {
+    /// Vertical chrome that eats into the text viewport: bottom padding + top
+    /// inset + the breadcrumb row when it is shown. Mirrors the clip geometry
+    /// in `editor_viewport_geometry` so scroll math counts truly visible rows.
+    pub(crate) fn editor_text_vertical_chrome(&self) -> f32 {
+        let breadcrumb = if self.editor_breadcrumb_segments.is_empty() {
+            0.0
+        } else {
+            self.theme.editor.line_height
+                + EDITOR_BREADCRUMB_PAD_Y * 2.0
+                + EDITOR_BREADCRUMB_GAP_Y
+        };
+        self.editor_padding_y + EDITOR_BREADCRUMB_TOP_INSET + breadcrumb
+    }
+
     pub(crate) fn set_editor_breadcrumb_segments(
         &mut self,
         segments: Vec<crate::render::renderer::EditorBreadcrumbSegment>,

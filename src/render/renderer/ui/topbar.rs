@@ -23,32 +23,6 @@ fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
     inset_scissor_rect(bounds, 4.0, 2.0)
 }
 
-fn clamp_project_name(text: &str, max_width: f32, font_size: f32) -> String {
-    if text.is_empty() || max_width <= 0.0 {
-        return String::new();
-    }
-    if estimate_monospace_width(text, font_size) <= max_width {
-        return text.to_string();
-    }
-    let char_width = (font_size * 0.6).max(1.0);
-    let max_chars = (max_width / char_width).floor() as usize;
-    if max_chars == 0 {
-        return String::new();
-    }
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    if max_chars <= 3 {
-        let count = text.chars().count();
-        return text.chars().skip(count - max_chars).collect();
-    }
-    let count = text.chars().count();
-    let mut shortened = String::from("...");
-    let suffix: String = text.chars().skip(count - (max_chars - 3)).collect();
-    shortened.push_str(&suffix);
-    shortened
-}
-
 const TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS: f32 = 150.0;
 const TOPBAR_TAB_PADDING_X: f32 = 12.0;
 const TOPBAR_TAB_SEPARATOR_WIDTH: f32 = 1.0;
@@ -167,7 +141,6 @@ impl Renderer {
         &mut self,
         tabs: &[TopbarTab],
         active_buffer_index: Option<usize>,
-        project_name: &str,
         center_x: f32,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
@@ -197,7 +170,6 @@ impl Renderer {
         let layout_key = TopbarLayoutKey {
             tabs: tabs.to_vec(),
             active_buffer_index,
-            project_name: project_name.to_string(),
             center_x,
             bounds,
         };
@@ -246,87 +218,9 @@ impl Renderer {
         } else {
             0.0
         };
-        let mut tab_x = bounds[0] + topbar_start_x;
-
-        // Render project name (current folder) after traffic light space and before tabs
-        let project = project_name.trim();
-        if !project.is_empty() && center_x > topbar_start_x {
-            let start = glyphs.len() as u32;
-
-            let left_pad = 16.0;
-            let icon_text_gap = 12.0;
-            let text_sep_gap = 16.0;
-            let sep_tab_gap = 16.0;
-
-            // let sep = "│";
-            let sep = "";
-            let sep_w = estimate_monospace_width(sep, font_size);
-            let folder_icon_size = (content_h * 0.72).min(font_size * 1.2);
-            let folder_icon_w = folder_icon_size;
-
-            // Compute maximum width available for the text itself
-            let allocated_fixed_w =
-                left_pad + folder_icon_w + icon_text_gap + text_sep_gap + sep_w + sep_tab_gap;
-            let max_text_w = (center_x - topbar_start_x - allocated_fixed_w).max(0.0);
-            let clamped_project = clamp_project_name(project, max_text_w, font_size);
-
-            if !clamped_project.is_empty() {
-                let mut draw_x = tab_x + left_pad;
-
-                // 1. Draw root folder icon
-                self.topbar_icon_instances.push(IconDrawInstance {
-                    icon: "built_in:root_folder",
-                    rect: [
-                        draw_x,
-                        content_y + (content_h - folder_icon_size) * 0.5,
-                        folder_icon_size,
-                        folder_icon_size,
-                    ],
-                    tint: [1.0, 1.0, 1.0, 1.0],
-                });
-                draw_x += folder_icon_w + icon_text_gap;
-
-                // 2. Draw folder text
-                let label_w = estimate_monospace_width(&clamped_project, font_size);
-                glyphs.extend(layout_panel_text(
-                    &clamped_project,
-                    &mut self.topbar_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    draw_x,
-                    origin_y,
-                    accent,
-                ));
-                draw_x += label_w + text_sep_gap;
-
-                // 3. Draw separator
-                glyphs.extend(layout_panel_text(
-                    sep,
-                    &mut self.topbar_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    draw_x,
-                    origin_y,
-                    inactive_fg,
-                ));
-                draw_x += sep_w;
-
-                let scissor_w = draw_x - tab_x;
-                let count = glyphs.len() as u32 - start;
-                if count > 0 {
-                    if let Some(scissor) = rect_to_scissor([tab_x, content_y, scissor_w, content_h])
-                    {
-                        text_batches.push(TextScissorBatch {
-                            scissor,
-                            range: InstanceDrawRange { start, count },
-                        });
-                    }
-                }
-            }
-        }
 
         // Align tab start exactly at the start of the main editor (center_x)
-        tab_x = bounds[0] + center_x.max(topbar_start_x);
+        let tab_x = bounds[0] + center_x.max(topbar_start_x);
 
         // Render Logo at the far right
         self.topbar_logo_image_pipeline.clear();

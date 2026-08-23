@@ -4387,6 +4387,7 @@ fn welcome_hides_when_opening_palette_surfaces() {
 #[test]
 fn resize_left_sidebar_increases_width_on_increase_command() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.runtime_scale = 1.0;
     shell.panel_state.left.visible = true;
     shell.panel_state.left.size_px = 280.0;
     shell.focus_manager.set(FocusTarget::LeftSidebar);
@@ -4401,6 +4402,7 @@ fn resize_left_sidebar_increases_width_on_increase_command() {
 #[test]
 fn resize_left_sidebar_decreases_width_on_decrease_command() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.runtime_scale = 1.0;
     shell.panel_state.left.visible = true;
     shell.panel_state.left.size_px = 280.0;
     shell.focus_manager.set(FocusTarget::LeftSidebar);
@@ -4617,6 +4619,7 @@ fn resize_editor_h_is_noop_when_left_dock_hidden() {
 #[test]
 fn resize_panel_and_ui_config_stay_in_sync() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.runtime_scale = 1.0;
     shell.panel_state.bottom.visible = true;
     shell.panel_state.bottom.size_px = 230.0;
     shell.focus_manager.set(FocusTarget::BottomPanel);

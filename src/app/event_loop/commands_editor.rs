@@ -379,6 +379,9 @@ impl AppShell {
             }
         }
         let prev_dirty = self.app_state.is_dirty();
+        // `gi` can land far off-screen; center the viewport on it like other
+        // jumps instead of leaving the caret invisible.
+        let is_gi_jump = matches!(&command, Command::InsertAtLastEdit);
         let report = if matches!(command, Command::MoveUp | Command::MoveDown)
             && self.try_move_soft_wrap_visual_line(matches!(command, Command::MoveDown))
         {
@@ -428,6 +431,13 @@ impl AppShell {
             self.refresh_open_completion_after_text_edit();
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = false;
+        }
+        if is_gi_jump && report.state_changed {
+            let viewport_lines = self.editor_viewport_lines();
+            self.app_state.center_cursor_line_animated(viewport_lines);
+            self.scroll_anim_force = true;
+            self.submit_parse_for_active_buffer(false);
+            self.react_to_cursor_jump();
         }
         if report.state_changed && should_reparse {
             self.schedule_active_buffer_git_diff_recalculation(!is_typing_edit);

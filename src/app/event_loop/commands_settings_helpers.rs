@@ -93,15 +93,16 @@ impl AppShell {
 
         match dock {
             ResizeDock::Left => {
-                self.ui_config.docks.left.size_px = next;
+                // Config stores unscaled units; panel_state holds physical px.
+                self.ui_config.docks.left.size_px = next / self.runtime_scale.max(0.5);
                 self.sidebar_needs_layout = true;
             }
             ResizeDock::Right => {
-                self.ui_config.docks.right.size_px = next;
+                self.ui_config.docks.right.size_px = next / self.runtime_scale.max(0.5);
                 self.sidebar_needs_layout = true;
             }
             ResizeDock::Bottom => {
-                self.ui_config.docks.bottom.size_px = next;
+                self.ui_config.docks.bottom.size_px = next / self.runtime_scale.max(0.5);
                 self.terminal_needs_layout = true;
             }
         }

@@ -27,6 +27,7 @@ impl Renderer {
         mode: EditorMode,
         canvas_label: Option<&str>,
         pending_keys: &str,
+        folder_name: &str,
         git_branch: &str,
         is_dirty: bool,
         filetype: &str,
@@ -58,6 +59,7 @@ impl Renderer {
             mode,
             canvas_label: canvas_label.map(str::to_string),
             pending_keys: pending_keys.to_string(),
+            folder_name: folder_name.to_string(),
             git_branch: git_branch.to_string(),
             is_dirty,
             filetype: filetype.to_string(),
@@ -178,6 +180,22 @@ impl Renderer {
         // LEFT ZONE  (fixed items — mode-pill already placed above)
         // ══════════════════════════════════════════════════════════════════════════
         let mut left_x = pill_x + pill_width + item_gap;
+
+        // ── Workspace folder ──────────────────────────────────────────────────────
+        let folder = folder_name.trim();
+        if !folder.is_empty() {
+            let folder_label = clamp_monospace_text(folder, font_size * 20.0, font_size);
+            glyphs.extend(layout_panel_text(
+                &folder_label,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x,
+                origin_y,
+                fg_dim,
+            ));
+            left_x += estimate_monospace_width(&folder_label, font_size) + item_gap;
+        }
 
         // ── Resize-mode key hint ───────────────────────────────────────────────────
         if mode == EditorMode::Resize {
