@@ -7,7 +7,7 @@ VERSION="${1:-v1.1.0}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$PROJECT_DIR/target/$APP_NAME.app"
 ZIP="$PROJECT_DIR/target/${APP_NAME}-${VERSION}-macos.zip"
-LOGO_SRC="$PROJECT_DIR/assets/app_logo_black.png"
+LOGO_SRC="$PROJECT_DIR/assets/app_logo.png"
 
 # ── 1. Build ───────────────────────────────────────────────────────────────────
 echo "Building $BINARY (release)..."

@@ -413,10 +413,6 @@ netherize_editor/
 │
 ├── assets/
 │   ├── app_logo.png               # App logo (color)
-│   ├── app_logo_black.png         # App logo (black)
-│   ├── app_logo_1.png             # App logo variant
-│   ├── app_logo_black_1.png       # App logo black variant
-│   ├── app_logo_keyboard.svg      # Keyboard logo variant
 │   └── bearded-icons/             # Bearded icon set
 │
 ├── docs/

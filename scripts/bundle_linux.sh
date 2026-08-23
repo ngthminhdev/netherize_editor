@@ -93,9 +93,9 @@ StartupNotify=true
 EOF
 
 # ── 6. Copy icon (if exists) ──────────────────────────────────────────────────
-if [ -f "$PROJECT_ROOT/assets/app_logo_black.png" ]; then
+if [ -f "$PROJECT_ROOT/assets/app_logo.png" ]; then
     echo "🎨 Copying application icon..."
-    cp "$PROJECT_ROOT/assets/app_logo_black.png" \
+    cp "$PROJECT_ROOT/assets/app_logo.png" \
        "$BUNDLE_DIR/share/icons/hicolor/256x256/apps/$APP_NAME.png"
 fi
 
