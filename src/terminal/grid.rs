@@ -621,11 +621,24 @@ impl TerminalGrid {
         changed
     }
 
+    /// "Shell-line territory": viewport ở live prompt, không có visual
+    /// selection, và virtual cursor tại-hoặc-dưới dòng shell cursor (mọi row
+    /// dưới prompt đều trống nên tính là "ở prompt" — nhờ đó G/ctrl-q luôn rơi
+    /// vào territory này). Chỉ khi đó motion/edit mới điều khiển shell qua
+    /// readline; phía trên prompt là copy-mode territory với virtual cursor.
+    pub fn shell_line_editing_active(&self) -> bool {
+        self.scroll_offset == 0
+            && self.selection_anchor.is_none()
+            && self.virtual_cursor.row >= self.live_cursor_absolute_position().row
+    }
+
     /// Đồng bộ virtual cursor (T-COPY) theo shell cursor thật sau khi PTY echo
     /// làm cursor di chuyển — cần cho vim-style line editing qua readline,
-    /// nơi mỗi motion/edit được shell thực hiện rồi echo lại.
+    /// nơi mỗi motion/edit được shell thực hiện rồi echo lại. Chỉ snap khi đang
+    /// ở shell-line territory: user đã đưa cursor lên scrollback/output thì
+    /// output mới đến không được kéo cursor về prompt.
     pub fn sync_virtual_cursor_to_shell(&mut self) {
-        if self.selection_anchor.is_none() {
+        if self.shell_line_editing_active() {
             self.virtual_cursor = self.live_cursor_absolute_position();
         }
     }
@@ -1820,6 +1833,42 @@ mod tests {
         grid.sync_virtual_cursor_to_shell();
         // Đang visual select → không nhảy virtual cursor theo shell.
         assert_eq!(grid.virtual_cursor.col, 5);
+    }
+
+    #[test]
+    fn sync_virtual_cursor_leaves_copy_mode_navigation_alone() {
+        // User đã đưa cursor lên output phía trên prompt → output/echo mới đến
+        // không được kéo cursor về prompt.
+        let mut grid = TerminalGrid::new(10, 3);
+        grid.feed_chunk("out\r\n$ cmd");
+        grid.enter_normal_mode();
+        grid.move_virtual_up();
+        let parked = grid.virtual_cursor;
+        grid.feed_chunk("\x1b[2D");
+        grid.sync_virtual_cursor_to_shell();
+        assert_eq!(grid.virtual_cursor, parked);
+    }
+
+    #[test]
+    fn shell_line_editing_active_only_at_or_below_prompt_row() {
+        let mut grid = TerminalGrid::new(10, 4);
+        grid.feed_chunk("out\r\n$ cmd");
+        grid.enter_normal_mode();
+        assert!(grid.shell_line_editing_active());
+
+        // Xuống dưới prompt (row trống) vẫn là shell-line territory → G hoạt động.
+        grid.move_virtual_down();
+        assert!(grid.shell_line_editing_active());
+
+        // Lên output phía trên prompt → copy-mode territory.
+        grid.move_virtual_up();
+        grid.move_virtual_up();
+        assert!(!grid.shell_line_editing_active());
+
+        // Visual selection tắt shell-line editing kể cả trên prompt row.
+        grid.enter_normal_mode();
+        grid.begin_selection();
+        assert!(!grid.shell_line_editing_active());
     }
 
     #[test]

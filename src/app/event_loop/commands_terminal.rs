@@ -566,15 +566,24 @@ impl AppShell {
         kind: crate::core::commands::TerminalLineEditKind,
         then_insert: bool,
     ) -> bool {
-        let at_live_prompt = self
+        use crate::core::commands::TerminalLineEditKind;
+        let shell_line = self
             .focused_terminal_grid_mut()
-            .is_some_and(|grid| grid.scroll_offset == 0);
-        if !at_live_prompt || self.focused_terminal_session_id().is_none() {
+            .is_some_and(|grid| grid.shell_line_editing_active());
+        if !shell_line || self.focused_terminal_session_id().is_none() {
             self.show_transient_toast_kind(
-                "Terminal Edit\nScroll xuống live prompt (G) để sửa dòng lệnh.".to_string(),
+                "Terminal Edit\nVề dòng lệnh (G) để sửa — thoát visual/scrollback trước."
+                    .to_string(),
                 ToastKind::Info,
             );
             return true;
+        }
+        // `p` paste system clipboard (vim flow: v → y → p). Shell kill-ring
+        // (Ctrl-Y) không chứa text đã yank bằng y nên không dùng ở đây;
+        // ponytail: dd/dw + p không di chuyển được text qua kill-ring nữa,
+        // dùng clipboard làm nguồn duy nhất.
+        if kind == TerminalLineEditKind::YankFromKillRing {
+            return self.handle_terminal_paste();
         }
         let bytes = kind.readline_bytes();
         if !bytes.is_empty() {

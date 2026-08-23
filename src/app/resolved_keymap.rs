@@ -987,9 +987,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
     // ── Vim-style shell line editing (Warp-style) ────────────────────────────
-    // Khi viewport ở live prompt (scroll_offset == 0), các op này dịch sang
-    // readline sequences và shell tự edit input line tại vị trí cursor.
-    // Khi đang scroll xem scrollback, h/l/w/b/e/0/$ giữ hành vi virtual cursor.
+    // Trong shell-line territory (ở live prompt, không visual selection, cursor
+    // tại/dưới dòng shell — TerminalGrid::shell_line_editing_active) các op này
+    // dịch sang readline sequences và shell tự edit input line tại vị trí
+    // cursor. Trên output/scrollback hoặc khi visual select, h/l/w/b/e/0/$ giữ
+    // hành vi virtual cursor.
     km.insert(
         Some("terminal_normal"),
         ph(KeyCode::KeyX),

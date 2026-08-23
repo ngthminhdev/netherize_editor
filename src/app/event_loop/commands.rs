@@ -226,10 +226,12 @@ impl AppShell {
         }
 
         // ── Vim-style shell line editing (Warp-style) ────────────────────────
-        // Khi viewport đang ở live prompt (scroll_offset == 0), motions điều
-        // khiển SHELL cursor qua readline sequences thay vì virtual cursor, và
-        // các edit op (x/d/c/p/u...) được shell thực hiện thật trên input line.
-        // Khi đã scroll lên scrollback, giữ nguyên hành vi virtual cursor.
+        // Trong "shell-line territory" (ở live prompt, không visual selection,
+        // virtual cursor tại/dưới dòng shell cursor — xem
+        // TerminalGrid::shell_line_editing_active), motions điều khiển SHELL
+        // cursor qua readline sequences và edit ops (x/d/c/p/u...) được shell
+        // thực hiện thật. Ngoài territory đó (scrollback, đã đi lên output,
+        // hoặc đang visual select) giữ nguyên hành vi virtual cursor.
         if self.app_state.current_mode() == EditorMode::TerminalNormal {
             match command {
                 Command::TerminalLineEdit(kind) => {
@@ -241,14 +243,14 @@ impl AppShell {
                 _ => {}
             }
             if let Some(bytes) = Self::shell_motion_bytes(command) {
-                let at_live_prompt = self
+                let shell_line = self
                     .focused_terminal_grid_mut()
-                    .is_some_and(|grid| grid.scroll_offset == 0);
-                if at_live_prompt && self.focused_terminal_session_id().is_some() {
+                    .is_some_and(|grid| grid.shell_line_editing_active());
+                if shell_line && self.focused_terminal_session_id().is_some() {
                     self.forward_to_pty(bytes);
                     return Some(true);
                 }
-                // Scrolled vào scrollback → rơi xuống virtual cursor bên dưới.
+                // Ngoài shell-line territory → rơi xuống virtual cursor bên dưới.
             }
         }
 

@@ -2,7 +2,10 @@ use std::time::Instant;
 
 use winit::keyboard::KeyCode;
 
-use crate::app::{input_map::PendingSequence, resolved_keymap::KeySpec};
+use crate::app::{
+    input_map::{InputFocusContext, KeybindingContext, PendingSequence},
+    resolved_keymap::KeySpec,
+};
 use crate::core::commands::{FindMotionKind, Operator, TextObjectModifier};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,20 +102,29 @@ pub(super) enum PendingState {
     LeapLabel,
 }
 
-pub(super) fn classify_pending_state(sequence: &PendingSequence) -> PendingState {
+pub(super) fn classify_pending_state(
+    sequence: &PendingSequence,
+    context: KeybindingContext,
+) -> PendingState {
     if sequence.steps.len() == 1 {
         if matches!(sequence.steps[0], KeySpec::Leader) {
             return PendingState::Leader;
         }
-        if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyD)) {
-            return PendingState::PendingOperator {
-                op: Operator::Delete,
-            };
-        }
-        if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyC)) {
-            return PendingState::PendingOperator {
-                op: Operator::Change,
-            };
+        // Operator machinery (d/c + motion/text-object) chỉ tồn tại trong
+        // editor. Ở focus khác (terminal T-COPY...) chord dd/dw/cw là keymap
+        // sequence thuần — classify thành PendingOperator sẽ nuốt phím thứ hai
+        // vào đường Operate của editor và không bao giờ dispatch chord.
+        if context.focus == InputFocusContext::Editor {
+            if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyD)) {
+                return PendingState::PendingOperator {
+                    op: Operator::Delete,
+                };
+            }
+            if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyC)) {
+                return PendingState::PendingOperator {
+                    op: Operator::Change,
+                };
+            }
         }
     }
     PendingState::Sequence

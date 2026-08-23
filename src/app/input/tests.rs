@@ -2007,6 +2007,80 @@ fn terminal_focus_f12_maps_to_focus_terminal() {
 }
 
 #[test]
+fn terminal_normal_cw_resolves_change_word() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('c', KeyCode::KeyC), &map, context, now);
+    assert!(
+        matches!(first, Some(InputRouteOutcome::NoDispatch { .. })),
+        "'c' should start a pending chord in terminal normal, got {first:?}"
+    );
+
+    let second = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, now);
+    match second {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalLineEditInsert(
+                    crate::core::commands::TerminalLineEditKind::KillWordForward
+                )
+            );
+        }
+        other => panic!("expected cw -> TerminalLineEditInsert(KillWordForward), got {other:?}"),
+    }
+}
+
+#[test]
+fn terminal_normal_dd_resolves_kill_line() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+    assert!(
+        matches!(first, Some(InputRouteOutcome::NoDispatch { .. })),
+        "'d' should start a pending chord in terminal normal, got {first:?}"
+    );
+
+    let second = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+    match second {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalLineEdit(crate::core::commands::TerminalLineEditKind::KillLine)
+            );
+        }
+        other => panic!("expected dd -> TerminalLineEdit(KillLine), got {other:?}"),
+    }
+}
+
+#[test]
+fn terminal_normal_x_resolves_delete_char() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalLineEdit(crate::core::commands::TerminalLineEditKind::DeleteChar)
+            );
+        }
+        other => panic!("expected x -> TerminalLineEdit(DeleteChar), got {other:?}"),
+    }
+}
+
+#[test]
 fn terminal_normal_does_not_forward_unbound_text_to_pty() {
     let mut handler = InputHandler::new();
     let map = make_map();

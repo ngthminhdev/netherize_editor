@@ -1129,7 +1129,7 @@ impl InputHandler {
                         )));
                     }
                     SequenceMatch::Pending(next_sequence) => {
-                        let next_state = classify_pending_state(&next_sequence);
+                        let next_state = classify_pending_state(&next_sequence, context);
                         let step_count = next_sequence.steps.len();
                         self.pending_input = Some(PendingInput {
                             state: next_state.clone(),
@@ -1348,7 +1348,7 @@ impl InputHandler {
                         )));
                     }
 
-                    let next_state = classify_pending_state(&sequence);
+                    let next_state = classify_pending_state(&sequence, context);
                     if next_state.uses_operator_count() && self.operator_count.is_none() {
                         self.operator_count = self.pending_count.take();
                     }
