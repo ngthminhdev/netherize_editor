@@ -658,9 +658,11 @@ impl Renderer {
                         warning_color,
                     ));
                 } else {
+                    // Info/hint underlines must stay legible on the dark bg —
+                    // the old 1.5px @ ~0.3 effective alpha was invisible.
                     let mut info_color = color;
-                    info_color[3] = info_color[3].clamp(0.35, 0.65);
-                    let underline_h = 1.5;
+                    info_color[3] = 0.8;
+                    let underline_h = 3.0;
                     let underline_y = line_top + (line_height_px - underline_h).max(0.0);
                     quads.push(RegionDrawInstance::new(
                         [left, underline_y, width, underline_h],

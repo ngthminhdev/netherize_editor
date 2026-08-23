@@ -235,10 +235,13 @@ impl Renderer {
                 } else {
                     self.theme.ui.warning.as_f32()
                 };
+                // Alpha tuned against the dark editor bg: red keeps its hue
+                // at low alpha, but the orange warning washes out to
+                // near-neutral below ~0.25 (rgb(70,55,54) at 0.20).
                 line_color[3] = if severity == DIAGNOSTIC_SEVERITY_ERROR {
-                    0.25
+                    0.12
                 } else {
-                    0.20
+                    0.28
                 };
 
                 let start_line = diagnostic.range.start.line as usize;
