@@ -158,6 +158,10 @@ impl Renderer {
             });
 
         {
+            let timestamp_writes = self
+                .gpu_timing
+                .as_ref()
+                .and_then(|gpu| gpu.timestamp_writes());
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Netherize RenderPass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -170,7 +174,7 @@ impl Renderer {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -995,6 +999,11 @@ impl Renderer {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Kick the async GPU-timestamp readback (no-op unless probe enabled).
+        if let Some(gpu) = self.gpu_timing.as_mut() {
+            gpu.submit_readback(&self.device, &self.queue);
+        }
 
         // Drop the bottom-dock tab icons that were merged into the sidebar icon
         // buffer for this frame's draw, so they don't accumulate across frames

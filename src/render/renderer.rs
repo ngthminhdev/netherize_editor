@@ -461,9 +461,17 @@ pub struct Renderer {
     /// Viewport width lần cuối reshape — phát hiện khi word-wrap boundary thay đổi.
     pub(super) last_shaped_viewport_width: f32,
     pub(super) caret_blink_visible: bool,
+    /// Present only when NETH_PERF_PROBE=1 (GPU timestamp instrumentation).
+    pub(super) gpu_timing: Option<crate::render::gpu_timing::GpuTiming>,
 }
 
 impl Renderer {
+    /// Wall-GPU duration of the most recent measured render pass, if timing
+    /// was enabled at startup.
+    pub fn latest_gpu_pass_ms(&self) -> Option<f64> {
+        self.gpu_timing.as_ref().and_then(|g| g.latest_pass_ms())
+    }
+
     pub fn soft_wrap_visual_move_target(
         &self,
         app_state: &crate::app::app_state::AppState,

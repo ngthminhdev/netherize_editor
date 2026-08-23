@@ -72,7 +72,7 @@ impl GitConfig {
                 return Some(explicit.clone());
             }
             eprintln!(
-                "[git] git_min_path '{}' không tồn tại, thử vị trí mặc định",
+                "[git] git_min_path '{}' does not exist, trying default location",
                 explicit.display()
             );
         }

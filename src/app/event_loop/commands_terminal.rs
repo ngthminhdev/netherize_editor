@@ -572,7 +572,7 @@ impl AppShell {
             .is_some_and(|grid| grid.shell_line_editing_active());
         if !shell_line || self.focused_terminal_session_id().is_none() {
             self.show_transient_toast_kind(
-                "Terminal Edit\nVề dòng lệnh (G) để sửa — thoát visual/scrollback trước."
+                "Terminal Edit\nReturn to the command line (G) to edit — exit visual/scrollback first."
                     .to_string(),
                 ToastKind::Info,
             );

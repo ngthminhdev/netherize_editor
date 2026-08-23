@@ -793,6 +793,12 @@ impl AppShell {
                     Command::OpenFile(selected.path.clone()),
                 );
                 if !report.success {
+                    // Surface refusals (e.g. the 10 MiB interactive limit) —
+                    // a silent failure here looks like a dead click.
+                    self.show_transient_toast_kind(
+                        report.message.clone(),
+                        ToastKind::Error,
+                    );
                     return Some(false);
                 }
                 self.clear_highlight_layers();

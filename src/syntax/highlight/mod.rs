@@ -32,6 +32,10 @@ use engine::{
 
 pub const INLINE_TREE_SITTER_BYTE_THRESHOLD: usize = 32 * 1024;
 pub const INLINE_TREE_SITTER_LINE_THRESHOLD: usize = 300;
+/// Plaintext regex highlighting runs inline on the main thread, so it must
+/// stay bounded: above this size skip spans entirely (a 10 MB log freezes the
+/// UI for seconds per keystroke otherwise).
+pub const INLINE_PLAINTEXT_BYTE_THRESHOLD: usize = 1024 * 1024;
 
 pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
     if tree_state.language_id() == LanguageId::Dotenv {

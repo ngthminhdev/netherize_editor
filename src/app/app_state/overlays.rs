@@ -8,8 +8,9 @@ pub(super) fn ensure_interactive_text_file_size(path: &Path) -> Result<(), Strin
         .len();
     if bytes > INTERACTIVE_TEXT_FILE_LIMIT_BYTES {
         return Err(format!(
-            "open file {:?} refused: {bytes} bytes exceeds the 10 MiB interactive editor limit",
-            path
+            "Cannot open {:?} ({:.1} MB): interactive editing supports files up to 10 MiB",
+            path.file_name().unwrap_or(path.as_os_str()),
+            bytes as f64 / (1024.0 * 1024.0)
         ));
     }
     Ok(())

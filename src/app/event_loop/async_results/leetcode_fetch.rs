@@ -107,7 +107,7 @@ pub(super) fn handle_leetcode_fetch_result(app: &mut AppShell, payload: WorkerRe
     app.editor_caret_needs_layout = false;
     let hint = if missing_expected > 0 {
         format!(
-            "\n⚠ {missing_expected}/{total_cases} case chưa parse được Output — điền Expected bằng tay nhé."
+            "\n⚠ {missing_expected}/{total_cases} cases could not parse their Output — fill in Expected manually."
         )
     } else {
         String::new()

@@ -198,6 +198,8 @@ impl AppShell {
             pending_paste_target_dir: None,
             pending_confirmation: None,
             exit_requested: false,
+            last_recovery_snapshot_at: now,
+            perf_probe: perf_probe::PerfProbe::new(),
             window_geometry_dirty: false,
             last_window_geometry_change: None,
             workspace_git_branch,
@@ -1087,8 +1089,24 @@ impl AppShell {
             self.active_highlight_request_revision =
                 self.active_highlight_request_revision.saturating_add(1);
 
-            // Plaintext: regex highlight inline cho mọi kích thước file.
+            // Plaintext: regex highlight inline — chỉ an toàn cho file nhỏ.
+            // Trên main thread nên phải chặn theo dung lượng; file lớn hơn
+            // ngưỡng sẽ KHÔNG có màu cú pháp (đánh đổi đúng để không đóng băng
+            // UI: regex + clone toàn văn 10 MB mỗi phím gõ = beachball).
             if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {
+                if self.app_state.text_len_bytes()
+                    > crate::syntax::highlight::INLINE_PLAINTEXT_BYTE_THRESHOLD
+                {
+                    self.highlight_spans.clear();
+                    self.semantic_highlight_spans.clear();
+                    self.syntax_engine = None;
+                    self.syntax_engine_file = None;
+                    self.pending_parse_after_debounce = false;
+                    self.last_parse_submit_at = Some(std::time::Instant::now());
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    return;
+                }
                 let text_snapshot = self.app_state.text_string();
                 self.highlight_spans =
                     crate::syntax::highlight::generate_plaintext_highlight_spans(&text_snapshot);

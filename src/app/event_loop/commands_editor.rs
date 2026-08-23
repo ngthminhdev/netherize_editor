@@ -291,6 +291,7 @@ impl AppShell {
         repeat_count: usize,
     ) -> bool {
         let is_save_command = matches!(&command, Command::SaveFile);
+        let is_open_file_command = matches!(&command, Command::OpenFile(_));
         let should_notify_did_open = matches!(
             &command,
             Command::BufferNext
@@ -395,7 +396,11 @@ impl AppShell {
             let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
             dispatch_command_with_clipboard_count(app_state, command, repeat_count, Some(clipboard))
         };
-        let save_failure_toast = if is_save_command && !report.success {
+        // Surface hard failures for commands whose silent no-op would confuse
+        // the user: save errors and file-open refusals (10 MiB limit, missing
+        // file…). Everything else keeps its quiet dispatch semantics.
+        let surface_failure = is_save_command || is_open_file_command;
+        let save_failure_toast = if surface_failure && !report.success {
             self.show_transient_toast_kind(report.message.clone(), ToastKind::Error);
             true
         } else {

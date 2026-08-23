@@ -15,8 +15,10 @@ use netherize_editor::{
 };
 
 const EDIT_LOOP_INSERTIONS: u64 = 10_000;
-const LARGE_FILE_BYTES: usize = 50 * 1024 * 1024;
-const LARGE_FILE_NAME: &str = "netherize_editor_bench_50mb.log";
+// Editor hard-refuses interactive files > 10 MiB (INTERACTIVE_TEXT_FILE_LIMIT_BYTES),
+// so the largest openable bench file sits just under the cap.
+const LARGE_FILE_BYTES: usize = 10 * 1024 * 1024 - 64 * 1024;
+const LARGE_FILE_NAME: &str = "netherize_editor_bench_10mb.log";
 
 struct BenchLanguageCase {
     label: &'static str,
@@ -41,7 +43,7 @@ fn ensure_50mb_log_file() -> &'static PathBuf {
             return path;
         }
 
-        let mut file = File::create(&path).expect("create 50MB benchmark input");
+        let mut file = File::create(&path).expect("create large benchmark input");
         let line = b"2026-04-30T00:00:00Z level=info userId=bench fps=120 rtt=4 loss=0 jitter=1 message=\"frame stable\"\n";
         let mut written = 0usize;
         while written < LARGE_FILE_BYTES {
@@ -232,12 +234,14 @@ fn bench_large_file_load(c: &mut Criterion) {
     let path = ensure_50mb_log_file().clone();
     let mut group = c.benchmark_group("large_file_load");
     group.throughput(Throughput::Bytes(LARGE_FILE_BYTES as u64));
-    group.bench_function("read_50mb_load_buffer_initial_line_col", |b| {
+    group.bench_function("read_10mb_load_buffer_initial_line_col", |b| {
         b.iter(|| {
             let mut app_state = AppState::new(bench_scratch_path("large_file_scratch.txt"));
+            // Refusal (>10MiB cap) must fail the bench loudly — a silent `let _`
+            // here is what let the old 50MB scenario report fake numbers.
             app_state
                 .open_file(path.clone())
-                .expect("load 50MB benchmark file");
+                .expect("load large benchmark file (must be under 10 MiB cap)");
             black_box(app_state.text_len_bytes());
             black_box(app_state.cursor_line_col());
         });

@@ -1,6 +1,7 @@
 pub mod caret;
 pub mod color_space;
 pub mod glyph_instance;
+pub mod gpu_timing;
 pub mod icon_pipeline;
 pub mod image_pipeline;
 pub mod pipeline;

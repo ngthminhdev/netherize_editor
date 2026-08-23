@@ -104,6 +104,7 @@ netherize_editor/
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
 │   │   │   ├── application.rs     # winit::ApplicationHandler impl
+│   │   │   ├── perf_probe.rs      # Env-gated E2E perf probe (NETH_PERF_PROBE=1)
 │   │   │   ├── async_results/     # Async result processing split by topic
 │   │   │   │   ├── mod.rs         # Drain bridge, reject stale results, delegate to handlers
 │   │   │   │   ├── ai.rs          # AI chat results
@@ -192,6 +193,7 @@ netherize_editor/
 │   │
 │   ├── render/                    # GPU rendering layer (wgpu)
 │   │   ├── renderer.rs            # Renderer facade + shared render types
+│   │   ├── gpu_timing.rs          # Optional GPU pass timing (wgpu timestamp queries, probe-only)
 │   │   ├── renderer/              # Modular rendering implementation
 │   │   │   ├── ui/                # UI components
 │   │   │   │   ├── sidebar.rs     # File explorer sidebar

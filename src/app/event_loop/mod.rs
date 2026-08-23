@@ -69,6 +69,7 @@ mod application;
 mod async_results;
 mod commands;
 mod helpers;
+pub mod perf_probe;
 mod setup;
 mod welcome;
 
@@ -175,6 +176,11 @@ pub struct AppShell {
     /// Set after a clean close request or an explicit save/discard response.
     /// `about_to_wait` performs the actual event-loop exit after state is flushed.
     exit_requested: bool,
+    /// Last time the panic-recovery snapshot was refreshed (throttled — see
+    /// about_to_wait; cloning whole buffers every tick ballooned RSS).
+    last_recovery_snapshot_at: Instant,
+    /// Env-gated benchmark probe (NETH_PERF_PROBE=1) — inert otherwise.
+    perf_probe: perf_probe::PerfProbe,
     window_geometry_dirty: bool,
     last_window_geometry_change: Option<Instant>,
     workspace_git_branch: Option<String>,

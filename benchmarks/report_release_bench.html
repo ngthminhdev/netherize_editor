@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Netherize Editor — Báo cáo Benchmark Release</title>
+<style>
+  :root{--bg:#101418;--card:#181e25;--line:#232b34;--tx:#dbe4ee;--mut:#8a97a6;
+        --ok:#3fb96f;--warn:#e0a63a;--bad:#e05a5a;--na:#6b7684;--acc:#4da3ff;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--tx);font:14px/1.55 -apple-system,'SF Pro Text',Segoe UI,Roboto,sans-serif;padding:36px 20px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:-.02em;margin-bottom:4px}
+  h2{font-size:18px;margin:34px 0 12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .sub{color:var(--mut);margin-bottom:22px;font-size:13px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card .v{font-size:22px;font-weight:650;letter-spacing:-.02em}
+  .card .l{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .card .t{font-size:11.5px;margin-top:4px}
+  .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.na{color:var(--na)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border-radius:10px;overflow:hidden;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;background:#151b21}
+  tr:last-child td{border-bottom:none}
+  td.num{font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 9px;border-radius:20px;font-size:11px;font-weight:600}
+  .pill.ok{background:#12301f}.pill.warn{background:#33290f}.pill.bad{background:#38191c}.pill.na{background:#1b2129}
+  svg{background:var(--card);border:1px solid var(--line);border-radius:10px;width:100%;height:auto;display:block}
+  .note{background:#141a21;border-left:3px solid var(--acc);padding:10px 14px;border-radius:0 8px 8px 0;margin:10px 0;color:var(--mut);font-size:13px}
+  .note.b{border-color:var(--bad);color:var(--tx)}
+  code{background:#0d1116;padding:1px 6px;border-radius:5px;font-size:12px;color:#9fc6ef}
+  ul{margin:8px 0 8px 20px}li{margin:4px 0}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>⚡ Netherize Editor — Benchmark Release</h1>
+<div class="sub">Apple M4 Pro · Metal (Integrated GPU) · build --release (opt-level=3, lto=thin) · target 120 FPS / 8 ms · cửa sổ bench 4080×2482 · 2026-08-23</div>
+
+<!-- ═══════════ TÓM TẮT ═══════════ -->
+<h2>Tóm tắt nhanh</h2>
+<div class="cards">
+  <div class="card"><div class="v warn">2.3–5.1<span style="font-size:13px">s</span></div><div class="l">Startup (thật)</div><div class="t na">mục tiêu &lt;1s · nhiễm session restore</div></div>
+  <div class="card"><div class="v ok">4.8<span style="font-size:13px">ms</span></div><div class="l">Mở file 9.93 MB</div><div class="t ok">mục tiêu &lt;100ms ✓</div></div>
+  <div class="card"><div class="v ok">13.3<span style="font-size:13px">ms</span></div><div class="l">Keystroke→pixel p50</div><div class="t ok">trên buffer 10 MB · &lt;50ms ✓</div></div>
+  <div class="card"><div class="v ok">75<span style="font-size:13px">FPS</span></div><div class="l">Scroll thực tế</div><div class="t ok">half-page liên tục ✓ ≥60</div></div>
+  <div class="card"><div class="v ok">1.93<span style="font-size:13px">ms</span></div><div class="l">GPU pass p50</div><div class="t ok">p99 6.4ms · dưới 8ms ✓</div></div>
+  <div class="card"><div class="v bad">3.4<span style="font-size:13px">GB</span></div><div class="l">RSS mở file 10MB</div><div class="t bad">BLOCKER · shaping toàn tài liệu</div></div>
+  <div class="card"><div class="v bad">100MB ✗</div><div class="l">File lớn</div><div class="t bad">refuse — cap cứng 10 MiB</div></div>
+  <div class="card"><div class="v ok">1256</div><div class="l">Tests pass</div><div class="t ok">0 fail · 0 crash smoke</div></div>
+</div>
+
+<!-- ═══════════ BLOCKERS ═══════════ -->
+<h2>🚨 Phát hiện quan trọng (do benchmark lộ ra)</h2>
+<div class="note b"><b>1. [ĐÃ FIX] UI freeze khi gõ vào file lớn.</b> Mỗi phím gõ vào file plain-text lớn chạy regex highlight <i>toàn bộ</i> file đồng bộ trên main thread (<code>submit_parse_for_active_buffer</code> → <code>generate_plaintext_highlight_spans</code>) — chính là cái "beachball" bạn thấy lúc probe đang chạy. Stack sample bắt tận nơi. Fix: chặn theo dung lượng <code>INLINE_PLAINTEXT_BYTE_THRESHOLD = 1 MiB</code>, file lớn hơn bỏ tô màu (không đóng băng UI). 1256 test vẫn xanh.</div>
+<div class="note b"><b>2. [ĐÃ CHẨN ĐOÁN NGUYÊN NHÂN — cần quyết định kiến trúc] RAM ~3.4 GB khi mở file ~10 MB:</b> đường cong RSS chứng minh balloon xảy ra <b>ngay ở lần render đầu</b> (268MB → 3 629MB trong 2s) rồi plateau; <b>gõ phím KHÔNG làm tăng thêm</b> (phẳng 3 513→3 514MB qua 150 phím). Stack sample bắt được cosmic-text shaping toàn bộ ~150k dòng (ShapeLine/ShapeWord/harfrust) — khớp thiết kế khai báo trong <code>viewport.rs</code>: <i>"Allow cosmic-text to shape full height; scissor clips the visible region"</i>. Toàn bộ metadata layout của tài liệu được giữ lại vĩnh viễn để tính vị trí cuộn/jump khi có word-wrap. Sửa triệt để = ảo hoá shaping theo cửa sổ dòng (virtualized shaping) — công việc kiến trúc, không phải bản vá nhỏ.</div>
+<div class="note b"><b>3. [QUYẾT ĐỊNH SẢN PHẨM] Cap 10 MiB cứng:</b> file <code>large.log</code> 100 MB của bạn bị từ chối mở sau 0.03 ms (<code>exceeds the 10 MiB interactive editor limit</code>). Muốn đạt mục tiêu "mở 50–100MB &lt;1s" phải nâng cap — và phải sửa xong mục 2 trước.</div>
+<div class="note"><b>4.</b> Keystroke <i>đầu tiên</i> trên buffer lớn mất ~1.2s đúng 1 lần rồi về 13–16 ms (cold-edit path: debounce flush/git diff init). Nên pre-warm hoặc chia nhỏ.</div>
+<div class="note"><b>5.</b> Startup 2.3s / 5.1s giữa 2 lần chạy — số nhiễm session restore + PTY + thời gian cửa sổ được focus. Muốn số "cold start sạch" cần bench riêng (không restore session).</div>
+<div class="note"><b>6.</b> Autocomplete/LSP chưa đo tự động được: probe mở <code>src/main.rs</code> nhưng rust-analyzer không attach trong ngữ cảnh probe (không thấy log spawn). Có sẵn rust-analyzer 1.92 trên máy — cần đo thủ công theo dõi tay hoặc instrument thêm hook ready-event.</div>
+
+<!-- ═══════════ BẢNG CHÍNH ═══════════ -->
+<h2>Bảng chỉ số so với mục tiêu</h2>
+<table>
+<tr><th>Chỉ số</th><th>Số đo</th><th>Mục tiêu</th><th>Kết luận</th><th>Cách đo</th></tr>
+<tr><td>Startup (cold → dùng được)</td><td class="num">2.3 – 5.1 s</td><td>&lt; 1 s</td><td><span class="pill warn">⚠ RỜI MỤC TIÊU</span></td><td>probe trong app: process start → frame đầu present</td></tr>
+<tr><td>Mở file 9.93 MB (max cho phép)</td><td class="num">4.8 ms warm · 31 ms cold-first</td><td>&lt; 100 ms</td><td><span class="pill ok">✓ ĐẠT</span></td><td>AppState.open_file + tính cursor</td></tr>
+<tr><td>Mở file 100 MB (large.log)</td><td class="num">REFUSED (0.03 ms)</td><td>&lt; 1 s</td><td><span class="pill bad">✗ KHÔNG HỖ TRỢ</span></td><td>cùng path, bị limit chặn</td></tr>
+<tr><td>Input latency (gõ → ký tự)</td><td class="num">p50 13.3 · p95 13.8 · p99 16.3 ms</td><td>&lt; 50 ms (&lt;16 rất tốt)</td><td><span class="pill ok">✓ RẤT TỐT</span></td><td>dispatch InsertChar → present, 149 mẫu, buffer 10MB</td></tr>
+<tr><td>Autocomplete popup</td><td class="num">N/A</td><td>&lt; 100 ms</td><td><span class="pill na">— CHƯA ĐO ĐƯỢC</span></td><td>LSP không attach trong probe</td></tr>
+<tr><td>LSP (go-to-def/hover)</td><td class="num">N/A</td><td>&lt; 200 ms</td><td><span class="pill na">— CHƯA ĐO ĐƯỢC</span></td><td>cùng nguyên nhân với autocomplete</td></tr>
+<tr><td>Search trong buffer 9.93MB</td><td class="num">6.5 ms (106 329 match) · next-hop 1µs</td><td>&lt; 200 ms</td><td><span class="pill ok">✓ ĐẠT</span></td><td>SearchWordUnderCursor qua dispatch thật</td></tr>
+<tr><td>Search nội dung project (.rs)</td><td class="num">14.5 ms toàn repo</td><td>&lt; 200 ms</td><td><span class="pill ok">✓ ĐẠT</span></td><td>walk+match engine-level</td></tr>
+<tr><td>Fuzzy tìm file</td><td class="num">0.21 ms</td><td>&lt; 200 ms</td><td><span class="pill ok">✓ ĐẠT</span></td><td>find_file_matches</td></tr>
+<tr><td>Scroll file lớn</td><td class="num">75 FPS · latency p50 13.3 ms</td><td>≥60 (120 rất tốt)</td><td><span class="pill ok">✓ ĐẠT</span></td><td>121 half-page liên tục, đo span thời gian</td></tr>
+<tr><td>UI freeze (frame tệ nhất)</td><td class="num">p95 13.8 ms · max 1157 ms (1 lần)</td><td>p95 &lt; 50 ms</td><td><span class="pill warn">⚠ CÒN SPIKE</span></td><td>phân phối latency toàn probe</td></tr>
+<tr><td>Indexing (workspace scan)</td><td class="num">176 ms avg · 433 ms cold (904 nodes)</td><td>&lt; 5 s</td><td><span class="pill ok">✓ ĐẠT</span></td><td>WorkspaceScanner trên chính repo</td></tr>
+<tr><td>Full syntax parse 10k dòng Rust</td><td class="num">16.3 ms</td><td>—</td><td><span class="pill ok">✓</span></td><td>SyntaxEngine.parse_source</td></tr>
+<tr><td>RAM boot sạch / khi mở 10MB</td><td class="num">295 MB / 3 402 MB</td><td>&lt; 500 MB</td><td><span class="pill bad">✗ BLOCKER</span></td><td>sysinfo self-RSS theo checkpoint</td></tr>
+<tr><td>RAM idle (app thường, có session)</td><td class="num">~995 MB</td><td>&lt; 500 MB</td><td><span class="pill warn">⚠</span></td><td>smoke launch 8s</td></tr>
+<tr><td>CPU idle</td><td class="num">0.0 %</td><td>&lt; 2–5 %</td><td><span class="pill ok">✓</span></td><td>ps sampling</td></tr>
+<tr><td>Crash / ổn định</td><td class="num">0 crash · 1256/1256 tests</td><td>~0 %</td><td><span class="pill ok">✓</span></td><td>smoke loop + cargo test --release</td></tr>
+<tr><td>Save 9.93 MB</td><td class="num">15.2 ms (653 MB/s)</td><td>—</td><td><span class="pill ok">✓</span></td><td>save_file sync-through</td></tr>
+<tr><td>Undo/redo burst 200 ký tự</td><td class="num">&lt; 0.05 ms (1 transaction)</td><td>—</td><td><span class="pill ok">✓</span></td><td>undo() gộp cả burst</td></tr>
+</table>
+
+<!-- ═══════════ CHART: TYPING LATENCY ═══════════ -->
+<h2>Input latency khi gõ (buffer 10 MB, qua dispatch thật)</h2>
+<svg viewBox="0 0 900 210" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="-apple-system,sans-serif" font-size="12" fill="#8a97a6">
+    <text x="40" y="40">p50</text><text x="40" y="88">p95</text><text x="40" y="136">p99</text><text x="40" y="184">max*</text>
+  </g>
+  <g>
+    <rect x="90" y="26" width="199" height="20" rx="5" fill="#3fb96f"/><text x="296" y="41" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">13.26 ms</text>
+    <rect x="90" y="74" width="207" height="20" rx="5" fill="#3fb96f"/><text x="304" y="89" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">13.82 ms</text>
+    <rect x="90" y="122" width="244" height="20" rx="5" fill="#e0a63a"/><text x="341" y="137" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">16.29 ms</text>
+    <rect x="90" y="170" width="700" height="20" rx="5" fill="#e05a5a"/><text x="500" y="184" fill="#fff" font-size="12" font-weight="600" font-family="-apple-system,sans-serif">1 156.75 ms  ← 1 spike duy nhất (cold-edit), đã ghi nhận làm finding #4</text>
+  </g>
+  <line x1="450" y1="14" x2="450" y2="198" stroke="#4da3ff" stroke-dasharray="4 4" stroke-width="1"/>
+  <text x="456" y="27" fill="#4da3ff" font-size="11" font-family="-apple-system,sans-serif">mục tiêu &lt;50ms</text>
+</svg>
+
+<!-- ═══════════ CHART: MEMORY ═══════════ -->
+<h2>RSS theo từng giai đoạn probe</h2>
+<svg viewBox="0 0 900 230" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="-apple-system,sans-serif" font-size="12" fill="#8a97a6">
+    <text x="130" y="34">Boot sạch</text><text x="130" y="72">Sau khi mở 10MB</text><text x="130" y="110">Lần render đầu (+2s)</text><text x="130" y="148">Sau 150 phím gõ</text><text x="130" y="186">Kết thúc probe</text>
+  </g>
+  <g>
+    <rect x="290" y="20" width="25" height="20" rx="4" fill="#3fb96f"/><text x="320" y="35" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">294.9 MB</text>
+    <rect x="290" y="58" width="26" height="20" rx="4" fill="#3fb96f"/><text x="321" y="73" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">306.1 MB</text>
+    <rect x="290" y="96" width="296" height="20" rx="4" fill="#e05a5a"/><text x="592" y="111" fill="#fff" font-size="12" font-weight="600" font-family="-apple-system,sans-serif">3 629 MB — cosmic-text shaping toàn tài liệu</text>
+    <rect x="290" y="134" width="278" height="20" rx="4" fill="#e05a5a"/><text x="574" y="149" fill="#fff" font-size="12" font-weight="600" font-family="-apple-system,sans-serif">3 513 MB — PHẲNG, gõ không tăng thêm</text>
+    <rect x="290" y="172" width="288" height="20" rx="4" fill="#e05a5a"/><text x="584" y="187" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">3 386.7 MB</text>
+  </g>
+  <line x1="290" y1="8" x2="290" y2="200" stroke="#4da3ff" stroke-width="1"/>
+  <text x="294" y="216" fill="#4da3ff" font-size="11" font-family="-apple-system,sans-serif">← mốc 0 · balloon xảy ra ở lần render ĐẦU sau khi mở, không phải lúc gõ</text>
+</svg>
+<div class="note b">RSS tăng ~11× trong ~2s đầu sau khi mở — đúng lúc cosmic-text shape toàn bộ ~150k dòng (bằng chứng stack sample: ShapeLine/ShapeWord/harfrust). Sau đó plateau ổn định kể cả khi gõ/scroll. Nguyên nhân gốc là thiết kế "shape full height" ghi chú tại <code>src/render/renderer/editor/viewport.rs</code> ("Allow cosmic-text to shape full height; scissor clips the visible region"); muốn về &lt;500MB cần virtualized shaping theo cửa sổ dòng hiển thị — công việc kiến trúc riêng.</div>
+
+<!-- ═══════════ CHART: CPU SCENARIOS ═══════════ -->
+<h2>Các thao tác CPU-side (thang log ms — nhỏ hơn tốt hơn)</h2>
+<svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="-apple-system,sans-serif" font-size="12" fill="#8a97a6">
+    <text x="235" y="28">insert_char+scroll (1 vòng)</text>
+    <text x="235" y="60">jump_to_last_line (250k dòng)</text>
+    <text x="235" y="92">search_next_hop</text>
+    <text x="235" y="124">layout engine @4K/frame</text>
+    <text x="235" y="156">fuzzy find file</text>
+    <text x="235" y="188">mở 9.93MB (warm)</text>
+    <text x="235" y="220">search toàn buffer (107k match)</text>
+    <text x="235" y="252">save 9.93MB (653MB/s)</text>
+    <text x="235" y="284">parse Rust 10k dòng</text>
+    <text x="235" y="316">grep nội dung project</text>
+    <text x="235" y="348">workspace scan (indexing)</text>
+    <text x="235" y="380">mở 9.93MB (lần đầu, cold I/O)</text>
+  </g>
+  <!-- log scale: 0.001ms -> x=430 ; 1000ms -> x=870 ; px = 430 + 40*(log10(ms)+3) -->
+  <g>
+    <rect x="430" y="14" width="80" height="18" rx="4" fill="#3fb96f"/><text x="515" y="28" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">0.002</text>
+    <rect x="430" y="46" width="112" height="18" rx="4" fill="#3fb96f"/><text x="547" y="60" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">0.007</text>
+    <rect x="430" y="78" width="80" height="18" rx="4" fill="#3fb96f"/><text x="515" y="92" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">0.001</text>
+    <rect x="430" y="110" width="80" height="18" rx="4" fill="#3fb96f"/><text x="515" y="124" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">~0.0004 avg</text>
+    <rect x="430" y="142" width="152" height="18" rx="4" fill="#3fb96f"/><text x="587" y="156" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">0.209</text>
+    <rect x="430" y="174" width="228" height="18" rx="4" fill="#3fb96f"/><text x="663" y="188" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">4.789</text>
+    <rect x="430" y="206" width="264" height="18" rx="4" fill="#3fb96f"/><text x="699" y="220" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">6.498</text>
+    <rect x="430" y="238" width="276" height="18" rx="4" fill="#3fb96f"/><text x="711" y="252" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">15.228</text>
+    <rect x="430" y="270" width="280" height="18" rx="4" fill="#3fb96f"/><text x="715" y="284" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">16.301</text>
+    <rect x="430" y="302" width="284" height="18" rx="4" fill="#e0a63a"/><text x="719" y="316" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">14.463 (p99 41.7)</text>
+    <rect x="430" y="334" width="322" height="18" rx="4" fill="#e0a63a"/><text x="757" y="348" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">176.1 (max 447)</text>
+    <rect x="430" y="366" width="380" height="18" rx="4" fill="#3fb96f"/><text x="815" y="380" fill="#dbe4ee" font-size="11.5" font-family="-apple-system,sans-serif">30.7 cold</text>
+  </g>
+  <line x1="430" y1="6" x2="430" y2="392" stroke="#4da3ff" stroke-width="1"/>
+  <text x="434" y="404" fill="#4da3ff" font-size="11" font-family="-apple-system,sans-serif">0.001ms</text><text x="850" y="404" fill="#4da3ff" font-size="11" font-family="-apple-system,sans-serif">~1000ms</text>
+</svg>
+
+<!-- ═══════════ CHART: CRITERION ═══════════ -->
+<h2>Chi phí mỗi ký tự gõ (criterion: edit + incremental parse + highlight, 10k ký tự)</h2>
+<svg viewBox="0 0 900 190" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="-apple-system,sans-serif" font-size="12.5" fill="#8a97a6">
+    <text x="120" y="38">Rust</text><text x="120" y="78">Go</text><text x="120" y="118">JavaScript</text><text x="120" y="158">TypeScript</text>
+  </g>
+  <!-- scale: 40us -> 700px -->
+  <g>
+    <rect x="180" y="24" width="612" height="20" rx="5" fill="#4da3ff"/><text x="797" y="39" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">35.0 µs/ký tự (28 572 ký tự/s)</text>
+    <rect x="180" y="64" width="618" height="20" rx="5" fill="#4da3ff"/><text x="803" y="79" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">35.3 µs (28 324/s)</text>
+    <rect x="180" y="104" width="640" height="20" rx="5" fill="#4da3ff"/><text x="740" y="119" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">36.6 µs — vượt khung, 27 332/s</text>
+    <rect x="180" y="144" width="659" height="20" rx="5" fill="#e0a63a"/><text x="745" y="159" fill="#dbe4ee" font-size="12" font-family="-apple-system,sans-serif">37.6 µs — 26 562/s</text>
+  </g>
+</svg>
+<div class="note">Con số này là throughput an-toàn-tối-đa (mỗi ký tự đều kèm incremental tree-sitter parse + highlight window ±512B). Thực tế gõ liên tục đạt 25 ký tự/s trong probe GUI → dư địa hiệu năng rất lớn.</div>
+
+<!-- ═══════════ GPU ═══════════ -->
+<h2>GPU render pass (wgpu timestamp queries, n=2 498 frame)</h2>
+<div class="cards">
+  <div class="card"><div class="v ok">1.93 ms</div><div class="l">GPU pass p50</div></div>
+  <div class="card"><div class="v ok">6.41 ms</div><div class="l">GPU pass p99</div></div>
+  <div class="card"><div class="v warn">8.85 ms</div><div class="l">GPU pass max</div><div class="t na">1 frame chạm budget 8ms</div></div>
+  <div class="card"><div class="v ok">CPU encode</div><div class="l">tách biệt</div><div class="t ok">timing bắt đầu sau get_current_texture (loại vsync wait)</div></div>
+</div>
+
+<!-- ═══════════ PHỤ LỤC ═══════════ -->
+<h2>Phụ lục — điều kiện đo &amp; giới hạn</h2>
+<ul>
+  <li><b>Probe GUI</b> (<code>NETH_PERF_PROBE=1</code>): self-drive qua đường dispatch → AppState → layout → shaping → wgpu submit → present. Latency = dispatch → present (chưa gồm độ trễ OS/compositor, thường &lt;1 frame).</li>
+  <li><b>e2e runner</b>: CPU-side trước queue.submit — đo phần mutation + layout, không gồm GPU.</li>
+  <li><b>Criterion</b>: thống kê đầy đủ (warmup, outlier detection), 100 mẫu/scene.</li>
+  <li>GPU timing bật <code>Features::TIMESTAMP_QUERY</code> chỉ khi probe chạy; release giữ <code>Features::empty()</code>.</li>
+  <li>Dữ liệu thô: <code>benchmarks/baselines/bench_latest.json</code> · <code>app_probe.json</code> · criterion tại <code>target/criterion/</code>.</li>
+  <li>Hạn chế: CPU% lúc gõ lấy mẫu chưa chuẩn (window quá ngắn → đọc 0.0); scroll interval-p95 còn nhiễu instrumentation — dùng FPS theo time-span (tin cậy).</li>
+</ul>
+</div></body></html>

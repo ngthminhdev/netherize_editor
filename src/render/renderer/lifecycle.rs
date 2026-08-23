@@ -67,10 +67,17 @@ impl Renderer {
             info.name, info.device_type, info.backend
         );
 
+        // GPU timestamp instrumentation is opt-in (perf probe) so release
+        // launches keep Features::empty() and boot on any adapter.
+        let gpu_timing_enabled = crate::render::gpu_timing::requested_by_env();
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("Netherize Device"),
-                required_features: wgpu::Features::empty(),
+                required_features: if gpu_timing_enabled {
+                    wgpu::Features::TIMESTAMP_QUERY
+                } else {
+                    wgpu::Features::empty()
+                },
                 required_limits: wgpu::Limits::default(),
                 experimental_features: Default::default(),
                 memory_hints: Default::default(),
@@ -78,6 +85,9 @@ impl Renderer {
             })
             .await
             .map_err(|error| format!("request_device: {error}"))?;
+        let gpu_timing = gpu_timing_enabled.then(|| {
+            crate::render::gpu_timing::GpuTiming::new(&device, &queue)
+        });
 
         let surface_state = SurfaceState::new(surface, window_size, &adapter, &device)?;
         let surface_format = surface_state.config.format;
@@ -379,6 +389,7 @@ impl Renderer {
             last_shaped_spans_fingerprint: u64::MAX,
             last_shaped_viewport_width: 0.0,
             caret_blink_visible: true,
+            gpu_timing,
         })
     }
 

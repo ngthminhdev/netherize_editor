@@ -2183,7 +2183,23 @@ impl ApplicationHandler<AppEvent> for AppShell {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        replace_panic_recovery_snapshot(self.app_state.dirty_recovery_buffers());
+        // Panic-recovery snapshots only need seconds-level freshness. Cloning
+        // the full active text on EVERY loop tick made typing into a ~10 MB
+        // buffer churn gigabytes of allocations and balloon RSS past 3 GB.
+        const RECOVERY_SNAPSHOT_INTERVAL: Duration = Duration::from_millis(1500);
+        if self.last_recovery_snapshot_at.elapsed() >= RECOVERY_SNAPSHOT_INTERVAL {
+            self.last_recovery_snapshot_at = Instant::now();
+            replace_panic_recovery_snapshot(self.app_state.dirty_recovery_buffers());
+        }
+        // Perf probe drives a continuous frame loop while active. WaitUntil is
+        // essential: macOS throttles redraws of unfocused/occluded windows, so
+        // a pure request_redraw chain can starve the probe of frames.
+        if self.perf_probe_request_continuous_frames() {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(
+                Instant::now() + Duration::from_millis(8),
+            ));
+            self.request_redraw();
+        }
         if self.exit_requested {
             self.capture_window_geometry();
             self.persist_window_geometry_if_due(true);
@@ -2756,6 +2772,9 @@ impl AppShell {
     }
 
     pub(super) fn redraw(&mut self) {
+        // Perf probe: dispatch this frame's measured operation BEFORE the frame
+        // is built so latency = dispatch → present of THIS frame.
+        self.perf_probe_pre();
         let mode = self.app_state.current_mode();
         if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
             let terminal_allowed = match self.focus_manager.current() {
@@ -3241,7 +3260,14 @@ impl AppShell {
                                 &self.highlight_spans,
                                 &self.semantic_highlight_spans,
                             );
-                        let text = self.app_state.text_string();
+                        // Reuse the revision-keyed whole-text cache instead of
+                        // cloning the buffer on every breadcrumb refresh.
+                        let text_key = editor_text_cache_key(&self.app_state);
+                        if self.cached_editor_text_key.as_ref() != Some(&text_key) {
+                            self.cached_editor_text = self.app_state.text_string();
+                            self.cached_editor_text_key = Some(text_key);
+                        }
+                        let text = self.cached_editor_text.as_str();
                         let mut styled_spans =
                             syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
                         styled_spans
@@ -4139,13 +4165,18 @@ impl AppShell {
             match renderer.render(&region_instances) {
                 Ok(()) => {
                     self.last_frame_time = Instant::now();
+                    self.perf_probe_post(true);
                 }
                 Err(RenderError::Outdated) | Err(RenderError::Lost) => {
                     renderer.reconfigure_surface();
+                    self.perf_probe_post(false);
                 }
-                Err(RenderError::Timeout) | Err(RenderError::Occluded) => {}
+                Err(RenderError::Timeout) | Err(RenderError::Occluded) => {
+                    self.perf_probe_post(false);
+                }
                 Err(RenderError::Validation) => {
                     eprintln!("[AppShell] render validation error");
+                    self.perf_probe_post(false);
                 }
             }
         }
