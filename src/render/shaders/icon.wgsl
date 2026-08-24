@@ -25,5 +25,9 @@ fn vs_main(in: VsIn) -> VsOut {
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let px = textureSample(icon_tex, icon_sampler, in.uv);
-    return vec4<f32>(px.rgb * in.color.rgb, px.a * in.color.a);
+    let is_white = in.color.r >= 0.999 && in.color.g >= 0.999 && in.color.b >= 0.999 && in.color.a >= 0.999;
+    if (is_white) {
+        return px;
+    }
+    return vec4<f32>(in.color.rgb, px.a * in.color.a);
 }

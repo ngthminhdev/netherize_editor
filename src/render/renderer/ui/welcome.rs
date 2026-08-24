@@ -79,7 +79,7 @@ fn parse_welcome_git_head(head: &str) -> Option<String> {
 fn bundled_logo() -> Option<&'static BundledLogo> {
     static LOGO: OnceLock<Option<BundledLogo>> = OnceLock::new();
     LOGO.get_or_init(|| {
-        let bytes = include_bytes!("../../../../assets/app_logo.png");
+        let bytes = include_bytes!("../../../../assets/logo_welcome.png");
         let decoded = image::load_from_memory(bytes).ok()?;
         let rgba = decoded.to_rgba8();
         Some(BundledLogo {
@@ -228,21 +228,22 @@ impl Renderer {
                           bounds: [f32; 4],
                           scale: f32,
                           badge_chrome: PrefixIconBadgeChrome| {
+            let icon_tint = [color[0], color[1], color[2], 1.0];
             if matches!(badge_chrome, PrefixIconBadgeChrome::Outline) {
                 let [x, y, w, h] = bounds;
                 let radius = h * 0.22;
                 let border = (h * 0.075).clamp(2.0, 3.0);
                 let border_color = [
-                    panel_bg[0] * 0.14 + color[0] * 0.86,
-                    panel_bg[1] * 0.14 + color[1] * 0.86,
-                    panel_bg[2] * 0.14 + color[2] * 0.86,
-                    1.0,
+                    panel_bg[0] * 0.65 + color[0] * 0.35,
+                    panel_bg[1] * 0.65 + color[1] * 0.35,
+                    panel_bg[2] * 0.65 + color[2] * 0.35,
+                    0.92,
                 ];
                 let bg_color = [
-                    panel_bg[0] * 0.90 + color[0] * 0.10,
-                    panel_bg[1] * 0.90 + color[1] * 0.10,
-                    panel_bg[2] * 0.90 + color[2] * 0.10,
-                    1.0,
+                    panel_bg[0] * 0.88 + color[0] * 0.12,
+                    panel_bg[1] * 0.88 + color[1] * 0.12,
+                    panel_bg[2] * 0.88 + color[2] * 0.12,
+                    0.98,
                 ];
                 chrome.push(RegionDrawInstance::new(bounds, border_color).with_radius(radius));
                 chrome.push(
@@ -264,13 +265,13 @@ impl Renderer {
                 icons.push(IconDrawInstance {
                     icon: asset_icon,
                     rect: [x + (w - size) * 0.5, y + (h - size) * 0.5, size, size],
-                    tint: [1.0, 1.0, 1.0, 1.0],
+                    tint: icon_tint,
                 });
             } else {
                 glyphs.extend(layout_prefix_icon_badge(
                     PrefixIconBadge {
                         icon,
-                        color,
+                        color: icon_tint,
                         panel_bg,
                         bounds,
                         icon_scale: scale,
@@ -401,28 +402,35 @@ impl Renderer {
         let meta_chip_padding_x = sx(14.0);
         let version_label = self.welcome_version.clone();
         let meta_chips = [
-            (version_label, fg, true),
-            (format!("built {}", env!("BUILD_DATE")), fg_ghost, false),
+            (version_label, self.theme.ui.magenta.as_f32()),
             (
-                format!("Rust {}", env!("BUILD_RUSTC_VERSION")),
-                fg_ghost,
-                false,
+                format!("built {}", env!("BUILD_DATE")),
+                self.theme.ui.cyan.as_f32(),
             ),
+            ("@ngthminhdev".to_string(), self.theme.ui.info.as_f32()),
         ];
         let meta_total_w: f32 = meta_chips
             .iter()
-            .map(|(label, _, _)| text_w(label.as_str(), meta_size) + meta_chip_padding_x * 2.0)
+            .map(|(label, _)| text_w(label.as_str(), meta_size) + meta_chip_padding_x * 2.0)
             .sum::<f32>()
             + meta_chip_gap * (meta_chips.len().saturating_sub(1) as f32);
         let mut meta_center_x = cx - meta_total_w * 0.5;
-        let mut meta_border = border;
-        meta_border[3] = 0.92;
-        let mut meta_fill = panel;
-        meta_fill[3] = 0.98;
 
-        for (label, color, bold) in &meta_chips {
+        for (label, color) in &meta_chips {
             let label = label.as_str();
             let chip_w = text_w(label, meta_size) + meta_chip_padding_x * 2.0;
+            let chip_border = [
+                panel[0] * 0.65 + color[0] * 0.35,
+                panel[1] * 0.65 + color[1] * 0.35,
+                panel[2] * 0.65 + color[2] * 0.35,
+                0.92,
+            ];
+            let chip_bg = [
+                panel[0] * 0.88 + color[0] * 0.12,
+                panel[1] * 0.88 + color[1] * 0.12,
+                panel[2] * 0.88 + color[2] * 0.12,
+                0.98,
+            ];
             push_centered_highlight_chip(
                 &mut chrome,
                 meta_center_x + chip_w * 0.5,
@@ -430,8 +438,8 @@ impl Renderer {
                 chip_w,
                 meta_chip_height,
                 HighlightChipStyle {
-                    bg: meta_fill,
-                    border: meta_border,
+                    bg: chip_bg,
+                    border: chip_border,
                     radius: sx(6.0),
                     border_thickness: sx(1.0),
                 },
@@ -445,7 +453,7 @@ impl Renderer {
                 meta_size,
                 meta_line_height,
                 *color,
-                *bold,
+                true,
             );
             meta_center_x += chip_w + meta_chip_gap;
         }
