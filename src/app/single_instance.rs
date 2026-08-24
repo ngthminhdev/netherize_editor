@@ -17,6 +17,64 @@ use std::time::Duration;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// Env var set on the detached child so it does not re-exec itself again
+/// (which would loop forever).
+const DETACHED_CHILD_ENV: &str = "NETHERIZE_DETACHED_CHILD";
+
+/// Pure decision helper — kept separate so tests cover every branch without
+/// spawning processes.
+fn should_reexec_detached(already_detached: bool, launched_from_terminal: bool) -> bool {
+    !already_detached && launched_from_terminal
+}
+
+fn launched_from_terminal() -> bool {
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal()
+}
+
+/// Terminal-launch convenience: when started from an interactive shell,
+/// re-exec ourselves as a detached child (own process group, stdio
+/// disconnected) and report success so the caller can exit immediately and
+/// hand the terminal back — VS Code-style CLI behavior. The detached child
+/// runs the normal startup path (single-instance forwarding included), so a
+/// second `netherize <dir>` still routes into the live instance.
+///
+/// Returns false when already detached (env guard), not launched from a
+/// terminal (dock/Finder launch — nothing to free), or spawn failed; the
+/// caller then continues in the foreground as before.
+pub fn reexec_detached_from_terminal() -> bool {
+    let already_detached = std::env::var_os(DETACHED_CHILD_ENV).is_some();
+    if !should_reexec_detached(already_detached, launched_from_terminal()) {
+        return false;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let mut command = std::process::Command::new(exe);
+    command.args(std::env::args_os().skip(1));
+    command.env(DETACHED_CHILD_ENV, "1");
+    command.stdin(std::process::Stdio::null());
+    command.stdout(std::process::Stdio::null());
+    command.stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        // Own process group: closing the terminal window sends SIGHUP to the
+        // shell's foreground group; the editor must not be in it.
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    match command.spawn() {
+        Ok(child) => {
+            println!("[netherize] launched detached (pid {})", child.id());
+            true
+        }
+        Err(err) => {
+            eprintln!("[netherize] detach failed ({err}); continuing in foreground");
+            false
+        }
+    }
+}
+
 /// Socket lives next to state.toml so it is per-user and predictable.
 pub fn default_socket_path() -> PathBuf {
     crate::config::paths::user_config_root().join("instance.sock")
@@ -99,6 +157,17 @@ mod tests {
     fn scratch_sock(tag: &str) -> PathBuf {
         // Unix socket paths are capped (~104 bytes on macOS) — keep them short.
         std::env::temp_dir().join(format!("nz-{}-{}.sock", tag, std::process::id()))
+    }
+
+    #[test]
+    fn reexec_decision_covers_all_branches() {
+        // Fresh launch from an interactive terminal → detach.
+        assert!(should_reexec_detached(false, true));
+        // Dock/Finder launch (no controlling tty) → stay foreground.
+        assert!(!should_reexec_detached(false, false));
+        // Detached child re-launching itself → never re-exec again.
+        assert!(!should_reexec_detached(true, true));
+        assert!(!should_reexec_detached(true, false));
     }
 
     #[test]

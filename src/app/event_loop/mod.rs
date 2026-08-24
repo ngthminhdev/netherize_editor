@@ -629,6 +629,15 @@ impl TerminalTab {
 pub fn run() -> Result<(), winit::error::EventLoopError> {
     install_panic_recovery_hook();
 
+    // Launch-from-terminal convenience: re-exec ourselves detached so the
+    // shell prompt returns right away instead of the GUI process holding the
+    // terminal until quit. Skipped for dock/Finder launches (no tty) and for
+    // the detached child itself (env guard).
+    #[cfg(unix)]
+    if crate::app::single_instance::reexec_detached_from_terminal() {
+        return Ok(());
+    }
+
     // Single-instance routing: hand our CLI paths to an already-running
     // instance (one dock icon, workspace switches in place) unless the user
     // explicitly asked for a separate process.
