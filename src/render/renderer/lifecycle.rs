@@ -253,7 +253,6 @@ impl Renderer {
             terminal_cursor_instances: Vec::new(),
             terminal_scissor: None,
             terminal_body_batch: None,
-            terminal_tab_bar_batch: None,
             terminal_outer_tab_batch: None,
             bottom_dock_tab_icon_instances: Vec::new(),
             right_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
@@ -287,6 +286,8 @@ impl Renderer {
             topbar_scissor: None,
             topbar_text_batches: Vec::new(),
             topbar_tab_hitboxes: Vec::new(),
+            topbar_close_hitboxes: Vec::new(),
+            topbar_project_hitbox: None,
             last_topbar_layout_key: None,
             topbar_logo_image_pipeline,
             topbar_logo_scissor: None,
@@ -491,6 +492,8 @@ impl Renderer {
         self.topbar_chrome_instances.clear();
         self.topbar_text_batches.clear();
         self.topbar_tab_hitboxes.clear();
+        self.topbar_close_hitboxes.clear();
+        self.topbar_project_hitbox = None;
         self.topbar_logo_image_pipeline.clear();
         self.topbar_logo_scissor = None;
         self.topbar_text_pipeline

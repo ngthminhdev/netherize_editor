@@ -545,18 +545,6 @@ impl Renderer {
                             .draw_range(render_pass, body_batch.range);
                     },
                 );
-                if let Some(tab_batch) = self.terminal_tab_bar_batch {
-                    draw_text_region(
-                        &mut pass,
-                        Some(tab_batch.scissor),
-                        viewport_width,
-                        viewport_height,
-                        |render_pass| {
-                            self.terminal_text_pipeline
-                                .draw_range(render_pass, tab_batch.range);
-                        },
-                    );
-                }
             } else {
                 draw_text_region(
                     &mut pass,

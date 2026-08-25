@@ -392,6 +392,7 @@ impl crate::render::renderer::Renderer {
     /// idle, so it doubles as the strip surface. `content` is `Some` only for
     /// the Test Runner tab.
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub fn update_right_dock_panel(
         &mut self,
         rb: [f32; 4],
@@ -400,6 +401,7 @@ impl crate::render::renderer::Renderer {
         active: usize,
         strip_h: f32,
         strip_focused: bool,
+        hovered_tab_index: Option<usize>,
         content: Option<(&TestRunnerState, f32, bool, &str, &str)>,
         outline: Option<(
             &[crate::async_runtime::message::LspDocumentSymbol],
@@ -426,8 +428,14 @@ impl crate::render::renderer::Renderer {
         let iw = (rb[2] - inset * 2.0).max(0.0);
         let ih = (rb[3] - inset * 2.0).max(0.0);
         let strip_h = strip_h.min(ih).max(0.0);
-        let (mut chrome, mut glyphs, strip_icons) =
-            self.build_right_tab_strip([ix, iy, iw, strip_h], labels, icons, active, strip_focused);
+        let (mut chrome, mut glyphs, strip_icons) = self.build_right_tab_strip(
+            [ix, iy, iw, strip_h],
+            labels,
+            icons,
+            active,
+            strip_focused,
+            hovered_tab_index,
+        );
         let mut content_icons = Vec::new();
         // Content sits BELOW the strip band; the strip is appended first so it
         // never overlaps content, and the strip's own band is reserved by layout
@@ -487,6 +495,7 @@ impl crate::render::renderer::Renderer {
         icons: &[Option<&'static str>],
         active: usize,
         focused: bool,
+        hovered_tab_index: Option<usize>,
     ) -> (
         Vec<RegionDrawInstance>,
         Vec<GlyphInstance>,
@@ -513,6 +522,10 @@ impl crate::render::renderer::Renderer {
         let border = self.theme.ui.border_color.as_f32();
         let active_bg = self.theme.editor.bg.as_f32();
         let inactive_bg = tab_base;
+        // Hover wash uses the fg token at the shared strip-hover alpha so it
+        // stays theme-driven and matches the topbar's hover intensity.
+        let mut hover_bg = fg;
+        hover_bg[3] = super::utils::DOCK_TAB_HOVER_ALPHA;
         const TOP_BORDER: f32 = 2.0;
         // Round ONLY the strip's two top corners so they follow the panel's
         // rounded focus-ring outline (top-left under the first tab, top-right
@@ -532,7 +545,11 @@ impl crate::render::renderer::Renderer {
         );
 
         let n = labels.len();
-        let tab_w = bounds[2] / n as f32;
+        // Shared with `right_dock_tab_index_at` so rendered tabs and clickable
+        // tabs can never drift apart.
+        let Some(tab_w) = super::utils::dock_tab_width(bounds[2], n) else {
+            return (chrome, glyphs, icon_instances);
+        };
         let text_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let char_w = estimate_monospace_width("0", font).max(1.0);
         // Render tab titles at the main-editor title size so every dock tab bar
@@ -555,6 +572,15 @@ impl crate::render::renderer::Renderer {
                 0.0,
                 0.0,
             ];
+            // Subtle wash behind a non-active hovered tab so the pointer
+            // target is visible before the user commits to a click (mirrors
+            // the topbar tab hover).
+            if !is_active && hovered_tab_index == Some(i) {
+                chrome.push(
+                    RegionDrawInstance::new([tab_x, bounds[1], tab_w, bounds[3]], hover_bg)
+                        .with_corner_radii(tab_corners),
+                );
+            }
             if is_active {
                 chrome.push(
                     RegionDrawInstance::new([tab_x, bounds[1], tab_w, bounds[3]], active_bg)
@@ -563,7 +589,14 @@ impl crate::render::renderer::Renderer {
                 // Top accent border (like the bottom dock's active tab). Inset it
                 // on the outer side of the first/last tab so it never overruns the
                 // rounded corner into the panel outline.
-                let bar_col = if focused { accent } else { fg_dim };
+                // Focused dock: full accent. Unfocused: keep the accent
+                // identity at reduced alpha (the splitter-band low-alpha
+                // accent convention) — dropping to fg_dim made the active tab
+                // nearly indistinguishable from inactive ones.
+                let mut bar_col = accent;
+                if !focused {
+                    bar_col[3] *= 0.45;
+                }
                 let bar_x = if is_first { tab_x + radius } else { tab_x };
                 let mut bar_w = tab_w;
                 if is_first {
@@ -679,10 +712,9 @@ impl crate::render::renderer::Renderer {
         {
             return None;
         }
-        let tab_w = strip_bounds[2] / tab_count as f32;
-        if tab_w <= 0.0 {
-            return None;
-        }
+        // Same shared geometry as the renderer, so hover/click targets always
+        // line up with the painted tabs.
+        let tab_w = super::utils::dock_tab_width(strip_bounds[2], tab_count)?;
         let idx = ((px - strip_bounds[0]) / tab_w) as usize;
         Some(idx.min(tab_count - 1))
     }

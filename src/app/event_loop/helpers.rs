@@ -1806,7 +1806,7 @@ pub(super) fn region_color(id: RegionId, theme: &ThemeConfig) -> [f32; 4] {
         RegionId::Center => theme.editor.bg.as_f32(),
         RegionId::RightSidebar => theme.ui.sidebar_bg.as_f32(),
         RegionId::BottomPanel => theme.ui.terminal_bg.as_f32(),
-        RegionId::StatusBar => theme.ui.status_bar_bg.as_f32(),
+        RegionId::StatusBar => theme.ui.panel_bg.as_f32(),
         _ => theme.ui.border_color.as_f32(),
     }
 }

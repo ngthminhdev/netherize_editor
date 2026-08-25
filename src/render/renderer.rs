@@ -15,6 +15,10 @@ mod lifecycle;
 mod palette;
 mod ui;
 pub(crate) use ui::test_runner::TestRunnerPointerAction;
+// Re-exported so the app layer can build per-tab status values for the
+// bottom-dock terminal tab strip (`build_bottom_tab_strip`) without reaching
+// into this private module tree.
+pub(crate) use ui::TerminalTabDot;
 
 use std::path::PathBuf;
 
@@ -109,7 +113,13 @@ pub struct TopbarTab {
 pub(super) struct TopbarLayoutKey {
     pub(super) tabs: Vec<TopbarTab>,
     pub(super) active_buffer_index: Option<usize>,
+    /// Index of the tab currently under the pointer. Part of the key so the
+    /// layout cache invalidates whenever hover moves between tabs.
+    pub(super) hovered_tab_index: Option<usize>,
     pub(super) center_x: f32,
+    /// Workspace folder name + git branch shown in the topbar's left segment.
+    /// Part of the key so the cache invalidates when they change.
+    pub(super) project_label: String,
     pub(super) bounds: [f32; 4],
 }
 
@@ -152,9 +162,9 @@ pub(super) struct StatusbarLayoutKey {
     /// (`CANVAS` / `CANVAS·EDIT`); `None` shows the normal editor-mode pill.
     pub(super) canvas_label: Option<String>,
     pub(super) pending_keys: String,
-    /// Workspace root folder name shown between the mode pill and git branch.
-    pub(super) folder_name: String,
     pub(super) git_branch: String,
+    /// (added, modified) file counts rendered after the branch label.
+    pub(super) git_changes: (usize, usize),
     pub(super) is_dirty: bool,
     pub(super) filetype: String,
     pub(super) search_match_position: Option<(usize, usize)>,
@@ -275,7 +285,6 @@ pub struct Renderer {
     pub(super) terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_scissor: Option<[u32; 4]>,
     pub(super) terminal_body_batch: Option<TextScissorBatch>,
-    pub(super) terminal_tab_bar_batch: Option<TextScissorBatch>,
     pub(super) terminal_outer_tab_batch: Option<TextScissorBatch>,
 
     // ── Bottom dock outer tab strip icons ──────────────────────────────────────
@@ -320,6 +329,13 @@ pub struct Renderer {
     pub(super) topbar_scissor: Option<[u32; 4]>,
     pub(super) topbar_text_batches: Vec<TextScissorBatch>,
     pub(super) topbar_tab_hitboxes: Vec<(usize, u64, [f32; 4])>,
+    /// Hitboxes for the per-tab close ("×") buttons: `(buffer index, identity,
+    /// rect)`. Kept separate from `topbar_tab_hitboxes` so a press on the
+    /// button never also activates the tab body underneath it.
+    pub(super) topbar_close_hitboxes: Vec<(usize, u64, [f32; 4])>,
+    /// Clickable region of the project/branch label in the topbar's left
+    /// segment. `None` when there is no workspace or the segment is too narrow.
+    pub(super) topbar_project_hitbox: Option<[f32; 4]>,
     pub(super) last_topbar_layout_key: Option<TopbarLayoutKey>,
     pub(super) topbar_logo_image_pipeline: ImagePipeline,
     pub(super) topbar_logo_scissor: Option<[u32; 4]>,

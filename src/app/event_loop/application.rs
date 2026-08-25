@@ -1,5 +1,7 @@
 use super::*;
 use crate::app::app_state::BufferEntry;
+// Per-tab status mirror consumed by the bottom-dock terminal tab strip.
+use crate::render::renderer::TerminalTabDot;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
@@ -1317,21 +1319,9 @@ impl AppShell {
         let Some(position) = self.last_cursor_position else {
             return false;
         };
-        let Some(bounds) = self.current_bottom_panel_bounds() else {
+        let Some(outer_strip_bounds) = self.bottom_dock_hit_strip() else {
             return false;
         };
-
-        let strip_h = crate::workbench::layout_engine::BOTTOM_TAB_STRIP_HEIGHT;
-        let inset = crate::workbench::layout_engine::BOTTOM_DOCK_OUTLINE_INSET
-            .min(bounds[2] * 0.5)
-            .min(bounds[3] * 0.5)
-            .max(0.0);
-        let outer_strip_bounds = [
-            bounds[0] + inset,
-            bounds[1] + inset,
-            (bounds[2] - inset * 2.0).max(0.0),
-            strip_h.min(bounds[3]),
-        ];
 
         let term_count = self.terminal_tabs.len();
         if let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
@@ -1351,27 +1341,12 @@ impl AppShell {
     /// Mouse click on the right-dock tab strip → switch tab + focus the dock.
     /// Lets the user jump between Markdown Preview / Test Runner / … with the pointer.
     fn handle_right_dock_tab_mouse_click(&mut self) -> bool {
-        if !self.panel_state.right.visible {
-            return false;
-        }
         let Some(position) = self.last_cursor_position else {
             return false;
         };
-        let Some(bounds) = self.current_right_sidebar_bounds() else {
+        let Some((strip_bounds, tab_count)) = self.right_dock_hit_strip() else {
             return false;
         };
-        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
-        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
-            .min(bounds[2] * 0.5)
-            .min(bounds[3] * 0.5)
-            .max(0.0);
-        let strip_bounds = [
-            bounds[0] + inset,
-            bounds[1] + inset,
-            (bounds[2] - inset * 2.0).max(0.0),
-            strip_h,
-        ];
-        let tab_count = self.panel_state.right.tabs.len();
         let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
             renderer.right_dock_tab_index_at(tab_count, strip_bounds, position)
         }) else {
@@ -1393,27 +1368,12 @@ impl AppShell {
 
     /// Mouse click on the left-dock tab strip → switch tab + focus the dock.
     fn handle_left_dock_tab_mouse_click(&mut self) -> bool {
-        if !self.panel_state.left.visible {
-            return false;
-        }
         let Some(position) = self.last_cursor_position else {
             return false;
         };
-        let Some(bounds) = self.current_left_sidebar_bounds() else {
+        let Some((strip_bounds, tab_count)) = self.left_dock_hit_strip() else {
             return false;
         };
-        let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
-        let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET
-            .min(bounds[2] * 0.5)
-            .min(bounds[3] * 0.5)
-            .max(0.0);
-        let strip_bounds = [
-            bounds[0] + inset,
-            bounds[1] + inset,
-            (bounds[2] - inset * 2.0).max(0.0),
-            strip_h,
-        ];
-        let tab_count = self.panel_state.left.tabs.len();
         let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
             renderer.left_dock_tab_index_at(tab_count, strip_bounds, position)
         }) else {
@@ -1564,9 +1524,17 @@ impl AppShell {
     }
 
     #[cfg(target_os = "macos")]
-    fn handle_titlebar_mouse_press(&mut self) -> bool {
-        if self.handle_topbar_tab_mouse_press() {
+    fn handle_titlebar_mouse_press(&mut self, button: MouseButton) -> bool {
+        if self.handle_topbar_project_press() {
             return true;
+        }
+        if self.handle_topbar_tab_mouse_press(button) {
+            return true;
+        }
+        // Native titlebar gestures (drag-to-move, double-click zoom) are a
+        // left-button affair only.
+        if button != MouseButton::Left {
+            return false;
         }
         let Some(position) = self.last_cursor_position else {
             return false;
@@ -1610,18 +1578,48 @@ impl AppShell {
     }
 
     #[cfg(not(target_os = "macos"))]
-    fn handle_titlebar_mouse_press(&mut self) -> bool {
-        self.handle_topbar_tab_mouse_press()
+    fn handle_titlebar_mouse_press(&mut self, button: MouseButton) -> bool {
+        self.handle_topbar_project_press() || self.handle_topbar_tab_mouse_press(button)
     }
 
-    fn handle_topbar_tab_mouse_press(&mut self) -> bool {
-        let Some((rendered_index, rendered_identity)) =
-            self.last_cursor_position.and_then(|position| {
-                self.renderer
-                    .as_ref()
-                    .and_then(|renderer| renderer.topbar_tab_at_position(position))
-            })
-        else {
+    /// Click on the project/branch label in the topbar's left segment opens
+    /// the Recent Projects palette. The label never arms window drag and any
+    /// button works — it is an affordance, not titlebar chrome.
+    fn handle_topbar_project_press(&mut self) -> bool {
+        let over_project = self.last_cursor_position.is_some_and(|position| {
+            self.renderer
+                .as_ref()
+                .is_some_and(|renderer| renderer.topbar_project_at_position(position))
+        });
+        if !over_project {
+            return false;
+        }
+        self.titlebar_drag_origin = None;
+        self.last_titlebar_click = None;
+        let _ = self.handle_command(Command::OpenRecentProjects);
+        true
+    }
+
+    fn handle_topbar_tab_mouse_press(&mut self, button: MouseButton) -> bool {
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(renderer) = self.renderer.as_ref() else {
+            return false;
+        };
+        // Hit-test both layers up front (close buttons first, then tab bodies)
+        // so all renderer reads finish before any state mutation below.
+        let close_hit = if button == MouseButton::Left {
+            renderer.topbar_close_at_position(position)
+        } else {
+            None
+        };
+        let body_hit = renderer.topbar_tab_at_position(position);
+
+        // A close-button press wins over tab activation so clicking "×" never
+        // also focuses the tab underneath it.
+        let target_hit = close_hit.or(body_hit);
+        let Some((rendered_index, rendered_identity)) = target_hit else {
             return false;
         };
         let Some(index) =
@@ -1631,7 +1629,186 @@ impl AppShell {
         };
         self.titlebar_drag_origin = None;
         self.last_titlebar_click = None;
-        let _ = self.handle_command(Command::BufferGoto(index));
+        match (button, close_hit.is_some()) {
+            // Left on the tab body activates it.
+            (MouseButton::Left, false) => {
+                let _ = self.handle_command(Command::BufferGoto(index));
+                true
+            }
+            // Left on "×", or middle-click anywhere on the tab body, closes
+            // the buffer. Focus it first so close_current_buffer_now() (which
+            // closes the ACTIVE buffer, including its dirty-confirm overlay
+            // and PTY cleanup) operates on the pressed tab.
+            (MouseButton::Left, true) | (MouseButton::Middle, _) => {
+                let _ = self.handle_command(Command::BufferGoto(index));
+                self.close_current_buffer_now();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Track which topbar tab (if any) is under the pointer. Returns whether
+    /// the hovered index changed, so the caller can redraw the hover wash.
+    /// The OS cursor shape follows the same `last_cursor_icon` caching pattern
+    /// as `update_hover_affordance`: we only push `Pointer` when entering a
+    /// tab; leaving is left to that method, which already ran for this event
+    /// and picked the correct shape for whatever is now under the pointer.
+    fn update_topbar_hover(&mut self, cursor: (f32, f32)) -> bool {
+        use winit::window::CursorIcon;
+
+        let renderer = self.renderer.as_ref();
+        let hovered = renderer
+            .and_then(|r| r.topbar_tab_at_position(cursor))
+            .map(|(index, _)| index);
+        // The project/branch label shares the Pointer affordance with tabs.
+        let over_project = renderer
+            .map(|r| r.topbar_project_at_position(cursor))
+            .unwrap_or(false);
+        if hovered == self.last_topbar_hover && !over_project {
+            return false;
+        }
+        self.last_topbar_hover = hovered;
+        if (hovered.is_some() || over_project) && self.last_cursor_icon != Some(CursorIcon::Pointer)
+        {
+            if let Some(window) = self.window.as_ref() {
+                window.set_cursor(CursorIcon::Pointer);
+            }
+            self.last_cursor_icon = Some(CursorIcon::Pointer);
+        }
+        true
+    }
+
+    /// Strip bounds + tab count for the LEFT dock tab strip, derived exactly
+    /// the way the renderer insets the strip inside the panel outline. Shared
+    /// by the click handler and the hover tracker so what is hoverable is
+    /// always identical to what is clickable.
+    fn left_dock_hit_strip(&self) -> Option<([f32; 4], usize)> {
+        if !self.panel_state.left.visible {
+            return None;
+        }
+        let bounds = self.current_left_sidebar_bounds()?;
+        let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let strip_bounds = [
+            bounds[0] + inset,
+            bounds[1] + inset,
+            (bounds[2] - inset * 2.0).max(0.0),
+            strip_h,
+        ];
+        Some((strip_bounds, self.panel_state.left.tabs.len()))
+    }
+
+    /// Strip bounds + tab count for the RIGHT dock tab strip. See
+    /// `left_dock_hit_strip` for why this is shared between click and hover.
+    fn right_dock_hit_strip(&self) -> Option<([f32; 4], usize)> {
+        if !self.panel_state.right.visible {
+            return None;
+        }
+        let bounds = self.current_right_sidebar_bounds()?;
+        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let strip_bounds = [
+            bounds[0] + inset,
+            bounds[1] + inset,
+            (bounds[2] - inset * 2.0).max(0.0),
+            strip_h,
+        ];
+        Some((strip_bounds, self.panel_state.right.tabs.len()))
+    }
+
+    /// Left-dock tab currently under the pointer, if any.
+    fn left_dock_tab_under_pointer(&self) -> Option<usize> {
+        let (strip_bounds, tab_count) = self.left_dock_hit_strip()?;
+        let position = self.last_cursor_position?;
+        self.renderer
+            .as_ref()?
+            .left_dock_tab_index_at(tab_count, strip_bounds, position)
+    }
+
+    /// Right-dock tab currently under the pointer, if any.
+    fn right_dock_tab_under_pointer(&self) -> Option<usize> {
+        let (strip_bounds, tab_count) = self.right_dock_hit_strip()?;
+        let position = self.last_cursor_position?;
+        self.renderer
+            .as_ref()?
+            .right_dock_tab_index_at(tab_count, strip_bounds, position)
+    }
+
+    /// Strip bounds for the BOTTOM dock's terminal tab strip, derived exactly
+    /// the way the renderer insets the strip inside the panel outline. Shared
+    /// by the click handler and the hover tracker so what is hoverable is
+    /// always identical to what is clickable.
+    fn bottom_dock_hit_strip(&self) -> Option<[f32; 4]> {
+        if !self.panel_state.bottom.visible {
+            return None;
+        }
+        let bounds = self.current_bottom_panel_bounds()?;
+        let strip_h = crate::workbench::layout_engine::BOTTOM_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::BOTTOM_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        Some([
+            bounds[0] + inset,
+            bounds[1] + inset,
+            (bounds[2] - inset * 2.0).max(0.0),
+            strip_h.min(bounds[3]),
+        ])
+    }
+
+    /// Bottom-dock terminal tab under the pointer, if any. Mirrors the
+    /// hit-test's contract: `Some(i)` for terminal `i`, `Some(term_count)`
+    /// for the "+" button, `None` elsewhere (e.g. the capped empty zone).
+    fn bottom_dock_tab_under_pointer(&self) -> Option<usize> {
+        let strip_bounds = self.bottom_dock_hit_strip()?;
+        let position = self.last_cursor_position?;
+        let term_count = self.terminal_tabs.len();
+        self.renderer
+            .as_ref()?
+            .bottom_dock_tab_index_at(term_count, strip_bounds, position)
+    }
+
+    /// Track which left/right dock tab — and which bottom-dock terminal tab —
+    /// (if any) is under the pointer: the dock-strip sibling of
+    /// `update_topbar_hover`. Returns whether any hovered index changed, so
+    /// the caller can redraw the hover wash. The OS cursor shape follows the
+    /// same `last_cursor_icon` caching pattern: `Pointer` is pushed when
+    /// entering either strip; leaving is left to `update_hover_affordance`,
+    /// which already ran for this event and picked the correct shape for
+    /// whatever is now under the pointer.
+    fn update_dock_tabs_hover(&mut self, cursor: (f32, f32)) -> bool {
+        use winit::window::CursorIcon;
+
+        // The hit-tests read the stored position; keep it fresh so this
+        // method stays correct even if the CursorMoved ordering changes.
+        self.last_cursor_position = Some(cursor);
+        let left_hovered = self.left_dock_tab_under_pointer();
+        let right_hovered = self.right_dock_tab_under_pointer();
+        let bottom_hovered = self.bottom_dock_tab_under_pointer();
+        if left_hovered == self.last_left_dock_hover
+            && right_hovered == self.last_right_dock_hover
+            && bottom_hovered == self.last_bottom_dock_hover
+        {
+            return false;
+        }
+        self.last_left_dock_hover = left_hovered;
+        self.last_right_dock_hover = right_hovered;
+        self.last_bottom_dock_hover = bottom_hovered;
+        let on_a_tab =
+            left_hovered.is_some() || right_hovered.is_some() || bottom_hovered.is_some();
+        if on_a_tab && self.last_cursor_icon != Some(CursorIcon::Pointer) {
+            if let Some(window) = self.window.as_ref() {
+                window.set_cursor(CursorIcon::Pointer);
+            }
+            self.last_cursor_icon = Some(CursorIcon::Pointer);
+        }
         true
     }
 
@@ -2067,6 +2244,18 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 } else if self.update_hover_affordance(cursor) {
                     self.request_redraw();
                 }
+                // Topbar tab hover is tracked independently of the drag/resize
+                // affordances above: it only fires on an index change (so it
+                // costs nothing while the pointer rests inside one tab) and
+                // drives both the hover wash redraw and the Pointer cursor.
+                if self.update_topbar_hover(cursor) {
+                    self.request_redraw();
+                }
+                // Left/right dock tab strips use the same change-only hover
+                // tracking so their washes repaint without a full layout.
+                if self.update_dock_tabs_hover(cursor) {
+                    self.request_redraw();
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 if self.handle_right_terminal_mouse_wheel(delta) {
@@ -2128,10 +2317,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                         return;
                     }
                 }
-                if button == MouseButton::Left
-                    && state == ElementState::Pressed
-                    && self.handle_titlebar_mouse_press()
-                {
+                // Any button press reaches the titlebar handler so middle-click
+                // can close a topbar tab; it filters non-tab buttons itself.
+                if state == ElementState::Pressed && self.handle_titlebar_mouse_press(button) {
                     self.request_redraw();
                 } else if self.handle_right_terminal_mouse_input(button, state) {
                     self.request_redraw();
@@ -3424,6 +3612,11 @@ impl AppShell {
             self.app_state.workspace_has_active_filter(),
             sidebar_scroll_offset_rows,
         );
+        // Hover-highlight input for the left-dock tab strip: which tab (if
+        // any) sits under the pointer. Resolved before the renderer mutable
+        // borrow below; validated against the label count at use time because
+        // tabs can close between events.
+        let left_dock_hover = self.left_dock_tab_under_pointer();
         if let Some(renderer) = self.renderer.as_mut() {
             if let Some(bounds) = sidebar_bounds {
                 let sidebar_focused = self.focus_manager.current() == FocusTarget::LeftSidebar;
@@ -3431,10 +3624,14 @@ impl AppShell {
                 let focus_changed = self.last_sidebar_focused != Some(sidebar_focused);
                 let left_active_tab_changed = self.last_left_active_tab != left_active_tab_id;
 
+                // A hover change alone must also re-bake the strip: the wash
+                // lives in the rendered chrome, so compare against the last
+                // hover index actually rendered.
                 if self.sidebar_needs_layout
                     || bounds_changed
                     || focus_changed
                     || left_active_tab_changed
+                    || self.last_left_dock_hover != self.rendered_left_dock_hover
                 {
                     let labels: Vec<&str> = self
                         .panel_state
@@ -3452,6 +3649,10 @@ impl AppShell {
                         .collect();
                     let left_active = self.panel_state.left.active_tab;
                     let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
+                    // Guard against a stale hover index from a tab that just
+                    // closed (same guard as the topbar render path).
+                    let hovered_tab_index =
+                        left_dock_hover.filter(|&index| index < labels.len());
 
                     let explorer_rows_opt = if left_is_explorer {
                         Some(sidebar_rows.as_slice())
@@ -3477,6 +3678,7 @@ impl AppShell {
                         left_active,
                         strip_h,
                         sidebar_focused,
+                        hovered_tab_index,
                         explorer_rows_opt,
                         outline_opt,
                         sidebar_filter_state.as_ref(),
@@ -3484,6 +3686,7 @@ impl AppShell {
                     self.last_sidebar_bounds = Some(bounds);
                     self.last_sidebar_focused = Some(sidebar_focused);
                     self.last_left_active_tab = left_active_tab_id;
+                    self.rendered_left_dock_hover = self.last_left_dock_hover;
                     self.sidebar_needs_layout = false;
                 }
                 region_instances.extend(self.sidebar_selection_quads.iter().copied());
@@ -3492,6 +3695,7 @@ impl AppShell {
                 self.last_sidebar_bounds = None;
                 self.last_sidebar_focused = None;
                 self.last_left_active_tab = None;
+                self.rendered_left_dock_hover = None;
                 self.sidebar_selection_quads.clear();
             }
         }
@@ -3597,6 +3801,12 @@ impl AppShell {
                     strip_focused,
                 ))
             };
+            // Hover-highlight input: resolve which right-dock tab (if any)
+            // sits under the pointer so this frame draws its wash. Guarded
+            // against a stale index left over from a tab that just closed.
+            let right_hovered_tab_index = self
+                .right_dock_tab_under_pointer()
+                .filter(|&index| index < labels.len());
             if let Some(renderer) = self.renderer.as_mut() {
                 let mode = self.app_state.current_mode();
                 renderer.update_right_dock_panel(
@@ -3606,6 +3816,7 @@ impl AppShell {
                     active,
                     strip_h,
                     strip_focused,
+                    right_hovered_tab_index,
                     content,
                     outline,
                     agent_picker,
@@ -3703,15 +3914,6 @@ impl AppShell {
             region_instances.extend(renderer.editor_chrome_instances().iter().copied());
         }
 
-        let folder_name = if show_welcome {
-            ""
-        } else {
-            self.app_state
-                .workspace_root_path()
-                .and_then(|root| root.file_name().and_then(|name| name.to_str()))
-                .unwrap_or("")
-        };
-
         if let Some(top) = layout.model.find(RegionId::TopBar) {
             let top_bounds = [top.x, top.y, top.width, top.height];
             let tabs = self
@@ -3769,11 +3971,30 @@ impl AppShell {
                 let center_x = visible_region_bounds(&flat_regions, RegionId::Center)
                     .map(|b| b[0])
                     .unwrap_or(0.0);
+                // Hover highlight input: resolve which tab (if any) sits under
+                // the pointer so this frame draws its wash. Guarded against a
+                // stale index left over from a tab that just closed.
+                let hovered_tab_index = self
+                    .last_cursor_position
+                    .and_then(|position| renderer.topbar_tab_at_position(position))
+                    .map(|(index, _)| index)
+                    .filter(|&index| index < tabs.len());
+                // Project/branch labels for the topbar's left segment. The
+                // branch comes straight from the workspace watcher, not the
+                // statusbar's welcome-gated local.
+                let project_label = self
+                    .app_state
+                    .workspace_root_path()
+                    .and_then(|root| root.file_name())
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 let tab_quads = renderer.update_topbar_content(
                     &tabs,
                     self.app_state.active_buffer_index(),
                     center_x,
                     top_bounds,
+                    hovered_tab_index,
+                    &project_label,
                 );
                 region_instances.extend(tab_quads);
             }
@@ -3784,13 +4005,12 @@ impl AppShell {
             let mode = self.app_state.current_mode();
             let (line, col) = self.app_state.cursor_line_col();
             let pending_keys = self.input_handler.get_pending_keys();
-            let (filetype, git_branch, is_dirty, status_line, status_col) = if show_welcome {
-                ("Welcome", "", false, 0, 0)
+            let (filetype, is_dirty, status_line, status_col) = if show_welcome {
+                ("Welcome", false, 0, 0)
             } else {
                 let filetype = self.app_state.active_filetype_label();
-                let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
                 let is_dirty = self.app_state.is_dirty();
-                (filetype, git_branch, is_dirty, line, col)
+                (filetype, is_dirty, line, col)
             };
             if let Some(renderer) = self.renderer.as_mut() {
                 let lsp_progress_label = self
@@ -3860,8 +4080,8 @@ impl AppShell {
                     mode,
                     canvas_label,
                     &pending_keys,
-                    folder_name,
-                    git_branch,
+                    &self.workspace_git_branch.clone().unwrap_or_default(),
+                    self.app_state.workspace_git_change_counts(),
                     is_dirty,
                     filetype,
                     self.app_state.active_search_match_position(),
@@ -4021,6 +4241,26 @@ impl AppShell {
                 let outer_labels_refs: Vec<&str> =
                     outer_labels.iter().map(|s| s.as_str()).collect();
                 let strip_focused = self.focus_manager.current() == FocusTarget::BottomPanel;
+                // Map the app-layer status enum onto the renderer's mirror
+                // (the `pub(super)` event_loop type can't cross into the
+                // render module). Aligned 1:1 with `outer_labels_refs`.
+                let outer_statuses: Vec<TerminalTabDot> = self
+                    .terminal_tabs
+                    .iter()
+                    .map(|tab| match tab.status {
+                        TerminalTabStatus::Running => TerminalTabDot::Running,
+                        TerminalTabStatus::Exited(0) => TerminalTabDot::ExitedOk,
+                        TerminalTabStatus::Exited(_) => TerminalTabDot::ExitedFail,
+                    })
+                    .collect();
+                // Hover wash input: same index the hit-test would return.
+                // The strip rebuilds every frame, so a changed index just has
+                // to reach this call — validated against the label count in
+                // case tabs closed since the last CursorMoved. `term_count`
+                // (the "+" button) is filtered out: it gets no wash.
+                let bottom_hover = self
+                    .last_bottom_dock_hover
+                    .filter(|&index| index < term_count);
 
                 // ── Content area below the outer tab strip ───────────────────
                 // The outer strip IS the dock's only tab bar (like the left/right
@@ -4067,8 +4307,10 @@ impl AppShell {
                         outer_strip_bounds,
                         &outer_labels_refs,
                         &outer_icons,
+                        &outer_statuses,
                         outer_active,
                         strip_focused,
+                        bottom_hover,
                     )
                 } else {
                     Vec::new()

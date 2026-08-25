@@ -61,6 +61,14 @@ impl AppState {
             .and_then(|model| model.git_status_for_path(path))
     }
 
+    /// (added, modified) file counts for the topbar project segment.
+    pub fn workspace_git_change_counts(&self) -> (usize, usize) {
+        self.workspace_model
+            .as_ref()
+            .map(|model| model.git_change_counts())
+            .unwrap_or((0, 0))
+    }
+
     pub fn workspace_set_git_statuses(
         &mut self,
         statuses: HashMap<PathBuf, WorkspaceGitStatus>,

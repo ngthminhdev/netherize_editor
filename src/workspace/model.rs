@@ -590,6 +590,21 @@ impl WorkspaceModel {
         self.git_statuses.get(path).copied()
     }
 
+    /// Aggregate (added, modified) file counts for the topbar project segment.
+    /// `Dirty` counts as modified. File-level counts, not line counts — the
+    /// porcelain status this derives from carries no numstat.
+    pub fn git_change_counts(&self) -> (usize, usize) {
+        let mut added = 0;
+        let mut modified = 0;
+        for status in self.git_statuses.values() {
+            match status {
+                WorkspaceGitStatus::Added => added += 1,
+                WorkspaceGitStatus::Modified | WorkspaceGitStatus::Dirty => modified += 1,
+            }
+        }
+        (added, modified)
+    }
+
     pub fn set_git_statuses(&mut self, statuses: HashMap<PathBuf, WorkspaceGitStatus>) -> bool {
         let mut with_parents: HashMap<PathBuf, WorkspaceGitStatus> = HashMap::new();
         for (path, status) in statuses {

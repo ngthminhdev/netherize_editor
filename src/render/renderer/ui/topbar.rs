@@ -23,12 +23,38 @@ fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
     inset_scissor_rect(bounds, 4.0, 2.0)
 }
 
-const TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS: f32 = 150.0;
+const TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS: f32 = 78.0;
 const TOPBAR_TAB_PADDING_X: f32 = 12.0;
 const TOPBAR_TAB_SEPARATOR_WIDTH: f32 = 1.0;
 const TOPBAR_ACTIVE_BORDER_HEIGHT: f32 = 2.0;
 const TOPBAR_DIRTY_DOT: &str = "●";
 const TOPBAR_TAB_ICON_GAP: f32 = 6.0;
+/// Close-button glyph shown at the right edge of each tab. Temporarily
+/// disabled per user feedback (2026-08-24): the × felt cluttered; flip to
+/// `true` to bring it back (render + hitbox + layout reserve all key off
+/// this flag, middle-click close works either way).
+const TOPBAR_TAB_CLOSE_ENABLED: bool = false;
+const TOPBAR_TAB_CLOSE: &str = "\u{00D7}";
+/// Absolute logical width range for tabs, scaled by the runtime UI scale.
+/// Fixed px bounds keep tabs readable on any window size — the old
+/// fraction-of-topbar formula collapsed on narrow windows and ballooned on
+/// wide ones.
+const TOPBAR_TAB_MIN_WIDTH: f32 = 88.0;
+const TOPBAR_TAB_MAX_WIDTH: f32 = 240.0;
+const TOPBAR_TAB_CLOSE_HITBOX: f32 = 16.0;
+/// Gap between the close hitbox and the tab's right edge.
+const TOPBAR_TAB_CLOSE_RIGHT_PAD: f32 = 5.0;
+/// Horizontal space reserved inside every tab so the label can never slide
+/// underneath the "×" glyph (right pad + hitbox + breathing room). Zero while
+/// the button is hidden so tab layout matches the pre-button geometry.
+const TOPBAR_TAB_CLOSE_RESERVE: f32 = if TOPBAR_TAB_CLOSE_ENABLED {
+    TOPBAR_TAB_CLOSE_RIGHT_PAD + TOPBAR_TAB_CLOSE_HITBOX + 2.0
+} else {
+    0.0
+};
+/// Subtle hover wash over non-active tabs, applied to the theme fg color so it
+/// adapts to light/dark palettes instead of hardcoding an RGB value.
+const TOPBAR_TAB_HOVER_ALPHA: f32 = 0.08;
 
 fn macos_traffic_light_space(runtime_scale: f32, bounds_width: f32) -> f32 {
     (TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS * runtime_scale.max(0.5)).min(bounds_width)
@@ -77,6 +103,122 @@ fn topbar_visible_tab_x(
     tab_start_x + positions[idx] - positions[first_visible]
 }
 
+/// Linear blend of two RGBA colors; `t` is the weight of `b`, clamped to 0..1.
+/// Used to derive UI washes from existing theme tokens instead of hardcoding
+/// RGB values that break on alternate palettes.
+fn blend_colors(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    let t = t.clamp(0.0, 1.0);
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+    ]
+}
+
+/// Distribute tab widths across the visible strip.
+///
+/// Desired widths are clamped into `[min_w, max_w]` first. When the clamped
+/// total under-fills the strip, the leftover space is spread evenly across tabs
+/// (respecting `max_w`) so tabs flex like an editor's tab bar. When it
+/// overfills, tabs shrink proportionally toward `min_w`; anything that still
+/// doesn't fit is handled downstream by the scroll/"+"-overflow pass, which
+/// only needs consistent per-tab widths.
+fn distribute_tab_widths(desired: &[f32], min_w: f32, max_w: f32, available: f32) -> Vec<f32> {
+    if desired.is_empty() {
+        return Vec::new();
+    }
+    let mut widths: Vec<f32> = desired.iter().map(|&d| d.clamp(min_w, max_w)).collect();
+    let total: f32 = widths.iter().sum();
+    if total < available {
+        // Grow every tab evenly toward `max_w` until the row is filled.
+        let mut leftover = available - total;
+        loop {
+            let open: Vec<usize> = (0..widths.len())
+                .filter(|&i| widths[i] < max_w - f32::EPSILON)
+                .collect();
+            if open.is_empty() || leftover <= f32::EPSILON {
+                break;
+            }
+            let share = leftover / open.len() as f32;
+            for &i in &open {
+                let grow = share.min(max_w - widths[i]);
+                widths[i] += grow;
+                leftover -= grow;
+            }
+            if share <= f32::EPSILON {
+                break;
+            }
+        }
+    } else if total > available {
+        // Shrink proportionally toward `min_w`; tabs already at the minimum
+        // keep it while flexible tabs absorb the deficit.
+        let shrinkable: f32 = widths.iter().map(|w| (w - min_w).max(0.0)).sum();
+        if shrinkable > f32::EPSILON {
+            let ratio = ((total - available) / shrinkable).min(1.0);
+            for w in widths.iter_mut() {
+                *w -= (*w - min_w).max(0.0) * ratio;
+            }
+        }
+    }
+    widths
+}
+
+/// Truncate `label` with a trailing '…' (U+2026) so its estimated width fits
+/// `max_width` minus a small right safety margin. The font is proportional, so
+/// monospace estimates are approximate — the margin keeps truncation honest.
+/// Returns the original label unchanged when it already fits.
+fn ellipsize_label(label: &str, max_width: f32, font_size: f32) -> String {
+    const RIGHT_SAFETY_MARGIN: f32 = 6.0;
+    let budget = (max_width - RIGHT_SAFETY_MARGIN).max(0.0);
+    if estimate_monospace_width(label, font_size) <= budget {
+        return label.to_string();
+    }
+    let chars: Vec<char> = label.chars().collect();
+    // Start from an estimate of how many chars fit and walk back from there to
+    // avoid rescanning the whole label for long file names.
+    let per_char = estimate_monospace_width("n", font_size).max(1.0);
+    let mut end = ((budget / per_char) as usize).min(chars.len());
+    while end > 0 {
+        let mut candidate = String::with_capacity(end + 3);
+        candidate.extend(chars[..end].iter());
+        candidate.push('…');
+        if estimate_monospace_width(&candidate, font_size) <= budget {
+            return candidate;
+        }
+        end -= 1;
+    }
+    // Even a bare ellipsis overflows the budget; draw it anyway so the user
+    // can see the tab has content rather than an empty slot.
+    "…".to_string()
+}
+
+/// Split `label` over at most two lines of `max_width`. Line one takes as many
+/// chars as fit whole; the remainder is ellipsized onto line two. Returns
+/// `(line1, None)` when the label already fits on one line.
+fn wrap_label_two_lines(
+    label: &str,
+    max_width: f32,
+    font_size: f32,
+) -> (String, Option<String>) {
+    if estimate_monospace_width(label, font_size) <= (max_width - 6.0).max(0.0) {
+        return (label.to_string(), None);
+    }
+    let chars: Vec<char> = label.chars().collect();
+    let per_char = estimate_monospace_width("n", font_size).max(1.0);
+    let mut end = ((max_width / per_char) as usize).min(chars.len()).max(1);
+    while end > 1 {
+        let head: String = chars[..end].iter().collect();
+        if estimate_monospace_width(&head, font_size) <= max_width {
+            break;
+        }
+        end -= 1;
+    }
+    let head: String = chars[..end].iter().collect();
+    let tail: String = chars[end..].iter().collect();
+    (head, Some(ellipsize_label(&tail, max_width, font_size)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,9 +233,23 @@ mod tests {
 
     #[test]
     fn macos_traffic_light_space_scales_with_runtime_scale() {
-        assert_eq!(macos_traffic_light_space(1.0, 900.0), 150.0);
-        assert_eq!(macos_traffic_light_space(2.0, 900.0), 300.0);
-        assert_eq!(macos_traffic_light_space(2.0, 200.0), 200.0);
+        assert_eq!(macos_traffic_light_space(1.0, 900.0), 78.0);
+        assert_eq!(macos_traffic_light_space(2.0, 900.0), 156.0);
+        assert_eq!(macos_traffic_light_space(2.0, 100.0), 100.0);
+    }
+
+    #[test]
+    fn long_labels_wrap_onto_a_second_line() {
+        let (a, b) = wrap_label_two_lines("short", 400.0, 13.0);
+        assert_eq!(a, "short");
+        assert!(b.is_none());
+
+        let (a, b) = wrap_label_two_lines("platform-core--bo-cong-thuong", 60.0, 13.0);
+        let b = b.expect("long label should wrap");
+        assert!(!a.is_empty() && a.chars().count() < 29);
+        assert!(estimate_monospace_width(&a, 13.0) <= 60.0);
+        assert!(estimate_monospace_width(&b, 13.0) <= 60.0);
+        assert!(b.ends_with('…') || a.chars().count() + b.chars().count() == 29);
     }
 
     #[test]
@@ -113,6 +269,103 @@ mod tests {
         );
         assert_eq!(topbar_tab_at_position((100.0, 18.0), &hitboxes), None);
     }
+
+    #[test]
+    fn width_distribution_clamps_and_grows_to_fill_available_space() {
+        // Desired widths below the minimum are clamped up; leftover space is
+        // spread evenly until every tab reaches the max.
+        let widths = distribute_tab_widths(&[40.0, 60.0], 88.0, 240.0, 400.0);
+        assert_eq!(widths.len(), 2);
+        for w in &widths {
+            assert!((88.0..=240.0).contains(w), "width {w} out of range");
+        }
+        // Two clamped tabs (88 + 88 = 176) grow evenly by the 224 leftover,
+        // capped at max 240 each.
+        let total: f32 = widths.iter().sum();
+        assert!((total - 400.0).abs() < 1e-3, "expected fill, got {total}");
+
+        // When even maxed-out tabs can't fill a huge strip, they stay at max.
+        let widths = distribute_tab_widths(&[100.0], 88.0, 240.0, 10_000.0);
+        assert_eq!(widths[0], 240.0);
+
+        // Empty input stays empty.
+        assert!(distribute_tab_widths(&[], 88.0, 240.0, 400.0).is_empty());
+    }
+
+    #[test]
+    fn width_distribution_shrinks_proportionally_but_never_below_min() {
+        let desired = [300.0, 300.0, 300.0];
+        let min_w = 88.0;
+        let max_w = 240.0;
+        // Tight strip: proportional shrink toward min.
+        let widths = distribute_tab_widths(&desired, min_w, max_w, 600.0);
+        let total: f32 = widths.iter().sum();
+        assert!(
+            (total - 600.0).abs() < 1e-2,
+            "expected shrink to fit, got {total}"
+        );
+        for w in &widths {
+            assert!(*w >= min_w - 1e-3, "width {w} below minimum");
+            assert_eq!(*w, widths[0], "shrink must be symmetric");
+        }
+        // Extremely tight strip: everything bottoms out at the minimum so the
+        // downstream overflow pass can hide the excess.
+        let widths = distribute_tab_widths(&desired, min_w, max_w, 100.0);
+        for w in &widths {
+            assert_eq!(*w, min_w);
+        }
+    }
+
+    #[test]
+    fn ellipsis_truncation_fits_budget_and_keeps_short_labels() {
+        let font_size = 13.0;
+        let label = "a_very_long_file_name_that_will_not_fit.rs";
+        let full_width = estimate_monospace_width(label, font_size);
+
+        // Short labels pass through untouched.
+        assert_eq!(ellipsize_label("main.rs", full_width, font_size), "main.rs");
+
+        // Long labels get exactly one trailing '…' and fit the budget minus
+        // the right safety margin.
+        let truncated = ellipsize_label(label, full_width * 0.5, font_size);
+        assert!(truncated.ends_with('…'));
+        assert!(truncated.len() < label.len());
+        assert!(
+            estimate_monospace_width(&truncated, font_size)
+                <= full_width * 0.5 - 6.0 + f32::EPSILON
+        );
+
+        // Degenerate budget still yields a visible placeholder.
+        assert_eq!(ellipsize_label(label, 0.0, font_size), "…");
+    }
+
+    #[test]
+    fn close_hitboxes_contain_their_right_edge_zone() {
+        // Same rect shape update_topbar_content pushes: 16x16 logical px
+        // centered vertically, inset from the tab's right edge.
+        let hitboxes = vec![
+            (0, 7_u64, [90.0, 10.0, TOPBAR_TAB_CLOSE_HITBOX, TOPBAR_TAB_CLOSE_HITBOX]),
+            (1, 9_u64, [210.5, 10.0, TOPBAR_TAB_CLOSE_HITBOX, TOPBAR_TAB_CLOSE_HITBOX]),
+        ];
+        // Center and corners of the box hit; points outside don't.
+        assert_eq!(
+            topbar_tab_at_position((98.0, 18.0), &hitboxes),
+            Some((0, 7))
+        );
+        assert_eq!(
+            topbar_tab_at_position((90.0 + TOPBAR_TAB_CLOSE_HITBOX - 0.01, 18.0), &hitboxes),
+            Some((0, 7))
+        );
+        assert_eq!(
+            topbar_tab_at_position((89.99, 18.0), &hitboxes),
+            None,
+            "left of the close zone must fall through to the tab body"
+        );
+        assert_eq!(
+            topbar_tab_at_position((218.0, 18.0), &hitboxes),
+            Some((1, 9))
+        );
+    }
 }
 
 struct BundledLogo {
@@ -124,7 +377,7 @@ struct BundledLogo {
 fn bundled_logo() -> Option<&'static BundledLogo> {
     static LOGO: std::sync::OnceLock<Option<BundledLogo>> = std::sync::OnceLock::new();
     LOGO.get_or_init(|| {
-        let bytes = include_bytes!("../../../../assets/app_logo.png");
+        let bytes = include_bytes!("../../../../assets/logo_welcome.png");
         let decoded = image::load_from_memory(bytes).ok()?;
         let rgba = decoded.to_rgba8();
         Some(BundledLogo {
@@ -143,6 +396,8 @@ impl Renderer {
         active_buffer_index: Option<usize>,
         center_x: f32,
         bounds: [f32; 4],
+        hovered_tab_index: Option<usize>,
+        project_label: &str,
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.topbar_scissor = None;
@@ -159,6 +414,8 @@ impl Renderer {
             self.topbar_chrome_instances.clear();
             self.topbar_text_batches.clear();
             self.topbar_tab_hitboxes.clear();
+            self.topbar_close_hitboxes.clear();
+            self.topbar_project_hitbox = None;
             self.last_topbar_layout_key = None;
             self.topbar_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
@@ -170,7 +427,9 @@ impl Renderer {
         let layout_key = TopbarLayoutKey {
             tabs: tabs.to_vec(),
             active_buffer_index,
+            hovered_tab_index,
             center_x,
+            project_label: project_label.to_string(),
             bounds,
         };
         if self.last_topbar_layout_key.as_ref() == Some(&layout_key) {
@@ -179,10 +438,10 @@ impl Renderer {
 
         self.topbar_scissor = rect_to_scissor(bounds);
         self.topbar_tab_hitboxes.clear();
+        self.topbar_close_hitboxes.clear();
 
         let line_h = self.statusbar_line_height;
         let font_size = self.statusbar_font_size;
-        let width = (bounds[2] - self.topbar_padding_x * 2.0).max(1.0);
         let content_top = 0.0;
         let content_bottom = 0.0;
         let content_y = bounds[1] + content_top;
@@ -195,10 +454,18 @@ impl Renderer {
         let inactive_fg = self.theme.ui.fg_ghost.as_f32();
         let empty_fg = self.theme.ui.fg_ghost.as_f32();
         let dirty_fg = self.theme.ui.warning.as_f32();
-        let active_bg = self.theme.editor.bg.as_f32();
-        let accent = self.theme.ui.cyan.as_f32();
+        // Blend elevated_bg toward editor.bg so the active tab stays distinct
+        // even in themes where the two tokens are near-identical.
+        let active_bg =
+            blend_colors(self.theme.ui.elevated_bg.as_f32(), self.theme.editor.bg.as_f32(), 0.30);
+        let accent = self.theme.ui.accent.as_f32();
+        let mut hover_bg = self.theme.ui.fg.as_f32();
+        hover_bg[3] = TOPBAR_TAB_HOVER_ALPHA;
         let border = self.theme.ui.border_color.as_f32();
-        let font_family = self.theme.editor.font_family.as_deref();
+        // Owned copy: `draw_project_segment` takes `&mut Renderer`, which
+        // cannot coexist with a borrow into `self.theme`.
+        let font_family = self.theme.editor.font_family.as_deref().map(str::to_string);
+        let font_family = font_family.as_deref();
 
         let mut glyphs = Vec::new();
         self.topbar_icon_instances.clear();
@@ -221,6 +488,76 @@ impl Renderer {
 
         // Align tab start exactly at the start of the main editor (center_x)
         let tab_x = bounds[0] + center_x.max(topbar_start_x);
+
+        // ── Project label + branch, in the segment above the left dock ────────
+        // Single line when it fits ("project ⎇branch"), otherwise two stacked
+        // lines (name over branch) — the segment is only as wide as the gap
+        // between the macOS traffic lights and the editor start, so it can get
+        // quite narrow. Hidden entirely when there is no workspace or no room.
+        self.topbar_project_hitbox = None;
+        let project = project_label.trim();
+        if !project.is_empty() {
+            let seg_x = bounds[0] + topbar_start_x + TOPBAR_TAB_PADDING_X;
+            let seg_limit = tab_x - 16.0;
+            let avail_w = (seg_limit - seg_x).max(0.0);
+            const SEG_MIN_WIDTH: f32 = 64.0;
+            if avail_w >= SEG_MIN_WIDTH {
+                // Folder name only, vertically centered — nothing else. The
+                // git branch and change counts live in the status bar.
+                self.topbar_text_system.set_font_family(font_family);
+                // Long folder names wrap onto a second line when the segment
+                // is tall enough for two; otherwise they ellipsize as before.
+                let (line1, line2) = if content_h >= line_h * 2.0 {
+                    wrap_label_two_lines(project, avail_w, font_size)
+                } else {
+                    (ellipsize_label(project, avail_w, font_size), None)
+                };
+                let lines = if line2.is_some() { 2.0 } else { 1.0 };
+                let text_y =
+                    content_y + ((content_h - line_h * lines) * 0.5).max(0.0);
+                let proj_start = glyphs.len() as u32;
+                for (i, line) in [Some(&line1), line2.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                {
+                    glyphs.extend(layout_panel_text_bold(
+                        line,
+                        &mut self.topbar_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        seg_x,
+                        text_y + line_h * i as f32,
+                        active_fg,
+                    ));
+                }
+                let shown_name = line1;
+                let proj_count = glyphs.len() as u32 - proj_start;
+                // Own scissor batch: these glyphs precede the tab glyphs, and
+                // each tab batch clips to its own tab rect — without this the
+                // project text would be clipped away entirely.
+                if proj_count > 0 {
+                    let name_w =
+                        estimate_monospace_width(&shown_name, font_size).min(avail_w);
+                    self.topbar_project_hitbox =
+                        Some([seg_x - 4.0, content_y, name_w + 8.0, content_h]);
+                    if let Some(scissor) = rect_to_scissor([
+                        seg_x - 8.0,
+                        content_y,
+                        avail_w + 24.0,
+                        content_h,
+                    ]) {
+                        text_batches.push(TextScissorBatch {
+                            scissor,
+                            range: InstanceDrawRange {
+                                start: proj_start,
+                                count: proj_count,
+                            },
+                        });
+                    }
+                }
+            }
+        }
 
         // Render Logo at the far right
         self.topbar_logo_image_pipeline.clear();
@@ -268,27 +605,21 @@ impl Renderer {
         } else {
             // ── Pass 1: measure every tab so we can keep the active tab visible and
             //    show a "+N" overflow indicator when tabs don't fit.
-            struct TabGeom {
-                width: f32,
-                separator: f32,
+            struct TabMeasure {
                 icon_size: f32,
                 icon_id: Option<&'static str>,
                 icon_gap_eff: f32,
-                label_width: f32,
                 dirty_extra_width: f32,
+                desired_width: f32,
             }
-            let mut geoms: Vec<TabGeom> = Vec::with_capacity(tabs.len());
-            let mut positions: Vec<f32> = Vec::with_capacity(tabs.len());
-            let mut pos = tab_x;
+            let mut measured: Vec<TabMeasure> = Vec::with_capacity(tabs.len());
             for (idx, tab) in tabs.iter().enumerate() {
+                // A dirty tab that is NOT hovered shows the ● marker instead of
+                // the close button, so the marker only reserves space then.
+                let show_dirty_dot = tab.is_dirty && hovered_tab_index != Some(idx);
                 let label_width = estimate_monospace_width(&tab.label, font_size);
-                let dirty_marker_width = if tab.is_dirty {
-                    estimate_monospace_width(TOPBAR_DIRTY_DOT, font_size)
-                } else {
-                    0.0
-                };
-                let dirty_extra_width = if tab.is_dirty {
-                    dirty_gap + dirty_marker_width
+                let dirty_extra_width = if show_dirty_dot {
+                    dirty_gap + estimate_monospace_width(TOPBAR_DIRTY_DOT, font_size)
                 } else {
                     0.0
                 };
@@ -301,11 +632,43 @@ impl Renderer {
                     0.0
                 };
                 let content_width = icon_w + icon_gap_eff + label_width + dirty_extra_width;
-                let tab_min_w = bounds[2] * 0.10;
-                let tab_max_w = bounds[2] * 0.15;
-                let tab_width = (TOPBAR_TAB_PADDING_X * 2.0 + content_width)
-                    .clamp(tab_min_w, tab_max_w)
-                    .min(width);
+                let desired_width =
+                    TOPBAR_TAB_PADDING_X * 2.0 + TOPBAR_TAB_CLOSE_RESERVE + content_width;
+                measured.push(TabMeasure {
+                    icon_size,
+                    icon_id,
+                    icon_gap_eff,
+                    dirty_extra_width,
+                    desired_width,
+                });
+            }
+
+            // Distribute widths against the visible strip: flex up to the max
+            // when there's room, shrink proportionally to the min when tight.
+            let visible_width = (available_right - tab_x).max(0.0);
+            let runtime_scale = self.ui_scale.max(0.5);
+            let tab_min_w = TOPBAR_TAB_MIN_WIDTH * runtime_scale;
+            let tab_max_w = TOPBAR_TAB_MAX_WIDTH * runtime_scale;
+            let widths = distribute_tab_widths(
+                &measured.iter().map(|m| m.desired_width).collect::<Vec<_>>(),
+                tab_min_w,
+                tab_max_w,
+                visible_width,
+            );
+
+            struct TabGeom {
+                width: f32,
+                separator: f32,
+                icon_size: f32,
+                icon_id: Option<&'static str>,
+                icon_gap_eff: f32,
+                dirty_extra_width: f32,
+            }
+            let mut geoms: Vec<TabGeom> = Vec::with_capacity(measured.len());
+            let mut positions: Vec<f32> = Vec::with_capacity(measured.len());
+            let mut pos = tab_x;
+            for (idx, m) in measured.into_iter().enumerate() {
+                let tab_width = widths[idx];
                 let separator_width = if idx < tabs.len() - 1 {
                     TOPBAR_TAB_SEPARATOR_WIDTH
                 } else {
@@ -315,16 +678,14 @@ impl Renderer {
                 geoms.push(TabGeom {
                     width: tab_width,
                     separator: separator_width,
-                    icon_size,
-                    icon_id,
-                    icon_gap_eff,
-                    label_width,
-                    dirty_extra_width,
+                    icon_size: m.icon_size,
+                    icon_id: m.icon_id,
+                    icon_gap_eff: m.icon_gap_eff,
+                    dirty_extra_width: m.dirty_extra_width,
                 });
                 pos += tab_width + separator_width;
             }
 
-            let visible_width = (available_right - tab_x).max(0.0);
             let active_idx = active_buffer_index
                 .unwrap_or(0)
                 .min(tabs.len().saturating_sub(1));
@@ -398,14 +759,48 @@ impl Renderer {
                 let icon_id = geoms[idx].icon_id;
                 let icon_w = icon_id.map(|_| icon_size).unwrap_or(0.0);
                 let icon_gap_eff = geoms[idx].icon_gap_eff;
-                let label_width = geoms[idx].label_width;
                 let dirty_extra_width = geoms[idx].dirty_extra_width;
-                let content_width = icon_w + icon_gap_eff + label_width + dirty_extra_width;
+                // Ellipsize the label to the space actually available inside the
+                // tab (left pad .. close-button zone) instead of relying only on
+                // the hard scissor clip to chop mid-glyph.
+                let label_budget = (tab_width
+                    - TOPBAR_TAB_PADDING_X
+                    - TOPBAR_TAB_CLOSE_RESERVE
+                    - icon_w
+                    - icon_gap_eff
+                    - dirty_extra_width)
+                    .max(0.0);
+                let display_label = ellipsize_label(&tab.label, label_budget, font_size);
+                let label_draw_width = estimate_monospace_width(&display_label, font_size);
+                let content_width = icon_w + icon_gap_eff + label_draw_width + dirty_extra_width;
                 self.topbar_tab_hitboxes.push((
                     idx,
                     tab.identity,
                     [tab_x, content_y, tab_width, content_h],
                 ));
+                // Close button hitbox, centered vertically at the tab's right
+                // edge. Kept separate from the body hitbox so a press here can
+                // be routed to BufferClose without also activating the tab.
+                // Only registered while the button is enabled.
+                let close_rect = [
+                    tab_x + tab_width - TOPBAR_TAB_CLOSE_RIGHT_PAD - TOPBAR_TAB_CLOSE_HITBOX,
+                    content_y + (content_h - TOPBAR_TAB_CLOSE_HITBOX).max(0.0) * 0.5,
+                    TOPBAR_TAB_CLOSE_HITBOX,
+                    TOPBAR_TAB_CLOSE_HITBOX,
+                ];
+                if TOPBAR_TAB_CLOSE_ENABLED {
+                    self.topbar_close_hitboxes
+                        .push((idx, tab.identity, close_rect));
+                }
+
+                // Subtle wash behind a non-active hovered tab so the pointer
+                // target is visible before the user commits to a click.
+                if !is_active && hovered_tab_index == Some(idx) {
+                    chrome.push(RegionDrawInstance::new(
+                        [tab_x, content_y, tab_width, content_h.max(0.0)],
+                        hover_bg,
+                    ));
+                }
 
                 if is_active {
                     chrome.push(RegionDrawInstance::new(
@@ -436,13 +831,19 @@ impl Renderer {
                     ));
                 }
 
-                let content_start =
-                    tab_x + ((tab_width - content_width) / 2.0).max(TOPBAR_TAB_PADDING_X);
+                // Center the content inside the area left of the close button
+                // so the label can never slide underneath the "×".
+                let inner_left = tab_x + TOPBAR_TAB_PADDING_X;
+                let inner_width =
+                    (tab_width - TOPBAR_TAB_PADDING_X - TOPBAR_TAB_CLOSE_RESERVE).max(0.0);
+                let content_start = inner_left + ((inner_width - content_width) / 2.0).max(0.0);
                 let icon_x = content_start;
                 let text_x = content_start + icon_w + icon_gap_eff;
                 let batch_start = glyphs.len() as u32;
 
                 if let Some(icon) = icon_id {
+                    // Tint icons from the theme fg tokens so they match the
+                    // label weight instead of staying pure white.
                     self.topbar_icon_instances.push(IconDrawInstance {
                         icon,
                         rect: [
@@ -451,6 +852,10 @@ impl Renderer {
                             icon_size,
                             icon_size,
                         ],
+                        // Tint must stay white: file-type icons are COLORED
+                        // SVG assets and the pipeline multiplies tint by the
+                        // asset's own colors — any fg-based tint desaturates
+                        // them to gray.
                         tint: [1.0, 1.0, 1.0, 1.0],
                     });
                 }
@@ -466,7 +871,7 @@ impl Renderer {
 
                 if is_active {
                     glyphs.extend(layout_panel_text_bold(
-                        &tab.label,
+                        &display_label,
                         &mut self.topbar_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -476,7 +881,7 @@ impl Renderer {
                     ));
                 } else {
                     glyphs.extend(layout_panel_text(
-                        &tab.label,
+                        &display_label,
                         &mut self.topbar_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -488,19 +893,37 @@ impl Renderer {
                 if tab.missing_on_disk {
                     let strike_y = origin_y + font_size * 0.55;
                     chrome.push(RegionDrawInstance::new(
-                        [text_x, strike_y, label_width, 1.0],
+                        [text_x, strike_y, label_draw_width, 1.0],
                         label_color,
                     ));
                 }
-                if tab.is_dirty {
+                // Dirty tabs show the ● marker; with the "×" enabled it takes
+                // over while hovered (VS Code behavior). With the button
+                // hidden the dot is unconditional again.
+                let show_dirty_dot = tab.is_dirty
+                    && (!TOPBAR_TAB_CLOSE_ENABLED || hovered_tab_index != Some(idx));
+                if show_dirty_dot {
                     glyphs.extend(layout_panel_text(
                         TOPBAR_DIRTY_DOT,
                         &mut self.topbar_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        text_x + label_width + dirty_gap,
+                        text_x + label_draw_width + dirty_gap,
                         origin_y,
                         dirty_fg,
+                    ));
+                } else if TOPBAR_TAB_CLOSE_ENABLED {
+                    let close_color = if is_active { active_fg } else { inactive_fg };
+                    let close_text_w = estimate_monospace_width(TOPBAR_TAB_CLOSE, font_size);
+                    let close_glyph_x = close_rect[0] + (close_rect[2] - close_text_w) * 0.5;
+                    glyphs.extend(layout_panel_text(
+                        TOPBAR_TAB_CLOSE,
+                        &mut self.topbar_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        close_glyph_x,
+                        origin_y,
+                        close_color,
                     ));
                 }
                 let batch_count = glyphs.len() as u32 - batch_start;
@@ -581,5 +1004,22 @@ impl Renderer {
 
     pub fn topbar_tab_at_position(&self, position: (f32, f32)) -> Option<(usize, u64)> {
         topbar_tab_at_position(position, &self.topbar_tab_hitboxes)
+    }
+
+    /// Hit-test the per-tab close ("×") buttons. Returns the rendered buffer
+    /// index + identity, validated by the caller before dispatching commands.
+    pub fn topbar_close_at_position(&self, position: (f32, f32)) -> Option<(usize, u64)> {
+        topbar_tab_at_position(position, &self.topbar_close_hitboxes)
+    }
+
+    /// True when the pointer is over the project/branch label in the topbar's
+    /// left segment (click opens the Recent Projects palette).
+    pub fn topbar_project_at_position(&self, position: (f32, f32)) -> bool {
+        self.topbar_project_hitbox.is_some_and(|b| {
+            position.0 >= b[0]
+                && position.0 <= b[0] + b[2]
+                && position.1 >= b[1]
+                && position.1 <= b[1] + b[3]
+        })
     }
 }

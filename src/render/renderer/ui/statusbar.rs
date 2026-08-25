@@ -19,7 +19,8 @@ fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
 impl Renderer {
     /// Render the three-zone status bar.
     ///
-    /// Left Zone   (→): mode-pill · git-branch · dirty-dot · pending-keys
+    /// Left Zone   (→): mode-pill · git-branch · change-counts · dirty-dot · pending-keys
+    /// (workspace folder name lives in the topbar's left segment)
     /// Right Zone  (←): lsp-progress · search · cursor · encoding · language · lsp-dot
     #[allow(clippy::too_many_arguments)]
     pub fn update_statusbar_content(
@@ -27,8 +28,8 @@ impl Renderer {
         mode: EditorMode,
         canvas_label: Option<&str>,
         pending_keys: &str,
-        folder_name: &str,
         git_branch: &str,
+        git_changes: (usize, usize),
         is_dirty: bool,
         filetype: &str,
         search_match_position: Option<(usize, usize)>,
@@ -59,8 +60,8 @@ impl Renderer {
             mode,
             canvas_label: canvas_label.map(str::to_string),
             pending_keys: pending_keys.to_string(),
-            folder_name: folder_name.to_string(),
             git_branch: git_branch.to_string(),
+            git_changes,
             is_dirty,
             filetype: filetype.to_string(),
             search_match_position,
@@ -105,7 +106,8 @@ impl Renderer {
         let fg_dim = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.85);
         let fg_ghost = with_alpha(self.theme.ui.fg_ghost.as_f32(), 0.75);
         let accent = self.theme.ui.accent.as_f32();
-        let status_bg = with_alpha(self.theme.ui.status_bar_bg.as_f32(), 0.98);
+        // Matches the topbar surface so the two chrome strips read as one frame.
+        let status_bg = self.theme.ui.panel_bg.as_f32();
         let border_color = with_alpha(self.theme.ui.border_color.as_f32(), 0.85);
         let error_fg = self.theme.ui.error.as_f32();
         let warning_fg = self.theme.ui.warning.as_f32();
@@ -181,38 +183,7 @@ impl Renderer {
         // ══════════════════════════════════════════════════════════════════════════
         let mut left_x = pill_x + pill_width + item_gap;
 
-        // ── Workspace folder ──────────────────────────────────────────────────────
-        let folder = folder_name.trim();
-        if !folder.is_empty() {
-            let folder_label = clamp_monospace_text(folder, font_size * 20.0, font_size);
-            glyphs.extend(layout_panel_text(
-                &folder_label,
-                &mut self.statusbar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                left_x,
-                origin_y,
-                fg_dim,
-            ));
-            left_x += estimate_monospace_width(&folder_label, font_size) + item_gap;
-        }
-
-        // ── Resize-mode key hint ───────────────────────────────────────────────────
-        if mode == EditorMode::Resize {
-            let hint = "h/l width  j/k height  H/L grow dock  esc: exit";
-            glyphs.extend(layout_panel_text(
-                hint,
-                &mut self.statusbar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                left_x,
-                origin_y,
-                amber,
-            ));
-            left_x += estimate_monospace_width(hint, font_size) + item_gap;
-        }
-
-        // ── Git branch ────────────────────────────────────────────────────────────
+        // ── Git branch + change counts ────────────────────────────────────────────
         let branch = git_branch.trim();
         if !branch.is_empty() {
             let branch_name = branch.strip_prefix("git: ").unwrap_or(branch);
@@ -238,7 +209,56 @@ impl Renderer {
                 origin_y,
                 fg_dim,
             ));
-            left_x += name_w + item_gap;
+            left_x += name_w;
+            // Change counts trail the branch: +added (green) then ~modified
+            // (amber), each dropped individually when the zone runs dry.
+            let success = self.theme.ui.success.as_f32();
+            let warning = self.theme.ui.warning.as_f32();
+            let (added, modified) = git_changes;
+            if added > 0 {
+                let label = format!("+{added}");
+                let w = item_gap + estimate_monospace_width(&label, font_size);
+                glyphs.extend(layout_panel_text(
+                    &label,
+                    &mut self.statusbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x + item_gap,
+                    origin_y,
+                    success,
+                ));
+                left_x += w;
+            }
+            if modified > 0 {
+                let label = format!("~{modified}");
+                let w = item_gap + estimate_monospace_width(&label, font_size);
+                glyphs.extend(layout_panel_text(
+                    &label,
+                    &mut self.statusbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x + item_gap,
+                    origin_y,
+                    warning,
+                ));
+                left_x += w;
+            }
+            left_x += item_gap;
+        }
+
+        // ── Resize-mode key hint ───────────────────────────────────────────────────
+        if mode == EditorMode::Resize {
+            let hint = "h/l width  j/k height  H/L grow dock  esc: exit";
+            glyphs.extend(layout_panel_text(
+                hint,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x,
+                origin_y,
+                amber,
+            ));
+            left_x += estimate_monospace_width(hint, font_size) + item_gap;
         }
 
         // ── Dirty dot ─────────────────────────────────────────────────────────────

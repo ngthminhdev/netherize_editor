@@ -123,6 +123,21 @@ pub struct AppShell {
     /// Last OS cursor icon pushed to the window, so we only call `set_cursor`
     /// when the shape actually changes (not on every `CursorMoved`).
     last_cursor_icon: Option<winit::window::CursorIcon>,
+    /// Topbar tab index currently under the pointer (identity of the hover
+    /// wash + Pointer cursor). Tracked here so redraws only happen when the
+    /// hovered tab actually changes.
+    last_topbar_hover: Option<usize>,
+    /// Left/right dock tab index under the pointer — same identity role as
+    /// `last_topbar_hover`, one slot per dock strip.
+    last_left_dock_hover: Option<usize>,
+    last_right_dock_hover: Option<usize>,
+    /// Bottom-dock terminal tab index under the pointer (`term_count` when on
+    /// the "+" button). Drives the live strip's hover wash + Pointer cursor.
+    last_bottom_dock_hover: Option<usize>,
+    /// Last left-dock hover index actually baked into the rendered strip. The
+    /// left-dock panel only re-renders on layout/focus/tab changes, so this
+    /// comparison tells it when a hover change still needs a repaint.
+    rendered_left_dock_hover: Option<usize>,
     pending_right_pty_spawn: bool,
     /// Label of the AI agent currently launched in the right-dock terminal
     /// (e.g. "opencode"), for display. `None` when no agent is running.
