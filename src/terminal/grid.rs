@@ -1143,16 +1143,23 @@ impl TerminalGrid {
         if col >= self.cols {
             return;
         }
-        if row < self.scrollback.len() {
-            if let Some(cell) = self.scrollback[row].get_mut(col) {
-                cell.style_fg = Some(color);
-            }
+        let cell = if row < self.scrollback.len() {
+            self.scrollback[row].get_mut(col)
         } else if let Some(live_row) = row.checked_sub(self.scrollback.len())
             && live_row < self.rows
         {
-            if let Some(cell) = self.cells.get_mut(live_row * self.cols + col) {
-                cell.style_fg = Some(color);
-            }
+            self.cells.get_mut(live_row * self.cols + col)
+        } else {
+            None
+        };
+        // Cells the app already colored via ANSI keep their colors — the regex
+        // highlighter only paints plain (default fg/bg) cells, otherwise it
+        // fights TUIs/CLIs that emit their own SGR (claude, docker, npm, …).
+        if let Some(cell) = cell
+            && cell.style.fg == AnsiColor::Default
+            && cell.style.bg == AnsiColor::Default
+        {
+            cell.style_fg = Some(color);
         }
     }
 
@@ -2038,6 +2045,23 @@ mod tests {
         assert_eq!(grid.cell_at(0, 17).style_fg, Some(syn_kw));
         // 'n' at col 30 starts "null".
         assert_eq!(grid.cell_at(0, 30).style_fg, Some(syn_kw));
+    }
+
+    #[test]
+    fn apply_regex_highlights_skips_ansi_colored_cells() {
+        let mut grid = TerminalGrid::new(60, 5);
+        // App already colored "node:20" blue via ANSI — the highlighter must
+        // not repaint those digits; the plain tail still gets highlighted.
+        grid.feed_chunk("\x1b[34mnode:20\x1b[0m count=42");
+        grid.apply_regex_highlights();
+
+        // "node:20 count=42"
+        //  0123456789012345
+        // '2' at col 5 sits in an ANSI-colored run — no override.
+        assert_eq!(grid.cell_at(0, 5).style_fg, None);
+        // '4' at col 14 is plain — still syntax_number.
+        let syn_num = grid.highlight_colors.syntax_number;
+        assert_eq!(grid.cell_at(0, 14).style_fg, Some(syn_num));
     }
 
     #[test]
