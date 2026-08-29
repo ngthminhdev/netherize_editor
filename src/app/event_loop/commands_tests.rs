@@ -502,6 +502,81 @@ fn colon_wq_and_q_in_a_card_leave_the_card_edit_not_the_buffer() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Regression: a Definition card onto a file the LSP hasn't opened kept its ±N
+/// window (imports dragged in) until Enter re-requested the scope — a visible
+/// jump. The scope is now resolved LOCALLY (tree-sitter) at spawn.
+#[test]
+fn definition_card_scopes_locally_at_spawn_without_imports_or_reflow() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let dir = std::env::temp_dir().join(format!(
+        "netherize_canvas_local_scope_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let foo = dir.join("foo.ts");
+    let types = dir.join("types.ts");
+    std::fs::write(
+        &foo,
+        "import { MessageKafka } from './types';\nconst m: MessageKafka = null as any;\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &types,
+        "import { Message } from '../message/message';\nimport { OffsetModel } from './offset-model';\n\nexport interface MessageKafka extends Message, OffsetModel{\n    stringMessage : string;\n    traceId?: string;\n}\n",
+    )
+    .unwrap();
+    shell.app_state = AppState::new(foo.clone());
+    shell.app_state.open_file(foo.clone()).expect("open foo");
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.open_canvas(480.0, 320.0, 20.0));
+    shell.canvas_def_request_id = Some(77);
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 77,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LspRequest,
+        payload: crate::async_runtime::message::WorkerResultPayload::LspDefinitionResult {
+            locations: vec![crate::async_runtime::message::LspLocation {
+                uri: crate::lsp::client::path_to_lsp_uri(&types),
+                line: 3,
+                character: 17,
+            }],
+            jump: false,
+        },
+    });
+
+    let (card_id, scope_lines, start_line, text, symbol) = {
+        let card = shell
+            .app_state
+            .canvas()
+            .unwrap()
+            .blocks
+            .iter()
+            .find(|b| b.relation == crate::canvas::BlockRelation::Definition)
+            .expect("definition card spawned");
+        (
+            card.id,
+            card.scope_lines,
+            card.snapshot.start_line,
+            card.snapshot.text.clone(),
+            card.snapshot.symbol.clone(),
+        )
+    };
+    assert_eq!(
+        scope_lines,
+        Some((3, 6)),
+        "scoped at spawn, no LSP round-trip"
+    );
+    assert_eq!(start_line, 4);
+    assert!(!text.contains("import"), "{text}");
+    assert_eq!(symbol, "MessageKafka");
+    // Nothing left to retry on Enter → no reflow later.
+    shell.app_state.canvas_focus_block(card_id);
+    assert!(shell.app_state.canvas_begin_edit());
+    assert!(shell.app_state.canvas_scope_retry_target().is_none());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Accepting a canvas completion whose edit session already ended must NOT fall
 /// through `dispatch_card_editing_command` into the MAIN editor buffer (the
 /// Backspace×prefix + InsertText would corrupt it) — the stale completion is

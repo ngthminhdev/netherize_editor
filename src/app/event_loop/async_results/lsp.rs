@@ -1137,6 +1137,15 @@ fn attach_canvas_relations(
                     app.app_state
                         .canvas_apply_card_scope(id, snap, Some(range), rows);
                 }
+            } else if let Some((snap, range, rows)) =
+                super::canvas_scope::local_scope_snapshot(&app.theme, &path, line, character)
+            {
+                // Local tree-sitter scope: instant, no ±N flash, no LSP round-trip
+                // (documentSymbol is EMPTY for files the server hasn't opened, so
+                // the async path would leave the ±N window — imports and all —
+                // until Enter didOpen'd the file and re-asked: a visible jump).
+                app.app_state
+                    .canvas_apply_card_scope(id, snap, Some(range), rows);
             } else {
                 // Async resolve: ask the worker for documentSymbol of the card's
                 // target file, correlated by `card_id`. Best-effort — an empty

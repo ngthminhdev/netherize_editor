@@ -9,6 +9,7 @@ use std::path::Path;
 use crate::async_runtime::message::LspDocumentSymbol;
 use crate::canvas::{BlockOrigin, BlockSnapshot};
 use crate::config::theme_config::ThemeConfig;
+use crate::syntax::syntax_engine::LanguageId;
 
 /// Kinds that ARE a scope of their own: callables, plus declarations — a TS/JS
 /// arrow function is reported as `Variable` (`const useFoo = () => …`) or
@@ -93,6 +94,280 @@ pub(crate) fn scope_snapshot(
     )?;
     origin.lsp_line = line;
     Some((origin, snapshot, (start, end), scope_rows_cap(&scope.kind)))
+}
+
+/// A definition scope resolved LOCALLY with tree-sitter — no LSP round-trip, so
+/// a spawned card shows its function/type from the very first frame instead of
+/// a ±N window that reflows later (the "imports in the card, then a jump on
+/// Enter" bug: `documentSymbol` is empty for files the server hasn't opened).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LocalScope {
+    pub start: u32,
+    pub end: u32,
+    pub name: String,
+    pub container: bool,
+}
+
+/// Node kinds that ARE a scope (leaf definitions) / that only CONTAIN scopes,
+/// per grammar — mirrors the LSP-kind split above. Unknown grammar → empty →
+/// no local scope (the caller falls back to the LSP path).
+fn definition_kinds(language: LanguageId) -> (&'static [&'static str], &'static [&'static str]) {
+    use LanguageId::*;
+    match language {
+        Rust => (
+            &[
+                "function_item",
+                "function_signature_item",
+                "const_item",
+                "static_item",
+                "type_item",
+                "macro_definition",
+            ],
+            &[
+                "impl_item",
+                "trait_item",
+                "struct_item",
+                "enum_item",
+                "union_item",
+                "mod_item",
+            ],
+        ),
+        TypeScript | Tsx | JavaScript | Jsx => (
+            &[
+                "function_declaration",
+                "generator_function_declaration",
+                "method_definition",
+                "method_signature",
+                "abstract_method_signature",
+                "lexical_declaration",
+                "variable_declaration",
+                "public_field_definition",
+                "property_signature",
+            ],
+            &[
+                "class_declaration",
+                "abstract_class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+                "type_alias_declaration",
+                "internal_module",
+                "module",
+            ],
+        ),
+        Go => (
+            &[
+                "function_declaration",
+                "method_declaration",
+                "var_declaration",
+                "const_declaration",
+            ],
+            &["type_declaration"],
+        ),
+        Python => (&["function_definition"], &["class_definition"]),
+        Java => (
+            &[
+                "method_declaration",
+                "constructor_declaration",
+                "field_declaration",
+            ],
+            &[
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+                "record_declaration",
+            ],
+        ),
+        _ => (&[], &[]),
+    }
+}
+
+/// `const`/`let`/`var` declarations count as definitions only at MODULE level
+/// (`export const useFoo = () => …`) — a local inside a function body must not
+/// hijack the function's scope.
+fn is_module_level_declaration(node: tree_sitter::Node) -> bool {
+    const DECLS: [&str; 4] = [
+        "lexical_declaration",
+        "variable_declaration",
+        "var_declaration",
+        "const_declaration",
+    ];
+    if !DECLS.contains(&node.kind()) {
+        return true;
+    }
+    node.parent()
+        .is_some_and(|p| matches!(p.kind(), "program" | "export_statement" | "source_file"))
+}
+
+/// Best-effort name of a definition node: its `name` field, else the `type` it
+/// implements (`impl Foo`), else the first named child's `name` (a declarator
+/// under `const …`, a `type_spec` under Go's `type …`).
+fn node_name(node: tree_sitter::Node, src: &str) -> String {
+    let text = |n: tree_sitter::Node| n.utf8_text(src.as_bytes()).unwrap_or("").to_string();
+    if let Some(n) = node.child_by_field_name("name") {
+        return text(n);
+    }
+    if let Some(n) = node.child_by_field_name("type") {
+        return text(n);
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if let Some(n) = child.child_by_field_name("name") {
+            return text(n);
+        }
+    }
+    String::new()
+}
+
+/// The deepest definition node containing `line` (0-based): the smallest LEAF
+/// definition, else the smallest CONTAINER — same precedence as
+/// [`enclosing_definition`]. `None` when the grammar is unknown, the parse fails
+/// or the line sits in no definition (imports, blank lines between items).
+pub(crate) fn local_scope(text: &str, language: LanguageId, line: u32) -> Option<LocalScope> {
+    let (leaf, container) = definition_kinds(language);
+    if leaf.is_empty() && container.is_empty() {
+        return None;
+    }
+    let mut engine = crate::syntax::syntax_engine::SyntaxEngine::new(language).ok()?;
+    let tree = engine.parse_source(text, 0).ok()?;
+    let root = tree.root_node();
+    // (start, end, node, is_container)
+    let mut best: Option<(u32, u32, tree_sitter::Node, bool)> = None;
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        let s = node.start_position().row as u32;
+        let e = node.end_position().row as u32;
+        // Children lie inside the parent's range: a node that doesn't contain
+        // the line has no descendant that does.
+        if s > line || e < line {
+            continue;
+        }
+        let kind = node.kind();
+        let is_leaf = leaf.contains(&kind) && is_module_level_declaration(node);
+        let is_container = !is_leaf && container.contains(&kind);
+        if is_leaf || is_container {
+            let better = match &best {
+                None => true,
+                Some((bs, be, _, best_is_container)) => {
+                    // A leaf beats any container; among equals the smaller span
+                    // (`<=` so an inner node visited later wins a tie).
+                    (!is_container && *best_is_container)
+                        || (is_container == *best_is_container && e - s <= be - bs)
+                }
+            };
+            if better {
+                best = Some((s, e, node, is_container));
+            }
+        }
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                stack.push(child);
+            }
+        }
+    }
+    let (start, end, node, container) = best?;
+    Some(LocalScope {
+        start,
+        end,
+        name: node_name(node, text),
+        container,
+    })
+}
+
+/// Local (tree-sitter) scope → scoped card snapshot, for a card whose file has
+/// no cached LSP symbols: `(snapshot, (start, end), rows_cap)`. `None` → the
+/// caller keeps the ±N window and asks the LSP asynchronously.
+pub(crate) fn local_scope_snapshot(
+    theme: &ThemeConfig,
+    path: &Path,
+    line: u32,
+    character: u32,
+) -> Option<(BlockSnapshot, (u32, u32), Option<usize>)> {
+    let language = crate::syntax::parser::language_id_for_path(path)?;
+    let text = std::fs::read_to_string(path).ok()?;
+    let scope = local_scope(&text, language, line)?;
+    let (_o, snapshot) = super::lsp::build_canvas_relation_snapshot_range(
+        theme,
+        path,
+        scope.start,
+        scope.end,
+        character,
+        &scope.name,
+    )?;
+    Some((
+        snapshot,
+        (scope.start, scope.end),
+        scope.container.then_some(CONTAINER_CARD_ROWS),
+    ))
+}
+
+#[cfg(test)]
+mod local_scope_tests {
+    use super::*;
+
+    const TS: &str = "import { Message } from '../message/message';\nimport { OffsetModel } from './offset-model';\n\nexport interface MessageKafka extends Message, OffsetModel{\n    stringMessage : string;\n    traceId?: string;\n    traceQueuedAt?: number;\n}\n\nexport const useFoo = () => {\n    const x = 1;\n    return x;\n};\n\nclass App {\n    handleClick = () => {\n        run();\n    };\n    run() {\n        return 2;\n    }\n}\n";
+
+    #[test]
+    fn ts_interface_near_the_top_scopes_to_the_interface_not_the_imports() {
+        // The LSP definition points at the interface NAME line (3). The local
+        // scope must be the interface body — never the ±N window that drags the
+        // import lines in (the "F8 shows imports" bug).
+        let s = local_scope(TS, LanguageId::TypeScript, 3).expect("interface scope");
+        assert_eq!((s.start, s.end), (3, 7));
+        assert_eq!(s.name, "MessageKafka");
+        assert!(s.container, "an interface is a container (row-capped card)");
+    }
+
+    #[test]
+    fn ts_arrow_const_and_class_property_are_leaf_scopes() {
+        let s = local_scope(TS, LanguageId::TypeScript, 10).expect("arrow fn scope");
+        assert_eq!((s.start, s.end), (9, 12));
+        assert_eq!(s.name, "useFoo");
+        assert!(!s.container);
+        // Inside `handleClick = () => {…}` → the property, not the class.
+        let s = local_scope(TS, LanguageId::TypeScript, 16).expect("property scope");
+        assert_eq!((s.start, s.end), (15, 17));
+        assert_eq!(s.name, "handleClick");
+        // Inside the method → the method.
+        let s = local_scope(TS, LanguageId::TypeScript, 19).expect("method scope");
+        assert_eq!((s.start, s.end), (18, 20));
+        assert_eq!(s.name, "run");
+        // On the class line itself → the class (container).
+        let s = local_scope(TS, LanguageId::TypeScript, 14).expect("class scope");
+        assert_eq!(s.name, "App");
+        assert!(s.container);
+    }
+
+    #[test]
+    fn rust_method_inside_impl_and_line_outside_any_definition() {
+        let rs = "use std::fmt;\n\nimpl Foo {\n    /// doc\n    fn bar(&self) -> u32 {\n        1\n    }\n}\n\nfn top() {}\n";
+        let s = local_scope(rs, LanguageId::Rust, 5).expect("method scope");
+        assert_eq!((s.start, s.end), (4, 6));
+        assert_eq!(s.name, "bar");
+        assert!(!s.container);
+        let s = local_scope(rs, LanguageId::Rust, 2).expect("impl scope");
+        assert_eq!(s.name, "Foo");
+        assert!(s.container);
+        // A one-line fn is still a scope.
+        let s = local_scope(rs, LanguageId::Rust, 9).expect("one-line fn");
+        assert_eq!((s.start, s.end), (9, 9));
+        // The `use` line sits in no definition.
+        assert!(local_scope(rs, LanguageId::Rust, 0).is_none());
+        // Plaintext has no grammar → None (caller falls back to the LSP path).
+        assert!(local_scope(rs, LanguageId::Plaintext, 5).is_none());
+    }
+
+    #[test]
+    fn go_method_and_type_declaration() {
+        let go = "package x\n\nimport \"fmt\"\n\ntype Server struct {\n    port int\n}\n\nfunc (s *Server) Start() error {\n    fmt.Println(s.port)\n    return nil\n}\n";
+        let s = local_scope(go, LanguageId::Go, 8).expect("method scope");
+        assert_eq!((s.start, s.end), (8, 11));
+        assert_eq!(s.name, "Start");
+        assert!(!s.container);
+        let s = local_scope(go, LanguageId::Go, 4).expect("type scope");
+        assert_eq!((s.start, s.end), (4, 6));
+        assert_eq!(s.name, "Server");
+        assert!(s.container);
+    }
 }
 
 #[cfg(test)]
