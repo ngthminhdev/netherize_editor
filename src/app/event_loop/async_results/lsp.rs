@@ -600,31 +600,20 @@ pub(super) fn handle_lsp_result(
             else {
                 return;
             };
-            let Some(scope) = super::canvas_scope::enclosing_definition(&symbols, line) else {
-                // No enclosing definition — either the LSP returned an EMPTY list
-                // (server not ready / file not open / timeout) or the line sits in
-                // no function/class. Either way KEEP the card's spawn-time ±N window
-                // (the documented best-effort contract). The old `(0, total)`
-                // fallback collapsed to `(0, 0)` on empty symbols and showed only the
-                // file's first import line — flaky for constructors in cold-LSP files
-                // (bug-239).
-                return;
-            };
-            // Title the card by the TARGET symbol it lands in, not the canvas's
-            // focal symbol (see bug-021).
-            let (s_start, s_end, s_name) = (
-                scope.range.start.line,
-                scope.range.end.line,
-                scope.name.clone(),
-            );
-            let Some((_o, snap)) = build_canvas_relation_snapshot_range(
-                &app.theme, &path, s_start, s_end, character, &s_name,
-            ) else {
+            // No enclosing definition — either the LSP returned an EMPTY list
+            // (server not ready / file not open / timeout) or the line sits in no
+            // function/class. Either way KEEP the card's spawn-time ±N window (the
+            // documented best-effort contract). The old `(0, total)` fallback
+            // collapsed to `(0, 0)` on empty symbols and showed only the file's
+            // first import line — flaky for constructors in cold-LSP files (bug-239).
+            let Some((_o, snap, range, rows)) =
+                super::canvas_scope::scope_snapshot(&app.theme, &symbols, &path, line, character)
+            else {
                 return;
             };
             if app
                 .app_state
-                .canvas_apply_card_scope(card_id, snap, Some((s_start, s_end)))
+                .canvas_apply_card_scope(card_id, snap, Some(range), rows)
             {
                 app.request_redraw();
             }
@@ -1075,42 +1064,14 @@ fn attach_canvas_relations(
         .canvas()
         .map(|c| c.blocks.iter().map(|b| b.id).collect())
         .unwrap_or_default();
-    let cached_path = app.cached_document_symbols_path.clone();
-    let cached_symbols = app.cached_document_symbols.clone();
     let mut rels = Vec::new();
     for loc in locations.into_iter().take(cap) {
         let Some(path) = lsp_uri_to_path(&loc.uri) else {
             continue;
         };
-        // Eager scope: if the target file's symbols are cached, resolve the
-        // enclosing definition NOW and build a scope-aware snapshot from the
-        // start — no ±N flash, no second reflow.
-        let is_cached = cached_path.as_ref().is_some_and(|p| path == *p);
-        if is_cached {
-            if let Some(scope) =
-                super::canvas_scope::enclosing_definition(&cached_symbols, loc.line)
-            {
-                let (s_start, s_end, s_name) = (
-                    scope.range.start.line,
-                    scope.range.end.line,
-                    scope.name.clone(),
-                );
-                if let Some((origin, snapshot)) = build_canvas_relation_snapshot_range(
-                    &app.theme,
-                    &path,
-                    s_start,
-                    s_end,
-                    loc.character,
-                    &s_name,
-                ) {
-                    // Store scope_lines on the origin so canvas_apply_card_scope
-                    // can set it on the block after spawn.
-                    rels.push((relation, origin, snapshot, Some((s_start, s_end))));
-                    continue;
-                }
-            }
-        }
-        // Fallback: ±N window (will be refined async for uncached files).
+        // Spawn with the ±N window; the scope refine below runs in this SAME
+        // handler for cached files (no frame in between → no ±N flash), async
+        // otherwise.
         if let Some((origin, snapshot)) =
             build_canvas_relation_snapshot(&app.theme, &path, loc.line, loc.character, "", context)
         {
@@ -1136,18 +1097,15 @@ fn attach_canvas_relations(
         // Progressive scope resolution (T4/T5): for each newly-spawned card, if its
         // target file's documentSymbols are already cached (the active file),
         // resolve the enclosing-definition scope synchronously right now (one
-        // reflow, no async request). Other cards get an async CanvasCardScopeRequest
-        // wired in Pass B.
+        // reflow, no async request). Other cards get an async CanvasCardScopeRequest.
         let cached_path = app.cached_document_symbols_path.clone();
         let cached_symbols = app.cached_document_symbols.clone();
-        let new_cards: Vec<(crate::canvas::BlockId, std::path::PathBuf, u32, u32, String)> = app
+        let new_cards: Vec<(crate::canvas::BlockId, std::path::PathBuf, u32, u32)> = app
             .app_state
             .canvas()
             .map(|c| {
                 c.blocks
                     .iter()
-                    // Skip cards that already have scope_lines (resolved eagerly
-                    // above) — only process uncached cards that need async resolve.
                     .filter(|b| {
                         !pre_ids.contains(&b.id)
                             && b.relation != BlockRelation::Focal
@@ -1159,32 +1117,25 @@ fn attach_canvas_relations(
                             b.origin.path.clone(),
                             b.origin.lsp_line,
                             b.origin.lsp_character,
-                            b.origin.symbol_name.clone(),
                         )
                     })
                     .collect()
             })
             .unwrap_or_default();
-        for (id, path, line, character, _symbol) in new_cards {
+        for (id, path, line, character) in new_cards {
             let is_cached = cached_path.as_ref().is_some_and(|p| path == *p);
             if is_cached {
                 // Sync resolve: symbols already in memory → one reflow, no request.
-                if let Some(scope) =
-                    super::canvas_scope::enclosing_definition(&cached_symbols, line)
-                {
-                    // Title the card by the TARGET symbol it lands in, not the
-                    // canvas's focal symbol (see bug-021).
-                    let (s_start, s_end, s_name) = (
-                        scope.range.start.line,
-                        scope.range.end.line,
-                        scope.name.clone(),
-                    );
-                    if let Some((_o, snap)) = build_canvas_relation_snapshot_range(
-                        &app.theme, &path, s_start, s_end, character, &s_name,
-                    ) {
-                        app.app_state
-                            .canvas_apply_card_scope(id, snap, Some((s_start, s_end)));
-                    }
+                // Titles the card by the TARGET symbol it lands in (bug-021).
+                if let Some((_o, snap, range, rows)) = super::canvas_scope::scope_snapshot(
+                    &app.theme,
+                    &cached_symbols,
+                    &path,
+                    line,
+                    character,
+                ) {
+                    app.app_state
+                        .canvas_apply_card_scope(id, snap, Some(range), rows);
                 }
             } else {
                 // Async resolve: ask the worker for documentSymbol of the card's

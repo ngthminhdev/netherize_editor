@@ -608,17 +608,18 @@ impl AppState {
         card_id: BlockId,
         snapshot: BlockSnapshot,
         scope_lines: Option<(u32, u32)>,
+        rows_cap: Option<usize>,
     ) -> bool {
         let Some(state) = self.canvas.as_mut() else {
             return false;
         };
         let lines = snapshot.text.split('\n').count();
-        // Respect a user HEIGHT override (`=`/`-`) if one is set; else auto-fit
-        // (capped at the CARD_MAX_LINES plateau for a freshly-sourced card).
-        let rows = state
-            .block(card_id)
-            .and_then(|b| b.height_rows)
-            .unwrap_or(lines.min(CARD_MAX_LINES));
+        // Respect a user HEIGHT override (`=`/`-`) if one is set; else a scope
+        // row cap (a container — class/struct — shows only its first rows); else
+        // auto-fit (capped at the CARD_MAX_LINES plateau for a freshly-sourced card).
+        let user_rows = state.block(card_id).and_then(|b| b.height_rows);
+        let rows_override = user_rows.or(rows_cap.map(|r| r.clamp(1, lines.max(1))));
+        let rows = rows_override.unwrap_or(lines.min(CARD_MAX_LINES));
         let new_h = (state.line_h > 0.0).then(|| state.card_height_exact(rows));
         let Some(b) = state.blocks.iter_mut().find(|b| b.id == card_id) else {
             return false;
@@ -630,6 +631,7 @@ impl AppState {
         // The full enclosing-definition range (NOT the clamped snapshot) bounds the
         // in-card edit viewport so editing scrolls within the whole function.
         b.scope_lines = scope_lines;
+        b.height_rows = rows_override;
         if let Some(h) = new_h {
             b.world.h = h; // top-left fixed; grow/shrink downward only
         }
@@ -657,6 +659,41 @@ impl AppState {
         b.snapshot = snapshot;
         b.scope_lines = scope_lines;
         true
+    }
+
+    /// Where a Navigate-mode `gd`/`gr` queries from: the FOCUSED relation card
+    /// `(id, origin)` — so the chain continues from the card you're looking at
+    /// (`gr` = callers of that card's function), and the spawned cards connect
+    /// from it. `None` when the canvas doesn't own the keys (Background / editing
+    /// a card — there `gd`/`gr` mean editor-cursor / card-cursor things) or the
+    /// invisible focal anchor is focused (fresh `F8` → the editor cursor).
+    pub fn canvas_navigate_query_origin(&self) -> Option<(BlockId, BlockOrigin)> {
+        let c = self.canvas.as_ref()?;
+        if c.interaction != CanvasInteraction::Navigate {
+            return None;
+        }
+        let b = c.focused_block()?;
+        if b.relation == BlockRelation::Focal {
+            return None;
+        }
+        Some((b.id, b.origin.clone()))
+    }
+
+    /// The card whose scope should be asked for AGAIN on Enter: the card being
+    /// edited, if its enclosing-definition scope never resolved at spawn (its
+    /// file wasn't an LSP document then; it is now). `(card_id, path)`, or `None`
+    /// when not editing / already scoped.
+    pub fn canvas_scope_retry_target(&self) -> Option<(BlockId, std::path::PathBuf)> {
+        let block = self.canvas_edit_session_block()?;
+        let c = self.canvas.as_ref()?;
+        if !matches!(c.interaction, CanvasInteraction::EditCard { block: b, .. } if b == block) {
+            return None;
+        }
+        let b = c.block(block)?;
+        if b.scope_lines.is_some() {
+            return None;
+        }
+        Some((block, self.canvas_edit_session_path()?))
     }
 
     /// Everything `CanvasCardScopeResult` needs to re-source a card to its
@@ -881,10 +918,12 @@ impl AppState {
             focal.y
         };
 
-        // The focal location is the cursor in the live editor — a relation that
-        // resolves to it (e.g. the reference at the call site under the cursor)
-        // is already on screen, so skip it rather than draw a redundant card of
-        // the current file.
+        // The focal location is the cursor in the live editor — a CALLER that
+        // resolves to it (the reference at the call site under the cursor) is
+        // already on screen, so skip it rather than draw a redundant card of the
+        // current file. A DEFINITION at the focal site is kept: `F8` on a
+        // function's own declaration means "show me this function" — that card is
+        // the subject `gd`/`gr` chain from.
         let focal_loc = state
             .blocks
             .iter()
@@ -897,9 +936,10 @@ impl AppState {
             if relation == BlockRelation::Focal {
                 continue;
             }
-            if focal_loc
-                .as_ref()
-                .is_some_and(|(p, l)| *p == origin.path && *l == origin.lsp_line)
+            if relation == BlockRelation::Caller
+                && focal_loc
+                    .as_ref()
+                    .is_some_and(|(p, l)| *p == origin.path && *l == origin.lsp_line)
             {
                 continue;
             }
@@ -915,9 +955,11 @@ impl AppState {
                     && state.blocks[pos].relation != BlockRelation::Definition
                 {
                     state.blocks[pos].relation = BlockRelation::Definition;
-                    state.blocks[pos].origin = origin;
-                    state.blocks[pos].snapshot = snapshot;
-                    if scope_lines.is_some() {
+                    // A card whose scope already resolved keeps its scoped
+                    // snapshot; only an unresolved (±N) card takes the new one.
+                    if state.blocks[pos].scope_lines.is_none() {
+                        state.blocks[pos].origin = origin;
+                        state.blocks[pos].snapshot = snapshot;
                         state.blocks[pos].scope_lines = scope_lines;
                     }
                     added = true;
@@ -1483,6 +1525,122 @@ mod tests {
     }
 
     #[test]
+    fn definition_at_the_focal_location_is_kept_as_a_card() {
+        // F8 on a function's own declaration: `definition` resolves to the cursor
+        // line itself. That IS the function the user asked for — keep it as the
+        // card (only a CALLER at the focal site duplicates what the editor shows).
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        let (fp, fl) = {
+            let f = &app.canvas().unwrap().blocks[0];
+            (
+                f.origin.path.to_string_lossy().into_owned(),
+                f.origin.lsp_line,
+            )
+        };
+        assert!(app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            origin_at(&fp, fl),
+            snap("self"),
+        )]));
+        assert_eq!(app.canvas_relation_count(), 1);
+        assert_eq!(
+            app.canvas().unwrap().focused_block().unwrap().relation,
+            BlockRelation::Definition
+        );
+    }
+
+    #[test]
+    fn canvas_apply_card_scope_container_rows_cap_only_when_unset() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            origin_at("/p/a.rs", 10),
+            snap("a"),
+        )]);
+        let id = app.canvas().unwrap().focused.unwrap();
+        // A type (container) scope: 60 lines sourced, but only `rows` shown so a
+        // struct/class card doesn't dump its whole body — `=` reveals more.
+        assert!(app.canvas_apply_card_scope(id, snap_lines(60), Some((0, 59)), Some(12)));
+        let c = app.canvas().unwrap();
+        let b = c.block(id).unwrap();
+        assert_eq!(b.height_rows, Some(12));
+        assert!((b.world.h - c.card_height_exact(12)).abs() < 1e-3);
+        // A user-grown card keeps its own height on a later re-scope (retry on Enter).
+        assert!(app.canvas_change_focused_height(4));
+        assert!(app.canvas_apply_card_scope(id, snap_lines(60), Some((0, 59)), Some(12)));
+        assert_eq!(
+            app.canvas().unwrap().block(id).unwrap().height_rows,
+            Some(16)
+        );
+    }
+
+    #[test]
+    fn navigate_query_origin_is_the_focused_relation_card() {
+        let mut app = app_with_text("fn focal() {}\n");
+        app.open_canvas(VW, VH, LH);
+        // Fresh open: the (invisible) focal is focused → None → editor cursor.
+        assert!(app.canvas_navigate_query_origin().is_none());
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            origin_at("/p/a.rs", 10),
+            snap("a"),
+        )]);
+        let id = app.canvas().unwrap().focused.unwrap();
+        let (bid, origin) = app.canvas_navigate_query_origin().expect("focused card");
+        assert_eq!(bid, id);
+        assert_eq!(origin.lsp_line, 10);
+        assert_eq!(origin.path, PathBuf::from("/p/a.rs"));
+        // Background: the editor owns the keys → None.
+        assert!(app.canvas_enter_background());
+        assert!(app.canvas_navigate_query_origin().is_none());
+    }
+
+    #[test]
+    fn scope_retry_target_only_for_an_unscoped_edit_card() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_canvas_scope_retry_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let foo = dir.join("foo.rs");
+        let bar = dir.join("bar.rs");
+        std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
+        std::fs::write(&bar, "fn helper() {\n    1\n}\n").unwrap();
+        let mut app = AppState::new(foo.clone());
+        app.open_file(foo).expect("open foo");
+        assert!(app.open_canvas(VW, VH, LH));
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            origin_at(bar.to_string_lossy().as_ref(), 0),
+            snap("helper"),
+        )]);
+        // Not editing → nothing to retry.
+        assert!(app.canvas_scope_retry_target().is_none());
+        assert!(app.canvas_begin_edit());
+        let block = app.canvas_edit_session_block().unwrap();
+        assert_eq!(
+            app.canvas_scope_retry_target(),
+            Some((block, bar.clone())),
+            "an unscoped card being edited asks for its scope again"
+        );
+        // Once the scope is known, no retry.
+        let scoped = BlockSnapshot {
+            title: "bar.rs".into(),
+            symbol: "helper".into(),
+            start_line: 1,
+            text: "fn helper() {\n    1\n}".into(),
+            spans: Vec::new(),
+        };
+        assert!(app.canvas_apply_card_scope(block, scoped, Some((0, 2)), None));
+        assert!(app.canvas_scope_retry_target().is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn change_focused_height_only_affects_focused_card() {
         let mut app = app_with_text("fn focal() {}\n");
         app.open_canvas(VW, VH, LH);
@@ -1586,7 +1744,7 @@ mod tests {
             text: "fn s() {\n  x\n}".into(),
             spans: Vec::new(),
         };
-        assert!(app.canvas_apply_card_scope(id, new_snap.clone(), Some((7, 9))));
+        assert!(app.canvas_apply_card_scope(id, new_snap.clone(), Some((7, 9)), None));
         let b = app
             .canvas()
             .unwrap()
@@ -1621,7 +1779,7 @@ mod tests {
             text: "0\n1\n2\n3\n4\n5".into(),
             spans: Vec::new(),
         };
-        assert!(app.canvas_apply_card_scope(id, snap, Some((7, 12))));
+        assert!(app.canvas_apply_card_scope(id, snap, Some((7, 12)), None));
         // The 6-line scope is already fully shown → growing is a no-op (nothing
         // more to reveal), which is exactly what keeps Enter from reshrinking.
         assert!(
@@ -1659,7 +1817,7 @@ mod tests {
         };
         // The focal anchor is the editor itself (never drawn as a card); applying
         // a scope snapshot to it must be refused.
-        assert!(!app.canvas_apply_card_scope(focal_id, new_snap, None));
+        assert!(!app.canvas_apply_card_scope(focal_id, new_snap, None, None));
     }
 
     #[test]
@@ -1674,7 +1832,7 @@ mod tests {
             text: "fn s() {}".into(),
             spans: Vec::new(),
         };
-        assert!(!app.canvas_apply_card_scope(9999, new_snap, None));
+        assert!(!app.canvas_apply_card_scope(9999, new_snap, None, None));
     }
 
     #[test]

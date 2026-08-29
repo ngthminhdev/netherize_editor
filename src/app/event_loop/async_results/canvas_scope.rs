@@ -4,33 +4,95 @@
 //! == smallest containing span. Pure `(symbols, line) -> Option<range>` so it is
 //! unit-testable with hand-built symbol lists.
 
-use crate::async_runtime::message::LspDocumentSymbol;
+use std::path::Path;
 
-/// The deepest enclosing **definition** symbol (function/method/const/constructor)
-/// whose line range contains `line`. Returns `None` when no definition-kind
-/// symbol contains the line (caller falls back to the ±N window). The returned
-/// symbol carries both its `range` (for the scope snapshot) and its `name` (for
-/// the card title) — a spawned card must show the TARGET's name, not the canvas's
-/// focal symbol.
+use crate::async_runtime::message::LspDocumentSymbol;
+use crate::canvas::{BlockOrigin, BlockSnapshot};
+use crate::config::theme_config::ThemeConfig;
+
+/// Kinds that ARE a scope of their own: callables, plus declarations — a TS/JS
+/// arrow function is reported as `Variable` (`const useFoo = () => …`) or
+/// `Property` (`handler = () => …` in a class), a getter as `Property`, a Go
+/// `var f = func(){}` as `Variable`. The deepest leaf containing the line wins.
+const LEAF_KINDS: [&str; 7] = [
+    "Function",
+    "Method",
+    "Constructor",
+    "Constant",
+    "Variable",
+    "Property",
+    "Field",
+];
+/// Kinds that only CONTAIN scopes. Used as the fallback when no leaf contains
+/// the line (a type name, a line between methods). A container-scoped card is
+/// row-capped ([`CONTAINER_CARD_ROWS`]) so it doesn't dump the whole body — `=`
+/// reveals more.
+const CONTAINER_KINDS: [&str; 7] = [
+    "Class",
+    "Struct",
+    "Interface",
+    "Enum",
+    "Object",
+    "Module",
+    "Namespace",
+];
+/// Rows a container-scoped card shows on spawn (its header + first members).
+pub(crate) const CONTAINER_CARD_ROWS: usize = 12;
+
+/// The deepest enclosing **definition** symbol whose line range contains `line`:
+/// the smallest leaf (function/method/…/variable/property), else the smallest
+/// container (class/struct/…). Returns `None` when nothing definition-like
+/// contains the line (caller keeps the ±N window). The returned symbol carries
+/// both its `range` (for the scope snapshot) and its `name` (for the card title)
+/// — a spawned card must show the TARGET's name, not the canvas's focal symbol.
 pub(crate) fn enclosing_definition(
     symbols: &[LspDocumentSymbol],
     line: u32,
 ) -> Option<&LspDocumentSymbol> {
-    const DEF_KINDS: [&str; 8] = [
-        "Function",
-        "Method",
-        "Constant",
-        "Constructor",
-        "Class",
-        "Interface",
-        "Struct",
-        "Enum",
-    ];
-    symbols
-        .iter()
-        .filter(|s| DEF_KINDS.contains(&s.kind.as_str()))
-        .filter(|s| s.range.start.line <= line && line <= s.range.end.line)
-        .min_by_key(|s| s.range.end.line.saturating_sub(s.range.start.line))
+    let deepest = |kinds: &[&str]| {
+        symbols
+            .iter()
+            .filter(|s| kinds.contains(&s.kind.as_str()))
+            .filter(|s| s.range.start.line <= line && line <= s.range.end.line)
+            .min_by_key(|s| s.range.end.line.saturating_sub(s.range.start.line))
+    };
+    deepest(&LEAF_KINDS).or_else(|| deepest(&CONTAINER_KINDS))
+}
+
+/// Rows a freshly scoped card should show for a symbol of `kind`: `None` = the
+/// auto plateau (the whole scope, capped at `CARD_MAX_LINES`); `Some(n)` for
+/// containers so a type card stays compact.
+pub(crate) fn scope_rows_cap(kind: &str) -> Option<usize> {
+    CONTAINER_KINDS
+        .contains(&kind)
+        .then_some(CONTAINER_CARD_ROWS)
+}
+
+/// Resolve `(line, character)` in `path` to its enclosing scope and build the
+/// scoped card: `(origin, snapshot, (scope_start, scope_end), rows_cap)`. The
+/// origin keeps the QUERY site — the card's dedup key — not the scope start.
+/// `None` when no scope contains the line (the caller keeps its ±N window) or the
+/// file can't be read. The ONE resolve path for the focal, the sync refine (cached
+/// symbols) and the async refine (`CanvasCardScopeResult`).
+pub(crate) fn scope_snapshot(
+    theme: &ThemeConfig,
+    symbols: &[LspDocumentSymbol],
+    path: &Path,
+    line: u32,
+    character: u32,
+) -> Option<(BlockOrigin, BlockSnapshot, (u32, u32), Option<usize>)> {
+    let scope = enclosing_definition(symbols, line)?;
+    let (start, end) = (scope.range.start.line, scope.range.end.line);
+    let (mut origin, snapshot) = super::lsp::build_canvas_relation_snapshot_range(
+        theme,
+        path,
+        start,
+        end,
+        character,
+        &scope.name,
+    )?;
+    origin.lsp_line = line;
+    Some((origin, snapshot, (start, end), scope_rows_cap(&scope.kind)))
 }
 
 #[cfg(test)]
@@ -94,10 +156,92 @@ mod tests {
     }
 
     #[test]
-    fn no_definition_kind_enclosing_returns_none() {
-        // Line is inside a non-definition symbol (e.g. Variable, Namespace).
-        let symbols = vec![sym("Variable", 0, 50)];
+    fn non_definition_kinds_return_none() {
+        // Line is inside a symbol of a kind that is neither a leaf definition nor
+        // a container (e.g. TypeParameter, Key) → no scope.
+        let symbols = vec![sym("TypeParameter", 0, 50), sym("Key", 0, 50)];
         assert!(enclosing_definition(&symbols, 3).is_none());
+    }
+
+    #[test]
+    fn arrow_function_variable_or_property_beats_its_enclosing_class() {
+        // TS/JS report `handler = () => {…}` as Property and `const useFoo = () =>
+        // {…}` as Variable — functions in disguise. The deepest LEAF wins over the
+        // enclosing Class, so the card shows the handler, not the class from its
+        // top (which read as "the whole file").
+        let symbols = vec![
+            named_sym("App", "Class", 0, 300),
+            named_sym("handleClick", "Property", 40, 60),
+            named_sym("useFoo", "Variable", 100, 130),
+        ];
+        assert_eq!(
+            enclosing_definition(&symbols, 45).unwrap().name,
+            "handleClick"
+        );
+        assert_eq!(enclosing_definition(&symbols, 120).unwrap().name, "useFoo");
+        // No leaf contains line 80 → the Class (container) is the fallback.
+        assert_eq!(enclosing_definition(&symbols, 80).unwrap().name, "App");
+    }
+
+    #[test]
+    fn container_scopes_get_a_row_cap_leaves_do_not() {
+        for k in [
+            "Class",
+            "Struct",
+            "Interface",
+            "Enum",
+            "Object",
+            "Module",
+            "Namespace",
+        ] {
+            assert_eq!(scope_rows_cap(k), Some(CONTAINER_CARD_ROWS), "{k}");
+        }
+        for k in [
+            "Function",
+            "Method",
+            "Constructor",
+            "Constant",
+            "Variable",
+            "Property",
+            "Field",
+        ] {
+            assert_eq!(scope_rows_cap(k), None, "{k}");
+        }
+    }
+
+    #[test]
+    fn scope_snapshot_builds_the_scoped_card_with_the_container_cap() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_canvas_scope_snap_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("big.rs");
+        let body = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, body).unwrap();
+        let theme = crate::config::theme_config::ThemeConfig::builtin_dark();
+
+        let structs = vec![named_sym("Big", "Struct", 0, 39)];
+        let (origin, snap, range, rows) =
+            scope_snapshot(&theme, &structs, &path, 5, 2).expect("struct scope");
+        assert_eq!(range, (0, 39));
+        assert_eq!(rows, Some(CONTAINER_CARD_ROWS), "a type card is row-capped");
+        assert_eq!(snap.symbol, "Big");
+        assert_eq!(snap.start_line, 1);
+        assert_eq!(snap.text.lines().count(), 40);
+        // The origin keeps the QUERY site (the dedup key), not the scope start.
+        assert_eq!((origin.lsp_line, origin.lsp_character), (5, 2));
+
+        let fns = vec![named_sym("run", "Function", 0, 39)];
+        let (_, _, _, rows) = scope_snapshot(&theme, &fns, &path, 5, 2).expect("fn scope");
+        assert_eq!(rows, None, "a function card shows its whole scope");
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -859,15 +859,16 @@ impl Renderer {
             let kc_error = self.theme.ui.error.as_f32();
             // While editing a card the keys mean editor things (hjkl = cursor,
             // ⌘S = save); otherwise they drive card navigation.
-            let nav_hints: [(&[&str], &str); 8] = [
+            let nav_hints: [(&[&str], &str); 9] = [
                 (&["gd"], "Def"),
                 (&["gr"], "Refs"),
                 (&["Enter"], "Edit"),
+                (&["o"], "Open"),
                 (&["hjkl"], "Move"),
-                (&["P"], "Pin"),
+                (&["="], "Size"),
                 (&["Spc", "x"], "Close"),
-                (&["Tab"], "Next"),
-                (&["Esc"], "Back"),
+                (&["Esc"], "Bg"),
+                (&["q"], "Quit"),
             ];
             let edit_hints: [(&[&str], &str); 4] = [
                 (&["Esc"], "Done"),

@@ -2677,6 +2677,28 @@ fn canvas_focused_gca_arranges_and_f10_toggles() {
 }
 
 #[test]
+fn canvas_focused_q_closes_the_canvas() {
+    use crate::canvas::CanvasInteraction;
+
+    let map = make_default_profile_map();
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Canvas);
+    context.canvas_interaction = Some(CanvasInteraction::Navigate);
+    let mut handler = InputHandler::new();
+
+    // `q` in card navigation quits the canvas outright (Esc only backgrounds it;
+    // F8/F10 toggle) — one key, no double-press.
+    match handler.route_normalized_input(
+        char_input('q', KeyCode::KeyQ),
+        &map,
+        context,
+        Instant::now(),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::CanvasClose),
+        other => panic!("expected focused canvas q -> CanvasClose, got {other:?}"),
+    }
+}
+
+#[test]
 fn canvas_does_not_hijack_esc_from_other_panels() {
     use crate::canvas::CanvasInteraction;
     let map = make_map();

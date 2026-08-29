@@ -418,6 +418,90 @@ fn canvas_save_failure_is_shown_as_an_error_toast() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// `:w` typed in the vim command line while editing a card must write the CARD's
+/// file, not the focal file. The core palette dispatch sends `SaveFile` straight
+/// to core — skipping the shell's card gate — so the shell must intercept `:w`
+/// before that.
+#[test]
+fn colon_w_while_editing_a_card_writes_the_card_file() {
+    let (mut shell, dir, card_id) = shell_with_background_canvas_card();
+    assert!(shell.focus_canvas_card_for_click(card_id));
+    assert!(shell.handle_command(Command::InsertChar('Z')));
+    let foo_before = std::fs::read_to_string(dir.join("foo.rs")).unwrap();
+    let bar_before = std::fs::read_to_string(dir.join("bar.rs")).unwrap();
+
+    assert!(shell.handle_command(Command::OpenVimCommand));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("w".to_string())));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    let bar_after = std::fs::read_to_string(dir.join("bar.rs")).unwrap();
+    assert_ne!(bar_after, bar_before, "card file written");
+    assert!(bar_after.contains('Z'), "{bar_after}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("foo.rs")).unwrap(),
+        foo_before,
+        "focal file untouched"
+    );
+    assert!(!shell.app_state.is_command_palette_visible());
+    // `:w` writes and STAYS in the card (vim semantics).
+    assert!(matches!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::EditCard { .. })
+    ));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `:wq` in a card = write the card file and leave the card edit (Navigate);
+/// `:q` = leave without writing. Neither closes the focal buffer/tab.
+#[test]
+fn colon_wq_and_q_in_a_card_leave_the_card_edit_not_the_buffer() {
+    let (mut shell, dir, card_id) = shell_with_background_canvas_card();
+    let tabs_before = shell.app_state.buffers().len();
+    assert!(shell.focus_canvas_card_for_click(card_id));
+    assert!(shell.handle_command(Command::InsertChar('Q')));
+
+    assert!(shell.handle_command(Command::OpenVimCommand));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("wq".to_string())));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert!(
+        std::fs::read_to_string(dir.join("bar.rs"))
+            .unwrap()
+            .contains('Q')
+    );
+    assert_eq!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::Navigate),
+        ":wq leaves the card edit"
+    );
+    assert_eq!(
+        shell.app_state.buffers().len(),
+        tabs_before,
+        "no tab closed"
+    );
+
+    // `:q` from a fresh card edit → Navigate, file untouched.
+    assert!(shell.focus_canvas_card_for_click(card_id));
+    let bar_before = std::fs::read_to_string(dir.join("bar.rs")).unwrap();
+    assert!(shell.handle_command(Command::OpenVimCommand));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("q".to_string())));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+    assert_eq!(
+        shell.app_state.canvas_interaction(),
+        Some(crate::canvas::CanvasInteraction::Navigate)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("bar.rs")).unwrap(),
+        bar_before
+    );
+    assert_eq!(
+        shell.app_state.buffers().len(),
+        tabs_before,
+        "no tab closed"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Accepting a canvas completion whose edit session already ended must NOT fall
 /// through `dispatch_card_editing_command` into the MAIN editor buffer (the
 /// Backspace×prefix + InsertText would corrupt it) — the stale completion is

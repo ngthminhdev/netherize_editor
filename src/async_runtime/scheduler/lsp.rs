@@ -413,7 +413,10 @@ fn execute_lsp_request(
             character,
             jump,
         } => {
-            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
+            // Fall back to the workspace/profile server for a URI that isn't an
+            // open document — a canvas card's file queried from Navigate (`gd`/
+            // `gr` on a focused card) without an edit session.
+            let Some(handle) = lsp_handle_for_uri_or_profile(lsp_sessions, uri, None)? else {
                 return Err("definition rejected: LSP server not running".to_string());
             };
             if !handle.capabilities.definition {
@@ -432,7 +435,7 @@ fn execute_lsp_request(
             line,
             character,
         } => {
-            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
+            let Some(handle) = lsp_handle_for_uri_or_profile(lsp_sessions, uri, None)? else {
                 return Err("references rejected: LSP server not running".to_string());
             };
             if !handle.capabilities.references {

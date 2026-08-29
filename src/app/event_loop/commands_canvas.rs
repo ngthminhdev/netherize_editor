@@ -66,6 +66,17 @@ impl AppShell {
                     // Register the card as an open LSP document so in-card gd/gr
                     // resolve against it (Phase 1 in-card LSP).
                     self.submit_canvas_card_did_open();
+                    // A card whose scope never resolved (its file wasn't an LSP
+                    // document at spawn) asks again now that it is one — so the
+                    // edit viewport snaps to the function instead of the ±N rows.
+                    if let Some((card_id, path)) = self.app_state.canvas_scope_retry_target() {
+                        let uri = crate::lsp::client::path_to_lsp_uri(&path);
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::LspRequest,
+                            payload: WorkerRequestPayload::CanvasCardScopeRequest { card_id, uri },
+                        });
+                    }
                 }
                 started
             }
@@ -227,6 +238,50 @@ impl AppShell {
             cursor_line as u32,
             cursor_col as u32,
         );
+    }
+
+    /// `:w` / `:wq` / `:x` / `:q` confirmed in the vim command line while a card
+    /// is being edited: write the CARD's file and/or leave the card edit, never
+    /// save/close the focal buffer. `None` when no card is being edited or the
+    /// command isn't one of those (the core palette dispatch handles it as usual).
+    pub(super) fn confirm_vim_command_for_card(&mut self) -> Option<bool> {
+        if !matches!(
+            self.app_state.canvas_interaction(),
+            Some(CanvasInteraction::EditCard { .. })
+        ) || self.app_state.canvas_edit_session_block().is_none()
+        {
+            return None;
+        }
+        let Some(crate::app::command_palette::CommandPaletteAction::ExecuteVimCommand(vim)) =
+            self.app_state.command_palette_selected_action()
+        else {
+            return None;
+        };
+        let text = vim.trim();
+        let text = text.strip_prefix(':').unwrap_or(text).trim();
+        let (save, quit) = match text {
+            "w" => (true, false),
+            "wq" | "x" => (true, true),
+            "q" => (false, true),
+            _ => return None,
+        };
+        // Close the prompt first so the card commands run with editor focus.
+        let _ = self.app_state.close_command_palette();
+        if self.app_state.current_mode() == crate::core::mode::EditorMode::PaletteFocus {
+            let _ = self
+                .app_state
+                .apply_mode_event(crate::core::mode::ModeEvent::ExitFocus);
+        }
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        if save {
+            self.canvas_save_edit_card();
+        }
+        if quit {
+            self.handle_canvas_command(&Command::CanvasExitEdit);
+        }
+        self.editor_needs_layout = true;
+        self.request_redraw();
+        Some(true)
     }
 
     /// `⌘S` inside a card: persist the edit session's file (handled specially —
@@ -411,27 +466,14 @@ impl AppShell {
             return;
         }
         let (line, col) = self.app_state.cursor_line_col();
-        let Some(scope) = super::async_results::canvas_scope::enclosing_definition(
-            &self.cached_document_symbols,
-            line as u32,
-        ) else {
-            return;
-        };
-        let (s_start, s_end, s_name) = (
-            scope.range.start.line,
-            scope.range.end.line,
-            scope.name.clone(),
-        );
-        if let Some((_o, snap)) = super::async_results::build_canvas_relation_snapshot_range(
+        if let Some((_o, snap, range, _rows)) = super::async_results::canvas_scope::scope_snapshot(
             &self.theme,
+            &self.cached_document_symbols,
             &active_path,
-            s_start,
-            s_end,
+            line as u32,
             col as u32,
-            &s_name,
         ) {
-            self.app_state
-                .canvas_apply_focal_scope(snap, Some((s_start, s_end)));
+            self.app_state.canvas_apply_focal_scope(snap, Some(range));
         }
     }
 
@@ -517,8 +559,24 @@ impl AppShell {
         (w, h, line_h)
     }
 
-    /// Submit `textDocument/definition` for the cursor symbol (still on the focal
-    /// symbol while the canvas is open); the result is routed into the canvas.
+    /// Where a Navigate-mode `gd`/`gr` queries: the FOCUSED relation card's own
+    /// symbol site (so the chain continues from the card you're looking at —
+    /// `gr` = who calls this card's function), falling back to the main-editor
+    /// cursor when the focal anchor is focused (fresh `F8`) or no canvas card
+    /// owns the keys. Returns `(uri, line, character, parent_card)`; `parent`
+    /// makes the spawned cards connect from — and focus after — that card.
+    fn canvas_query_site(&mut self) -> Option<(String, u32, u32, Option<crate::canvas::BlockId>)> {
+        if let Some((id, origin)) = self.app_state.canvas_navigate_query_origin() {
+            let uri = crate::lsp::client::path_to_lsp_uri(&origin.path);
+            return Some((uri, origin.lsp_line, origin.lsp_character, Some(id)));
+        }
+        self.force_flush_lsp_did_change_for_active_file();
+        let (_lang, uri, line, character) = self.lsp_cursor_context()?;
+        Some((uri, line, character, None))
+    }
+
+    /// Submit `textDocument/definition` for the query site ([`canvas_query_site`]);
+    /// the result is routed into the canvas as a Definition card.
     pub(crate) fn canvas_submit_definition(&mut self) -> bool {
         if !self.app_state.is_canvas_active() {
             return false;
@@ -535,8 +593,7 @@ impl AppShell {
             return false;
         }
         self.canvas_def_deferred = false;
-        self.force_flush_lsp_did_change_for_active_file();
-        let Some((_lang, uri, line, character)) = self.lsp_cursor_context() else {
+        let Some((uri, line, character, parent)) = self.canvas_query_site() else {
             return false;
         };
         let request = self.submit(RequestSpec {
@@ -550,17 +607,17 @@ impl AppShell {
             },
         });
         self.canvas_def_request_id = request.map(|r| r.request_id);
-        self.canvas_def_parent = None; // spawned from the focal symbol
+        self.canvas_def_parent = parent;
         self.canvas_def_request_id.is_some()
     }
 
-    /// Submit `textDocument/references`; results become Caller blocks.
+    /// Submit `textDocument/references` for the query site; results become
+    /// Caller cards.
     fn canvas_submit_references(&mut self) -> bool {
         if !self.app_state.is_canvas_active() {
             return false;
         }
-        self.force_flush_lsp_did_change_for_active_file();
-        let Some((_lang, uri, line, character)) = self.lsp_cursor_context() else {
+        let Some((uri, line, character, parent)) = self.canvas_query_site() else {
             return false;
         };
         let request = self.submit(RequestSpec {
@@ -573,7 +630,7 @@ impl AppShell {
             },
         });
         self.canvas_refs_request_id = request.map(|r| r.request_id);
-        self.canvas_refs_parent = None; // spawned from the focal symbol
+        self.canvas_refs_parent = parent;
         self.canvas_refs_request_id.is_some()
     }
 

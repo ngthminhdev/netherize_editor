@@ -193,19 +193,30 @@ impl AppState {
             .is_some_and(CanvasEditSession::is_dirty)
     }
 
+    /// Line bounds `[lo, hi]` (0-based, inclusive) an in-card edit may roam: the
+    /// resolved scope, else the ±N rows the unscoped card spawned with (around
+    /// its origin line). A card never shows — or scrolls to — rows outside what
+    /// it displays, resolved or not. `None` when `block_id` isn't a card.
+    pub(crate) fn canvas_card_edit_bounds(&self, block_id: BlockId) -> Option<(usize, usize)> {
+        let b = self.canvas.as_ref()?.block(block_id)?;
+        Some(match b.scope_lines {
+            Some((lo, hi)) => (lo as usize, (hi as usize).max(lo as usize)),
+            None => {
+                let ctx = self.canvas_block_context_lines(block_id);
+                let line = b.origin.lsp_line as usize;
+                (line.saturating_sub(ctx), line + ctx)
+            }
+        })
+    }
+
     /// Clamp the **swapped-in** card cursor (`self.cursor_char_idx`/`self.text`
     /// transiently hold the card during a card-routed command) into the card's
-    /// resolved scope so a motion can't park the caret outside the enclosing
-    /// function. No-op without a scope (whole-file fallback) or when already in
-    /// range. Returns whether the cursor moved. Called after card MOTION
-    /// commands only (see [`Command::is_card_motion_command`]).
+    /// edit bounds ([`canvas_card_edit_bounds`]) so a motion can't park the caret
+    /// outside the enclosing function / the shown ±N rows. No-op when already in
+    /// range. Returns whether the cursor moved. Called after card MOTION commands
+    /// only (see [`Command::is_card_motion_command`]).
     pub(crate) fn canvas_clamp_active_cursor_to_scope(&mut self, block_id: BlockId) -> bool {
-        let Some((lo, hi)) = self
-            .canvas
-            .as_ref()
-            .and_then(|c| c.block(block_id))
-            .and_then(|b| b.scope_lines)
-        else {
+        let Some((lo, hi)) = self.canvas_card_edit_bounds(block_id) else {
             return false;
         };
         let clamped =
@@ -448,7 +459,8 @@ impl AppState {
     /// function. The visible row count is stable (`min(scope_size, CARD_MAX_LINES)`)
     /// so the card height doesn't jump while scrolling; on Enter the cursor is
     /// inside the scope so the window stays pinned to the scope top (no jump).
-    /// Unscoped cards (scope not yet resolved) fall back to a whole-file window.
+    /// An unscoped card (scope not resolved) is bounded to its ±N rows the same
+    /// way — it never scrolls the whole file into the card.
     pub(crate) fn canvas_edit_session_snapshot_window(
         &self,
         block_id: BlockId,
@@ -463,31 +475,22 @@ impl AppState {
         let line_start = s.text.line_to_char(cursor_line);
         let cursor_col = s.cursor_char_idx.saturating_sub(line_start);
 
-        // The scroll bounds + visible row count come from the resolved scope; an
-        // unscoped card falls back to the ±N snapshot size over the whole file.
+        // Scroll bounds = the card's edit bounds (scope, else its ±N rows), clamped
+        // to the buffer. The visible-row count follows the card's HEIGHT (`=`/`-`):
+        // an explicit `height_rows` caps how many rows show at once (so a shorter
+        // card scrolls within the bounds); unset → auto-fit, capped at
+        // `CARD_MAX_LINES`.
         let last = total.saturating_sub(1);
-        let (lo, hi, count) = match block.scope_lines {
-            Some((a, b)) => {
-                let a = (a as usize).min(last);
-                let b = (b as usize).min(last).max(a);
-                let scope_size = b - a + 1;
-                // The visible-row count follows the card's HEIGHT (`=`/`-`): an
-                // explicit `height_rows` caps how many scope rows show at once (so
-                // a shorter card scrolls within the scope); unset → auto-fit to the
-                // whole scope, capped at `CARD_MAX_LINES`.
-                let rows = match block.height_rows {
-                    Some(r) => r.clamp(1, scope_size),
-                    None => scope_size.min(crate::canvas::CARD_MAX_LINES),
-                };
-                (a, b, rows)
-            }
-            None => {
-                // Unscoped (±N window): the count follows `height_rows` too so a
-                // grown card shows more rows; default to the whole snapshot.
-                let snap = block.snapshot.text.split('\n').count().max(1);
-                let cnt = block.height_rows.map(|r| r.clamp(1, snap)).unwrap_or(snap);
-                (0usize, last, cnt)
-            }
+        let (lo, hi) = self.canvas_card_edit_bounds(block_id)?;
+        let lo = lo.min(last);
+        let hi = hi.min(last).max(lo);
+        let size = hi - lo + 1;
+        let count = match (block.height_rows, block.scope_lines) {
+            (Some(r), _) => r.clamp(1, size),
+            (None, Some(_)) => size.min(crate::canvas::CARD_MAX_LINES),
+            // Unscoped: keep the rows the card spawned with (the ±N window) so
+            // Enter doesn't resize the card.
+            (None, None) => block.snapshot.text.split('\n').count().clamp(1, size),
         };
         let prev_start = block.snapshot.start_line.saturating_sub(1) as usize;
         let start = follow_window_start(prev_start, count, cursor_line, lo, hi);
@@ -745,5 +748,102 @@ mod follow_window_tests {
     #[test]
     fn scope_smaller_than_window_pins_to_lo() {
         assert_eq!(follow_window_start(10, 5, 12, 10, 12), 10);
+    }
+}
+
+#[cfg(test)]
+mod unscoped_window_tests {
+    use super::*;
+    use crate::canvas::{BlockOrigin, BlockRelation, BlockSnapshot};
+
+    /// A canvas over `foo.rs` with ONE unscoped Definition card onto a 40-line
+    /// `bar.rs`: the card spawned with the ±8 rows around its origin line 12
+    /// (0-based 4..=20, as `read_file_lines` produces) and its scope never
+    /// resolved (`scope_lines == None`).
+    fn fixture() -> (AppState, PathBuf) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("netherize_canvas_unscoped_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let foo = dir.join("foo.rs");
+        let bar = dir.join("bar.rs");
+        std::fs::write(&foo, "fn main() {\n    helper();\n}\n").unwrap();
+        let body = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&bar, body).unwrap();
+        let mut app = AppState::new(foo.clone());
+        app.open_file(foo).expect("open foo");
+        assert!(app.open_canvas(1000.0, 600.0, 20.0));
+        let window = (4..21)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        app.canvas_add_relations(vec![(
+            BlockRelation::Definition,
+            BlockOrigin {
+                path: bar,
+                start_byte: 0,
+                end_byte: 0,
+                symbol_name: String::new(),
+                lsp_line: 12,
+                lsp_character: 0,
+            },
+            BlockSnapshot {
+                title: "bar.rs".into(),
+                symbol: String::new(),
+                start_line: 5,
+                text: window,
+                spans: Vec::new(),
+            },
+        )]);
+        (app, dir)
+    }
+
+    #[test]
+    fn unscoped_edit_window_stays_inside_its_snapshot_range() {
+        // A card whose scope never resolved shows a ±N window. Editing it must NOT
+        // let j/k scroll the WHOLE file into the card: the window is bounded to the
+        // rows it spawned with (a card shows only its scope — resolved or not).
+        let (mut app, dir) = fixture();
+        assert!(app.canvas_begin_edit());
+        let block = app.canvas_edit_session_block().unwrap();
+        // Drag the session cursor far below the window (line 35 of 40).
+        {
+            let s = app.canvas_edit_session.as_mut().unwrap();
+            s.cursor_char_idx = s.text.line_to_char(35);
+        }
+        let (lines, start0, _cl, _cc) = app
+            .canvas_edit_session_snapshot_window(block)
+            .expect("window");
+        assert_eq!(start0, 4, "window start pinned to the ±N rows' first row");
+        assert_eq!(lines.len(), 17);
+        assert_eq!(lines.last().unwrap(), "line 20");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unscoped_cursor_is_clamped_into_the_snapshot_range() {
+        // Motions in an unscoped card clamp to the ±N rows, exactly like a scoped
+        // card clamps to its function — the cursor can't wander into rows the card
+        // doesn't show.
+        let (mut app, dir) = fixture();
+        assert!(app.canvas_begin_edit());
+        let block = app.canvas_edit_session_block().unwrap();
+        // Simulate the swapped-in session: the card's text is the live buffer and
+        // a motion parked the cursor on line 35.
+        let body = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        app.text = Rope::from_str(&body);
+        app.cursor_char_idx = app.text.line_to_char(35);
+        assert!(app.canvas_clamp_active_cursor_to_scope(block));
+        assert_eq!(app.text.char_to_line(app.cursor_char_idx), 20);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

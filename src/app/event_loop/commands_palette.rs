@@ -466,6 +466,20 @@ impl AppShell {
                     return Some(self.confirm_code_action_selection());
                 }
 
+                // `:w` / `:wq` / `:x` / `:q` typed while EDITING A CANVAS CARD act on
+                // the card (write its file / leave the card edit), not on the focal
+                // buffer — the core palette dispatch would send `SaveFile` straight
+                // to core, bypassing the shell's card gate, and write the wrong file.
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::VimCommand)
+                    )
+                    && let Some(handled) = self.confirm_vim_command_for_card()
+                {
+                    return Some(handled);
+                }
+
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),

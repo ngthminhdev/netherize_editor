@@ -104,6 +104,13 @@ impl InputMap {
                 reason: "canvas: o -> open focused card as a buffer tab",
             });
         }
+        // `q` quits the canvas outright (Esc only backgrounds it; F8/F10 toggle).
+        if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::CanvasClose,
+                reason: "canvas: q -> close canvas",
+            });
+        }
         if !input.has_command_modifier() && input.named_key == Some(NamedKey::Tab) {
             return Some(KeybindingMatch {
                 command: Command::CanvasCycleNext,
