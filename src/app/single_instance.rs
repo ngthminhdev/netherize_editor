@@ -3,7 +3,11 @@
 //! socket and exits, so the running window switches workspace / opens the
 //! files instead of a duplicate process appearing in the dock.
 //!
-//! Protocol: one JSON line (`Vec<PathBuf>`), then a single `b'1'` ack byte.
+//! Protocol: the listener first writes its build stamp line (`<u64>\n`), the
+//! launcher answers with one JSON line (`Vec<PathBuf>`), the listener acks
+//! with a single `b'1'` byte. A launcher whose own stamp differs closes the
+//! connection instead — a rebuilt binary must never be swallowed by an
+//! older window still running (the user would keep seeing the old build).
 //! `--new-instance` (or a dead/stale socket) bypasses forwarding.
 // ponytail: std UnixStream + serde_json line protocol; upgrade to a real IPC
 // crate only if multi-window messaging ever needs more than "open these paths".
@@ -75,6 +79,32 @@ pub fn reexec_detached_from_terminal() -> bool {
     }
 }
 
+/// Identity of the binary this process started from: its mtime in seconds.
+/// Capture it ONCE at startup — after `cargo build` the file at
+/// `current_exe()` has a new mtime while the old process keeps running, and
+/// that difference is exactly the "stale instance" signal.
+pub fn build_stamp() -> u64 {
+    std::env::current_exe()
+        .and_then(std::fs::metadata)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// What happened when a launch tried to hand itself to a running instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Forward {
+    /// The running instance took the request; this launch can exit.
+    Acked,
+    /// A running instance exists but is a different build (or too old to say):
+    /// this launch must start on its own.
+    Stale,
+    /// Nobody is listening.
+    NoInstance,
+}
+
 /// Socket lives next to state.toml so it is per-user and predictable.
 pub fn default_socket_path() -> PathBuf {
     crate::config::paths::user_config_root().join("instance.sock")
@@ -90,23 +120,39 @@ pub fn cli_open_paths() -> Vec<PathBuf> {
         .collect()
 }
 
-/// Try to hand `paths` to a live instance listening on `sock`.
-/// Returns true only when the running instance acknowledged the request.
-pub fn try_forward_at(sock: &Path, paths: &[PathBuf]) -> bool {
+/// Try to hand `paths` to a live instance listening on `sock`. `stamp` is
+/// this launch's [`build_stamp`]; a listener with a different stamp is
+/// reported as [`Forward::Stale`] and receives nothing.
+pub fn try_forward_at(sock: &Path, paths: &[PathBuf], stamp: u64) -> Forward {
     let Ok(stream) = UnixStream::connect(sock) else {
-        return false;
+        return Forward::NoInstance;
     };
     let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
     let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
-    let Ok(line) = serde_json::to_string(paths) else {
-        return false;
+    let mut reader = BufReader::new(stream);
+    let mut greeting = String::new();
+    // A pre-stamp listener never writes first: the read times out and the
+    // instance counts as stale, which is the right call for an old build.
+    let running: u64 = match reader.read_line(&mut greeting) {
+        Ok(n) if n > 0 => greeting.trim().parse().unwrap_or(0),
+        _ => return Forward::Stale,
     };
-    let mut stream = stream;
+    if running != stamp {
+        return Forward::Stale;
+    }
+    let Ok(line) = serde_json::to_string(paths) else {
+        return Forward::NoInstance;
+    };
+    let mut stream = reader.into_inner();
     if stream.write_all(line.as_bytes()).is_err() || stream.write_all(b"\n").is_err() {
-        return false;
+        return Forward::NoInstance;
     }
     let mut ack = [0u8; 1];
-    stream.read_exact(&mut ack).is_ok() && ack[0] == b'1'
+    if stream.read_exact(&mut ack).is_ok() && ack[0] == b'1' {
+        Forward::Acked
+    } else {
+        Forward::NoInstance
+    }
 }
 
 /// Bind the instance socket. A connect-probe distinguishes "another live
@@ -125,14 +171,22 @@ pub fn bind_at(sock: &Path) -> Option<UnixListener> {
 }
 
 /// Accept loop on a background thread; each valid message invokes `on_open`.
-pub fn spawn_listener(listener: UnixListener, on_open: impl Fn(Vec<PathBuf>) + Send + 'static) {
+/// `stamp` is announced first so a newer launcher can refuse to be swallowed.
+pub fn spawn_listener(
+    listener: UnixListener,
+    stamp: u64,
+    on_open: impl Fn(Vec<PathBuf>) + Send + 'static,
+) {
     std::thread::Builder::new()
         .name("netherize-single-instance".to_string())
         .spawn(move || {
             for stream in listener.incoming() {
-                let Ok(stream) = stream else { continue };
+                let Ok(mut stream) = stream else { continue };
                 let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
                 let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+                if stream.write_all(format!("{stamp}\n").as_bytes()).is_err() {
+                    continue;
+                }
                 let mut reader = BufReader::new(stream);
                 let mut line = String::new();
                 if reader.read_line(&mut line).is_err() {
@@ -176,16 +230,42 @@ mod tests {
         let _ = std::fs::remove_file(&sock);
         let listener = bind_at(&sock).expect("bind fresh socket");
         let (tx, rx) = mpsc::channel();
-        spawn_listener(listener, move |paths| {
+        spawn_listener(listener, 7, move |paths| {
             let _ = tx.send(paths);
         });
 
         let sent = vec![PathBuf::from("/tmp/netherize-remote-open")];
-        assert!(try_forward_at(&sock, &sent), "forward should be acked");
+        assert_eq!(
+            try_forward_at(&sock, &sent, 7),
+            Forward::Acked,
+            "same build → forwarded"
+        );
         let got = rx
             .recv_timeout(Duration::from_secs(2))
             .expect("listener callback fired");
         assert_eq!(got, sent);
+        let _ = std::fs::remove_file(&sock);
+    }
+
+    #[test]
+    fn a_different_build_is_not_swallowed_by_the_running_instance() {
+        let sock = scratch_sock("stalebuild");
+        let _ = std::fs::remove_file(&sock);
+        let listener = bind_at(&sock).expect("bind fresh socket");
+        let (tx, rx) = mpsc::channel();
+        spawn_listener(listener, 7, move |paths| {
+            let _ = tx.send(paths);
+        });
+        assert_eq!(
+            try_forward_at(&sock, &[PathBuf::from("/tmp/x")], 8),
+            Forward::Stale,
+            "rebuilt binary must start on its own"
+        );
+        assert!(
+            rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "the old instance must not receive the request"
+        );
+        assert!(build_stamp() > 0, "test binary has an mtime");
         let _ = std::fs::remove_file(&sock);
     }
 
@@ -196,8 +276,12 @@ mod tests {
         drop(bind_at(&sock).expect("first bind")); // listener dropped → stale file remains
         assert!(sock.exists(), "stale socket file left behind");
 
-        assert!(
-            !try_forward_at(&sock, &[]),
+        // A closed listener normally refuses the connect (NoInstance); under
+        // load macOS has been seen to accept and then go silent, which the
+        // greeting timeout reports as Stale. Either way nothing is forwarded.
+        assert_ne!(
+            try_forward_at(&sock, &[], 1),
+            Forward::Acked,
             "no listener → forward must fail"
         );
         assert!(

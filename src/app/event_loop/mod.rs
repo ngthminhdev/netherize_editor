@@ -658,13 +658,29 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
     // Single-instance routing: hand our CLI paths to an already-running
     // instance (one dock icon, workspace switches in place) unless the user
     // explicitly asked for a separate process.
+    // A running instance of a DIFFERENT build (typically: `cargo run` after
+    // a rebuild while the old window is still open) is never forwarded to —
+    // the user would keep looking at the old code. Start alongside it.
+    let mut stale_instance_running = false;
+    #[cfg(unix)]
+    let build_stamp = crate::app::single_instance::build_stamp();
     #[cfg(unix)]
     if !std::env::args().any(|arg| arg == "--new-instance") {
+        use crate::app::single_instance::Forward;
         let paths = crate::app::single_instance::cli_open_paths();
         let sock = crate::app::single_instance::default_socket_path();
-        if crate::app::single_instance::try_forward_at(&sock, &paths) {
-            println!("[netherize] open request forwarded to the running instance");
-            return Ok(());
+        match crate::app::single_instance::try_forward_at(&sock, &paths, build_stamp) {
+            Forward::Acked => {
+                println!("[netherize] open request forwarded to the running instance");
+                return Ok(());
+            }
+            Forward::Stale => {
+                eprintln!(
+                    "[netherize] a running instance is a different (older) build — starting this build alongside it; quit the old window (Cmd+Q) when done"
+                );
+                stale_instance_running = true;
+            }
+            Forward::NoInstance => {}
         }
     }
 
@@ -677,14 +693,22 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
         let sock = crate::app::single_instance::default_socket_path();
         if let Some(listener) = crate::app::single_instance::bind_at(&sock) {
             let remote_proxy = event_loop.create_proxy();
-            crate::app::single_instance::spawn_listener(listener, move |paths| {
+            crate::app::single_instance::spawn_listener(listener, build_stamp, move |paths| {
                 let _ = remote_proxy.send_event(AppEvent::RemoteOpen(paths));
             });
         }
     }
 
     let mut app = match AppShell::new(event_proxy) {
-        Ok(app) => app,
+        Ok(mut app) => {
+            if stale_instance_running {
+                app.show_transient_toast_kind(
+                    "Older Netherize build still running\nThis window is the new build. Quit the old one (Cmd+Q) when you are done there.",
+                    crate::app::event_loop::ToastKind::Warning,
+                );
+            }
+            app
+        }
         Err(err) => {
             eprintln!("[fatal] AppShell::new failed: {err}");
             return Ok(());

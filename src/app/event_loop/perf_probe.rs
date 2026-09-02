@@ -48,17 +48,27 @@ fn process_start() -> Instant {
 #[derive(Clone, Copy)]
 enum Phase {
     /// Let the app finish booting before touching anything.
-    Warmup { until: Instant },
+    Warmup {
+        until: Instant,
+    },
     /// Open the large scratch log through AppState.
     OpenLarge,
     /// One InsertChar per frame through the real dispatcher.
-    Typing { left: u32 },
+    Typing {
+        left: u32,
+    },
     /// Switch to a small rust file so an LSP server can attach.
     OpenRust,
     /// Poll for the completion popup; re-trigger periodically until timeout.
-    Completion { deadline: Instant, attempts: u32 },
+    Completion {
+        deadline: Instant,
+        attempts: u32,
+    },
     /// Half-page-down burst, one per frame.
-    Scrolling { left: u32, last_present: Option<Instant> },
+    Scrolling {
+        left: u32,
+        last_present: Option<Instant>,
+    },
     Done,
 }
 
@@ -172,7 +182,9 @@ impl SysinfoSampler {
 fn ensure_large_log_file() -> PathBuf {
     const BYTES: usize = 5 * 1024 * 1024 - 64 * 1024;
     let path = std::env::temp_dir().join("netherize_probe_large.log");
-    let ok_size = fs::metadata(&path).map(|m| m.len() as usize == BYTES).unwrap_or(false);
+    let ok_size = fs::metadata(&path)
+        .map(|m| m.len() as usize == BYTES)
+        .unwrap_or(false);
     if !ok_size {
         let mut file = fs::File::create(&path).expect("create probe log");
         let line =
@@ -214,8 +226,7 @@ impl AppShell {
                 let path = ensure_large_log_file();
                 let t0 = Instant::now();
                 let opened = self.app_state.open_file(path);
-                self.perf_probe.open_large_ms =
-                    Some(t0.elapsed().as_secs_f64() * 1_000.0);
+                self.perf_probe.open_large_ms = Some(t0.elapsed().as_secs_f64() * 1_000.0);
                 debug_assert!(opened.is_ok(), "probe log must be under the 5 MiB cap");
                 self.perf_probe.rss_after_load_mb = Some(self.perf_probe.resources.sample().0);
                 // Park mid-file so typing + scroll exercise the big buffer.
@@ -224,8 +235,10 @@ impl AppShell {
                     left: TYPING_FRAMES,
                 };
                 self.perf_probe.phase_entered_at = Instant::now();
-                eprintln!("[perf_probe] large file opened in {:.1}ms → typing burst",
-                    self.perf_probe.open_large_ms.unwrap_or(0.0));
+                eprintln!(
+                    "[perf_probe] large file opened in {:.1}ms → typing burst",
+                    self.perf_probe.open_large_ms.unwrap_or(0.0)
+                );
             }
             Phase::OpenRust => {
                 // A small real rust file from the repo → LSP can attach.
@@ -295,11 +308,11 @@ impl AppShell {
         // and emit whatever was collected instead of hanging forever.
         if !render_ok {
             self.perf_probe.failed_frames += 1;
-            if now.saturating_duration_since(self.perf_probe.last_progress_at)
-                > STALL_GIVE_UP
-            {
+            if now.saturating_duration_since(self.perf_probe.last_progress_at) > STALL_GIVE_UP {
                 eprintln!("[perf_probe] render stalled; emitting partial report");
-                self.perf_probe.rss_end_mb.get_or_insert_with(|| self.perf_probe.resources.sample().0);
+                self.perf_probe
+                    .rss_end_mb
+                    .get_or_insert_with(|| self.perf_probe.resources.sample().0);
                 self.perf_probe.phase = Phase::Done;
                 self.perf_probe_finish();
                 return;
@@ -319,7 +332,9 @@ impl AppShell {
         match self.perf_probe.phase {
             Phase::Typing { left } => {
                 if render_ok && let Some(t0) = self.perf_probe.pending_t0.take() {
-                    self.perf_probe.typing_ms.push(t0.elapsed().as_secs_f64() * 1_000.0);
+                    self.perf_probe
+                        .typing_ms
+                        .push(t0.elapsed().as_secs_f64() * 1_000.0);
                 } else {
                     self.perf_probe.pending_t0 = None;
                 }
@@ -340,8 +355,7 @@ impl AppShell {
                     );
                     self.perf_probe.rss_after_typing_mb =
                         Some(self.perf_probe.resources.sample().0);
-                    self.perf_probe.cpu_typing_percent =
-                        Some(self.perf_probe.resources.sample().1);
+                    self.perf_probe.cpu_typing_percent = Some(self.perf_probe.resources.sample().1);
                     self.perf_probe.pending_t0 = None;
                     self.perf_probe.phase_entered_at = now;
                     self.perf_probe.phase = Phase::Scrolling {
@@ -356,13 +370,11 @@ impl AppShell {
             Phase::Scrolling { left, last_present } => {
                 if render_ok {
                     if let Some(prev) = last_present {
-                        self.perf_probe.scroll_interval_ms.push(
-                            now.saturating_duration_since(prev).as_secs_f64() * 1_000.0,
-                        );
+                        self.perf_probe
+                            .scroll_interval_ms
+                            .push(now.saturating_duration_since(prev).as_secs_f64() * 1_000.0);
                     }
-                    self.perf_probe
-                        .scroll_first_at
-                        .get_or_insert(now);
+                    self.perf_probe.scroll_first_at.get_or_insert(now);
                     self.perf_probe.scroll_last_at = Some(now);
                     if let Some(t0) = self.perf_probe.pending_t0.take() {
                         self.perf_probe
@@ -411,7 +423,9 @@ impl AppShell {
     }
 
     fn perf_probe_finish(&mut self) {
-        self.perf_probe.rss_end_mb.get_or_insert_with(|| self.perf_probe.resources.sample().0);
+        self.perf_probe
+            .rss_end_mb
+            .get_or_insert_with(|| self.perf_probe.resources.sample().0);
         // FPS from the actual time span of ok scroll frames — immune to
         // per-interval instrumentation quirks.
         let scroll_fps = match (
@@ -508,9 +522,10 @@ fn percentile(samples: &[f64], p: f64) -> Option<f64> {
 }
 
 fn max_of(samples: &[f64]) -> Option<f64> {
-    samples.iter().cloned().fold(None::<f64>, |acc, v| {
-        Some(acc.map_or(v, |m: f64| m.max(v)))
-    })
+    samples
+        .iter()
+        .cloned()
+        .fold(None::<f64>, |acc, v| Some(acc.map_or(v, |m: f64| m.max(v))))
 }
 
 fn iso_now() -> String {
@@ -580,7 +595,10 @@ fn write_report(report: &PerfReport) {
         return;
     }
     let out_path = out_dir.join("app_probe.json");
-    match fs::write(&out_path, serde_json::to_string_pretty(&json).unwrap_or_default()) {
+    match fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&json).unwrap_or_default(),
+    ) {
         Ok(()) => println!("[perf_probe] Report written → {}", out_path.display()),
         Err(e) => eprintln!("[perf_probe] Failed to write report: {e}"),
     }
