@@ -674,9 +674,9 @@ async fn adapt_via_ai(
     let mut body = serde_json::json!({
         "model": provider.model,
         "messages": [
-            {"role": "system", "content": "Return only complete runnable source code. No markdown fences or explanation."},
+            {"role": "system", "content": "Return only complete runnable source code. No markdown fences or explanation. This is a practice scaffold: the solution function/method body MUST stay exactly as in the starter (empty or a stub). Never implement the algorithm."},
             {"role": "user", "content": format!(
-                "Adapt this LeetCode {} starter for problem {} ({}) into a stdin JSON -> stdout JSON program with solve(data). Preserve the official function signature and support helper types when present.\n\nMechanical baseline:\n{}",
+                "Adapt this LeetCode {} starter for problem {} ({}) into a stdin JSON -> stdout JSON program with solve(data). Preserve the official function signature and support helper types when present. Do NOT solve the problem — leave the solution body as the starter has it; the user writes it.\n\nMechanical baseline:\n{}",
                 language_key, problem.title, problem.title_slug, mechanical
             )}
         ],

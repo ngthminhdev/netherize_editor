@@ -419,3 +419,13 @@ The user could not use v1 ("chưa dùng được cái gì cả"): the solution f
 - **Session end.** F5 all green / `x` / timeout → attempt recorded, spaced redo applied, one notebook stub appended (`- Note:` for a pass, `- Stuck at / Right pattern / Signal next time` otherwise). No prompts; `n` opens the notebook.
 - **UI language:** English everywhere (toasts, footers, notebook, SD template, case labels).
 - Removed: pages/groups in plan.toml, `DojoApproach`/`DojoNote` palette modes, `approach` on sessions/attempts, `[`/`]` paging.
+
+### 15.1 v2.1 (same day, second GUI round)
+
+- Solution files are the **mechanical scaffold** (official starter, empty body); the AI adapter is off for Dojo fetches because it wrote the solution.
+- Statement renders with **inline formatting**: `code` spans cyan, bold white, `<pre>` blocks on a dim band, list bullets, `10^5` exponents.
+- Footer keys are **clickable keycap chips** with hover; a chip flashes when clicked or when its key is pressed. `?` on a problem without hints says so.
+- **Mouse wheel** scrolls the left tree and the statement.
+- Inside a category problems are **sorted Easy → Medium → Hard**.
+- A fresh fetch **auto-generates AI test cases** (Test Runner `g`) when the LeetCode AI provider is configured.
+- Caches written before the hints field are refreshed once per run.

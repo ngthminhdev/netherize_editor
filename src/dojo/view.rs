@@ -5,11 +5,12 @@ use chrono::NaiveDate;
 use crate::runner::leetcode_cache::LeetCodeProblemCache;
 
 use super::{
-    notebook::{html_to_text, mm_ss},
+    notebook::mm_ss,
     plan::Plan,
     problems::{Problem, Problems, category_label},
     session::SessionKind,
     state::{DojoState, Status, parse_date},
+    statement::{Line, html_to_lines},
 };
 
 /// Tree key of the System Design group (not a LeetCode category).
@@ -87,6 +88,15 @@ impl TreeRow {
     }
 }
 
+/// Easy < Medium < Hard; unknown strings sort with Medium.
+pub fn difficulty_rank(difficulty: &str) -> u8 {
+    match difficulty {
+        "easy" => 0,
+        "hard" => 2,
+        _ => 1,
+    }
+}
+
 pub fn difficulty_letter(difficulty: &str) -> char {
     match difficulty {
         "easy" => 'E',
@@ -148,8 +158,9 @@ pub fn due_rows(problems: &Problems, state: &DojoState, today: NaiveDate) -> Vec
 }
 
 /// The flattened tree: one group header per category (file order) with its
-/// problems when expanded, then the System Design group. `redo_only` shows
-/// only due problems, forces groups open and hides empty ones.
+/// problems when expanded — Easy first, then Medium, then Hard, NeetCode
+/// order inside each band — then the System Design group. `redo_only`
+/// shows only due problems, forces groups open and hides empty ones.
 pub fn tree_rows(
     problems: &Problems,
     plan: &Plan,
@@ -159,7 +170,8 @@ pub fn tree_rows(
 ) -> Vec<TreeRow> {
     let mut rows = Vec::new();
     for key in problems.categories() {
-        let in_cat = problems.in_category(&key);
+        let mut in_cat = problems.in_category(&key);
+        in_cat.sort_by_key(|p| difficulty_rank(&p.difficulty));
         let slugs: Vec<&str> = in_cat.iter().map(|p| p.slug.as_str()).collect();
         let children: Vec<TreeRow> = in_cat
             .iter()
@@ -236,10 +248,8 @@ pub struct ProblemView {
     pub language: String,
     pub glyph: RowGlyph,
     pub status_line: String,
-    /// Statement lines (blank = paragraph gap); the renderer wraps them.
-    pub statement_lines: Vec<String>,
-    /// (input, expected) from the cached example cases.
-    pub examples: Vec<(String, String)>,
+    /// Styled statement lines (blank = paragraph gap); the renderer wraps them.
+    pub statement: Vec<Line>,
     pub hints: Vec<String>,
     pub loading: bool,
     pub error: Option<String>,
@@ -265,20 +275,8 @@ pub fn problem_view(
         RowGlyph::RedoLater => format!("redo on {trailing} · {attempts} attempts"),
         RowGlyph::Todo => "not attempted".to_string(),
     };
-    // One entry per source line; blank entries keep paragraph gaps.
-    let statement_lines = cache
-        .map(|c| html_to_text(&c.statement))
-        .filter(|t| !t.is_empty())
-        .map(|t| t.lines().map(str::to_string).collect())
-        .unwrap_or_default();
-    let examples = cache
-        .map(|c| {
-            c.cases
-                .iter()
-                .take(3)
-                .map(|case| (case.input.clone(), case.expected.clone()))
-                .collect()
-        })
+    let statement = cache
+        .map(|c| html_to_lines(&c.statement))
         .unwrap_or_default();
     ProblemView {
         id: p.id,
@@ -289,8 +287,7 @@ pub fn problem_view(
         language: language.to_string(),
         glyph,
         status_line,
-        statement_lines,
-        examples,
+        statement,
         hints: cache.map(|c| c.hints.clone()).unwrap_or_default(),
         loading,
         error,
@@ -325,6 +322,54 @@ pub struct DojoSessionView {
     pub expired: bool,
 }
 
+/// One clickable keycap chip in the Problem tab footer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FooterAction {
+    /// Stable id the app maps back to a `Command` (`start`, `hints`…).
+    pub id: &'static str,
+    pub key: &'static str,
+    pub label: &'static str,
+}
+
+/// Footer chips for the current panel content / session state.
+pub fn footer_actions(content: &PanelContent, session_running: bool) -> Vec<FooterAction> {
+    let a = |id, key, label| FooterAction { id, key, label };
+    match content {
+        PanelContent::Empty(_) => vec![
+            a("start", "↵", "start"),
+            a("language", "c", "language"),
+            a("folder", "w", "folder"),
+            a("notebook", "n", "notebook"),
+            a("editor", "esc", "editor"),
+        ],
+        PanelContent::Sd(_) if session_running => vec![
+            a("giveup", "x", "finish"),
+            a("interviewer", "i", "interviewer"),
+            a("editor", "esc", "editor"),
+        ],
+        PanelContent::Sd(_) => vec![
+            a("start", "↵", "start"),
+            a("interviewer", "i", "interviewer"),
+            a("editor", "esc", "editor"),
+        ],
+        PanelContent::Problem(_) if session_running => vec![
+            a("start", "↵", "back to code"),
+            a("giveup", "x", "give up"),
+            a("hints", "?", "hints"),
+            a("interviewer", "i", "interviewer"),
+            a("editor", "esc", "editor"),
+        ],
+        PanelContent::Problem(_) => vec![
+            a("start", "↵", "start"),
+            a("hints", "?", "hints"),
+            a("language", "c", "language"),
+            a("notebook", "n", "notebook"),
+            a("interviewer", "i", "interviewer"),
+            a("editor", "esc", "editor"),
+        ],
+    }
+}
+
 /// Everything the renderer needs for one frame of the Problem tab.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProblemPanelModel {
@@ -334,6 +379,11 @@ pub struct ProblemPanelModel {
     pub show_hints: bool,
     pub scroll: usize,
     pub focused: bool,
+    pub actions: Vec<FooterAction>,
+    /// Chip under the pointer (drawn raised).
+    pub hovered_action: Option<&'static str>,
+    /// Chip whose action just fired (drawn pressed for a moment).
+    pub flashed_action: Option<&'static str>,
 }
 
 /// First due redo, else the first problem never attempted.
@@ -449,7 +499,18 @@ mod tests {
         ));
         assert!(
             matches!(&rows[1], TreeRow::Problem { id: 217, .. }),
-            "NeetCode order, not sorted by status"
+            "Easy band first, NeetCode order inside it"
+        );
+        let ranks: Vec<u8> = rows[1..10]
+            .iter()
+            .filter_map(|r| match r {
+                TreeRow::Problem { difficulty, .. } => Some(difficulty_rank(difficulty)),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            ranks.windows(2).all(|w| w[0] <= w[1]),
+            "sorted by difficulty: {ranks:?}"
         );
         let two_sum = rows
             .iter()
@@ -530,7 +591,7 @@ mod tests {
             (v.id, v.category.as_str(), v.status_line.as_str(), v.loading),
             (1, "Arrays & Hashing", "not attempted", true)
         );
-        assert!(v.statement_lines.is_empty() && v.examples.is_empty());
+        assert!(v.statement.is_empty());
         state.record_attempt(attempt("two-sum", Outcome::Fail, 900), today);
         state.record_attempt(attempt("two-sum", Outcome::Pass, 760), today);
         let cache = LeetCodeProblemCache {
@@ -548,12 +609,31 @@ mod tests {
         };
         let v = problem_view(p, &state, Some(&cache), "javascript", false, None, today);
         assert_eq!(v.status_line, "redo on 24/09 · 2 attempts");
-        assert_eq!(v.statement_lines, vec!["Given nums.", "Return indices."]);
-        assert_eq!(
-            v.examples,
-            vec![("{\"nums\":[2,7]}".to_string(), "[0,1]".to_string())]
-        );
+        let text: Vec<String> = v
+            .statement
+            .iter()
+            .map(crate::dojo::statement::line_text)
+            .collect();
+        assert_eq!(text, vec!["Given nums.", "", "Return indices."]);
         assert_eq!(v.hints, vec!["Use a hash map.".to_string()]);
+        assert_eq!(
+            footer_actions(&PanelContent::Problem(v.clone()), false)
+                .iter()
+                .map(|a| a.id)
+                .collect::<Vec<_>>(),
+            vec![
+                "start",
+                "hints",
+                "language",
+                "notebook",
+                "interviewer",
+                "editor"
+            ]
+        );
+        assert_eq!(
+            footer_actions(&PanelContent::Problem(v), true)[0].label,
+            "back to code"
+        );
         state.record_attempt(attempt("two-sum", Outcome::Pass, 500), today);
         let v = problem_view(p, &state, Some(&cache), "javascript", false, None, today);
         assert_eq!(v.status_line, "solved · best 08:20 · 3 attempts");

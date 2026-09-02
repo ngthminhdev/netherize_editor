@@ -7,4 +7,5 @@ pub mod plan;
 pub mod problems;
 pub mod session;
 pub mod state;
+pub mod statement;
 pub mod view;

@@ -2,6 +2,7 @@
 //! left dock, the Problem tab in the right dock, timed sessions. Pure rules
 //! live in `crate::dojo`.
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -23,8 +24,8 @@ use crate::{
             parse_date, today_local,
         },
         view::{
-            self, DojoSessionView, PanelContent, ProblemPanelModel, RowGlyph, SdView, TreeRow,
-            difficulty_letter,
+            self, DojoSessionView, FooterAction, PanelContent, ProblemPanelModel, RowGlyph, SdView,
+            TreeRow, difficulty_letter, footer_actions,
         },
     },
     render::renderer::SidebarRow,
@@ -40,6 +41,8 @@ use crate::app::command_palette::{CommandPaletteAction, CommandPaletteItem};
 
 /// Selection must rest this long before the statement preview is fetched.
 const PREVIEW_DEBOUNCE: Duration = Duration::from_millis(300);
+/// How long a footer chip stays "pressed" after its action fired.
+const CHIP_FLASH: Duration = Duration::from_millis(220);
 
 pub(in crate::app::event_loop) struct DojoRuntime {
     pub plan: Plan,
@@ -67,6 +70,13 @@ pub(in crate::app::event_loop) struct DojoRuntime {
     pub last_tick_second: u64,
     /// Set when a session is started or resumed; gates the tick.
     pub armed: bool,
+    /// Slugs whose statement was re-fetched this run (old caches lack hints).
+    pub refreshed: HashSet<String>,
+    /// Footer chip that just fired: (id, flash end).
+    pub chip_flash: Option<(&'static str, Instant)>,
+    /// Chips drawn in the last Problem-tab frame (for pointer hit-tests).
+    pub last_actions: Vec<FooterAction>,
+    pub hovered_chip: Option<&'static str>,
     /// Memoised per-problem cache lookup: (slug, on-disk cache or None).
     cache: Option<(String, Option<LeetCodeProblemCache>)>,
 }
@@ -91,6 +101,10 @@ impl DojoRuntime {
             last_phase: None,
             last_tick_second: 0,
             armed: false,
+            refreshed: HashSet::new(),
+            chip_flash: None,
+            last_actions: Vec::new(),
+            hovered_chip: None,
             cache: None,
         }
     }
@@ -255,7 +269,17 @@ impl DojoRuntime {
         if let Some((_, due)) = &self.pending_preview {
             deadline = Some(deadline.map_or(*due, |d| d.min(*due)));
         }
+        if let Some((_, end)) = &self.chip_flash {
+            deadline = Some(deadline.map_or(*end, |d| d.min(*end)));
+        }
         deadline
+    }
+
+    /// Chip currently drawn pressed, if its flash has not ended.
+    pub fn flashed_chip(&self) -> Option<&'static str> {
+        self.chip_flash
+            .filter(|(_, end)| Instant::now() < *end)
+            .map(|(id, _)| id)
     }
 
     fn clamp_selection(&mut self) {
@@ -273,6 +297,21 @@ impl AppShell {
         &mut self,
         command: &Command,
     ) -> Option<bool> {
+        // Keys light up the matching footer chip so the press is visible.
+        let chip = match command {
+            Command::DojoStart => Some("start"),
+            Command::DojoGiveUp => Some("giveup"),
+            Command::DojoToggleHints => Some("hints"),
+            Command::DojoLanguage => Some("language"),
+            Command::DojoChooseFolder => Some("folder"),
+            Command::DojoOpenNotebook => Some("notebook"),
+            Command::DojoInterviewer => Some("interviewer"),
+            Command::DojoUnfocus => Some("editor"),
+            _ => None,
+        };
+        if let Some(id) = chip {
+            self.dojo_flash_chip(id);
+        }
         match command {
             Command::DojoOpen => Some(self.dojo_open()),
             Command::DojoSelectNext => Some(self.dojo_move_selection(1)),
@@ -286,21 +325,12 @@ impl AppShell {
             }
             Command::DojoCollapse => Some(self.dojo_fold(false)),
             Command::DojoExpand => Some(self.dojo_fold(true)),
-            Command::DojoToggleHints => {
-                self.dojo.show_hints = !self.dojo.show_hints;
-                Some(true)
-            }
+            Command::DojoToggleHints => Some(self.dojo_toggle_hints()),
             Command::DojoLanguage => Some(self.dojo_language_picker()),
             Command::DojoChooseFolder => Some(self.dojo_choose_folder_and_open()),
             Command::DojoOpenNotebook => Some(self.dojo_open_notebook()),
-            Command::DojoScrollDown => {
-                self.dojo.scroll = self.dojo.scroll.saturating_add(8);
-                Some(true)
-            }
-            Command::DojoScrollUp => {
-                self.dojo.scroll = self.dojo.scroll.saturating_sub(8);
-                Some(true)
-            }
+            Command::DojoScrollDown => Some(self.dojo_scroll_statement(8)),
+            Command::DojoScrollUp => Some(self.dojo_scroll_statement(-8)),
             Command::DojoUnfocus => {
                 let changed = self.focus_manager.set(FocusTarget::CenterEditor);
                 if changed {
@@ -458,7 +488,11 @@ impl AppShell {
             self.dojo.pending_preview = None;
             return;
         };
-        if self.dojo.cached(&slug).is_some()
+        // A cache without hints may predate the hints field: refresh it once
+        // per run so old problems pick up hints/difficulty too.
+        let fresh_enough = self.dojo.cached(&slug).is_some_and(|c| !c.hints.is_empty())
+            || (self.dojo.cached(&slug).is_some() && self.dojo.refreshed.contains(&slug));
+        if fresh_enough
             || self.dojo.preview_inflight.as_deref() == Some(slug.as_str())
             || self
                 .dojo
@@ -748,14 +782,16 @@ impl AppShell {
                 label,
                 done,
             }),
-            Some(TreeRow::Group { label, .. }) => {
-                PanelContent::Empty(format!("{label} — pick a problem (j/k), Enter to start"))
-            }
+            Some(TreeRow::Group { label, .. }) => PanelContent::Empty(format!(
+                "{label} — pick a problem (j/k, click), Enter to start. Sorted Easy → Medium → Hard."
+            )),
             Some(TreeRow::SdGroup { .. }) => {
                 PanelContent::Empty("System Design — pick a case, Enter to start".to_string())
             }
             None => PanelContent::Empty("Press g o to open the Dojo".to_string()),
         };
+        let actions = footer_actions(&content, session_view.is_some());
+        self.dojo.last_actions = actions.clone();
         ProblemPanelModel {
             header: self.dojo.header(),
             content,
@@ -763,7 +799,92 @@ impl AppShell {
             show_hints: self.dojo.show_hints,
             scroll: self.dojo.scroll,
             focused,
+            actions,
+            hovered_action: self.dojo.hovered_chip,
+            flashed_action: self.dojo.flashed_chip(),
         }
+    }
+
+    /// Footer chip id → the command it stands for.
+    pub(in crate::app::event_loop) fn dojo_footer_command(id: &str) -> Option<Command> {
+        Some(match id {
+            "start" => Command::DojoStart,
+            "giveup" => Command::DojoGiveUp,
+            "hints" => Command::DojoToggleHints,
+            "language" => Command::DojoLanguage,
+            "folder" => Command::DojoChooseFolder,
+            "notebook" => Command::DojoOpenNotebook,
+            "interviewer" => Command::DojoInterviewer,
+            "editor" => Command::DojoUnfocus,
+            _ => return None,
+        })
+    }
+
+    pub(in crate::app::event_loop) fn dojo_flash_chip(&mut self, id: &'static str) {
+        self.dojo.chip_flash = Some((id, Instant::now() + CHIP_FLASH));
+    }
+
+    /// `?`: show/hide LeetCode's hints; says so when the problem has none.
+    fn dojo_toggle_hints(&mut self) -> bool {
+        let slug = match self.dojo.selected_row() {
+            Some(TreeRow::Problem { slug, .. }) => Some(slug),
+            _ => None,
+        };
+        let hint_count = slug
+            .as_deref()
+            .and_then(|s| self.dojo.cached(s))
+            .map(|c| c.hints.len())
+            .unwrap_or(0);
+        if hint_count == 0 {
+            self.dojo.show_hints = false;
+            self.show_transient_toast_kind(
+                "Dojo\nLeetCode has no hints for this problem.",
+                ToastKind::Info,
+            );
+            return true;
+        }
+        self.dojo.show_hints = !self.dojo.show_hints;
+        true
+    }
+
+    /// Statement scroll (keys and wheel). Clamped by the renderer to the
+    /// last line, so an over-scroll just sticks at the bottom.
+    pub(in crate::app::event_loop) fn dojo_scroll_statement(&mut self, delta: isize) -> bool {
+        let next = (self.dojo.scroll as isize + delta).max(0) as usize;
+        if next == self.dojo.scroll {
+            return false;
+        }
+        self.dojo.scroll = next;
+        true
+    }
+
+    /// Tree scroll (wheel) without moving the selection.
+    pub(in crate::app::event_loop) fn dojo_scroll_list(&mut self, delta: isize) -> bool {
+        let visible = self.explorer_page_rows().max(1);
+        let max = self.dojo.rows().len().saturating_sub(visible);
+        let next = (self.dojo.list_scroll as isize + delta).clamp(0, max as isize) as usize;
+        if next == self.dojo.list_scroll {
+            return false;
+        }
+        self.dojo.list_scroll = next;
+        self.sidebar_needs_layout = true;
+        true
+    }
+
+    /// Fresh fetch landed: if LeetCode AI is configured, generate the
+    /// stratified test cases right away (same as `g` in the Test Runner).
+    pub(in crate::app::event_loop) fn dojo_auto_generate_cases(&mut self) {
+        if !self.ai_config.leetcode_ai_enabled() {
+            return;
+        }
+        let configured = self
+            .ai_config
+            .leetcode_ai_provider()
+            .is_some_and(|p| !p.api_url.trim().is_empty() && !p.model.trim().is_empty());
+        if !configured || self.app_state.test_runner.is_generating {
+            return;
+        }
+        let _ = self.handle_test_runner_generate();
     }
 
     // ── Language ──────────────────────────────────────────────────────────
@@ -930,7 +1051,9 @@ impl AppShell {
                     return true;
                 }
                 self.dojo.pending_start = Some(slug.clone());
-                self.submit_leetcode_fetch_to(slug, language, dir);
+                // Mechanical scaffold only: the starter's empty body stays
+                // empty — the AI adapter tends to fill in the solution.
+                self.submit_leetcode_fetch_to(slug, language, dir, false);
                 self.show_transient_toast_kind(
                     format!("Dojo\nFetching #{id} {title}…"),
                     ToastKind::Info,
@@ -1272,6 +1395,7 @@ impl AppShell {
             self.dojo.preview_inflight = None;
         }
         self.dojo.invalidate_cache();
+        self.dojo.refreshed.insert(slug.to_string());
         self.dojo.preview_error = error.map(|m| (slug.to_string(), m));
         // The selection may have moved on while the fetch ran.
         self.dojo_request_preview();

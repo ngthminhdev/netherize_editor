@@ -944,6 +944,7 @@ impl crate::render::renderer::Renderer {
     ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
         use crate::dojo::{
             session::SessionKind,
+            statement::{Style, wrap_line},
             view::{PanelContent, RowGlyph, difficulty_label, wrap_text},
         };
         let mut chrome: Vec<RegionDrawInstance> = Vec::new();
@@ -1038,19 +1039,27 @@ impl crate::render::renderer::Renderer {
             (format!("⏱ {} {}", s.phase, s.remaining), color)
         });
 
-        // Body lines: (text, color), wrapped to the panel width; `scroll`
-        // skips leading lines.
-        let mut lines: Vec<(String, [f32; 4])> = Vec::new();
-        let footer: String = match &model.content {
+        // Body lines: styled runs wrapped to the panel width; `scroll`
+        // skips leading lines. `band` draws a subtle background (code blocks).
+        struct BodyLine {
+            runs: Vec<(String, [f32; 4])>,
+            band: bool,
+        }
+        let plain = |text: String, color: [f32; 4]| BodyLine {
+            runs: vec![(text, color)],
+            band: false,
+        };
+        let mut lines: Vec<BodyLine> = Vec::new();
+        let push_wrapped = |lines: &mut Vec<BodyLine>, text: &str, color: [f32; 4]| {
+            for line in wrap_text(text, width_chars) {
+                lines.push(plain(line, color));
+            }
+        };
+        match &model.content {
             PanelContent::Empty(message) => {
-                for line in wrap_text(message, width_chars) {
-                    lines.push((line, fg_ghost));
-                }
-                "[j/k] move  [Enter] start  [c] language  [w] folder  [n] notebook  [Esc] editor"
-                    .to_string()
+                push_wrapped(&mut lines, message, fg_ghost);
             }
             PanelContent::Sd(sd) => {
-                let title_color = fg;
                 let (clock_text, clock_color) = clock.clone().unwrap_or_default();
                 let clock_w = if clock_text.is_empty() {
                     0.0
@@ -1058,7 +1067,7 @@ impl crate::render::renderer::Renderer {
                     estimate_monospace_width(&clock_text, font) + char_w
                 };
                 let title_max = (((x1 - x0) - clock_w) / char_w).max(4.0) as usize;
-                text!(&clip_chars(&sd.label, title_max), x0, y, title_color);
+                text!(&clip_chars(&sd.label, title_max), x0, y, fg);
                 if !clock_text.is_empty() {
                     text_right!(&clock_text, y, clock_color);
                 }
@@ -1071,23 +1080,15 @@ impl crate::render::renderer::Renderer {
                 y += line_h;
                 separator!();
                 if !sd.topic.is_empty() {
-                    lines.push(("Focus".to_string(), fg));
-                    for line in wrap_text(&sd.topic, width_chars) {
-                        lines.push((line, fg_dim));
-                    }
-                    lines.push((String::new(), fg_dim));
+                    lines.push(plain("Focus".to_string(), fg));
+                    push_wrapped(&mut lines, &sd.topic, fg_dim);
+                    lines.push(plain(String::new(), fg_dim));
                 }
-                for line in wrap_text(
+                push_wrapped(
+                    &mut lines,
                     "45 minutes: 1 Requirements 5' → 2 Scale 5' → 3 API + data model 5' → 4 High-level design 10' → 5 Deep dive 15' → 6 Bottlenecks + trade-offs 5'. Always ask: what happens when this request dies halfway?",
-                    width_chars,
-                ) {
-                    lines.push((line, fg_dim));
-                }
-                if model.session.is_some() {
-                    "[x] finish  [i] interviewer  [Esc] editor".to_string()
-                } else {
-                    "[Enter] start (creates the outline)  [i] interviewer  [Esc] editor".to_string()
-                }
+                    fg_dim,
+                );
             }
             PanelContent::Problem(p) => {
                 let title = format!("#{} {}", p.id, p.title);
@@ -1126,17 +1127,17 @@ impl crate::render::renderer::Renderer {
                 separator!();
 
                 if let Some(err) = &p.error {
-                    for line in
-                        wrap_text(&format!("Could not load the statement: {err}"), width_chars)
-                    {
-                        lines.push((line, error));
-                    }
-                    lines.push((
+                    push_wrapped(
+                        &mut lines,
+                        &format!("Could not load the statement: {err}"),
+                        error,
+                    );
+                    lines.push(plain(
                         "Enter still starts (LeetCode is fetched again).".to_string(),
                         fg_ghost,
                     ));
-                } else if p.statement_lines.is_empty() {
-                    lines.push((
+                } else if p.statement.is_empty() {
+                    lines.push(plain(
                         if p.loading {
                             "Loading statement…".to_string()
                         } else {
@@ -1145,40 +1146,39 @@ impl crate::render::renderer::Renderer {
                         fg_ghost,
                     ));
                 } else {
-                    for source in &p.statement_lines {
-                        if source.trim().is_empty() {
-                            lines.push((String::new(), fg_dim));
+                    let style_color = |style: Style| match style {
+                        Style::Plain => fg_dim,
+                        Style::Code => cyan,
+                        Style::Bold => fg,
+                        Style::Pre => fg_dim,
+                    };
+                    for source in &p.statement {
+                        if source.is_empty() {
+                            lines.push(plain(String::new(), fg_dim));
                             continue;
                         }
-                        for line in wrap_text(source, width_chars) {
-                            lines.push((line, fg_dim));
+                        let band = source.iter().all(|(_, style)| *style == Style::Pre);
+                        for wrapped in wrap_line(source, width_chars) {
+                            lines.push(BodyLine {
+                                runs: wrapped
+                                    .into_iter()
+                                    .map(|(text, style)| (text, style_color(style)))
+                                    .collect(),
+                                band,
+                            });
                         }
-                    }
-                    lines.push((String::new(), fg_dim));
-                    if !p.examples.is_empty() {
-                        lines.push(("Examples".to_string(), fg));
-                        for (i, (input, expected)) in p.examples.iter().enumerate() {
-                            for line in wrap_text(&format!("{}. in  {input}", i + 1), width_chars) {
-                                lines.push((line, fg_dim));
-                            }
-                            for line in wrap_text(&format!("   out {expected}"), width_chars) {
-                                lines.push((line, fg_dim));
-                            }
-                        }
-                        lines.push((String::new(), fg_dim));
                     }
                     if !p.hints.is_empty() {
+                        lines.push(plain(String::new(), fg_dim));
                         if model.show_hints {
-                            lines.push(("Hints".to_string(), fg));
+                            lines.push(plain("Hints".to_string(), fg));
                             for (i, hint) in p.hints.iter().enumerate() {
-                                for line in wrap_text(&format!("{}. {hint}", i + 1), width_chars) {
-                                    lines.push((line, info));
-                                }
+                                push_wrapped(&mut lines, &format!("{}. {hint}", i + 1), info);
                             }
                         } else {
-                            lines.push((
+                            lines.push(plain(
                                 format!(
-                                    "[?] show {} hint{}",
+                                    "? shows {} hint{} from LeetCode",
                                     p.hints.len(),
                                     if p.hints.len() == 1 { "" } else { "s" }
                                 ),
@@ -1187,42 +1187,95 @@ impl crate::render::renderer::Renderer {
                         }
                     }
                 }
-                if model.session.is_some() {
-                    "[Enter] back to code  [x] give up  [?] hints  [i] interviewer  [Esc] editor"
-                        .to_string()
-                } else {
-                    "[Enter] start  [?] hints  [c] language  [n] notebook  [i] interviewer  [Esc] editor".to_string()
-                }
             }
-        };
+        }
 
         // Trim trailing blank lines so scrolling stops at real content.
-        while lines.last().is_some_and(|(l, _)| l.is_empty()) {
+        while lines
+            .last()
+            .is_some_and(|l| l.runs.iter().all(|(t, _)| t.is_empty()))
+        {
             lines.pop();
         }
         let max_scroll = lines.len().saturating_sub(1);
-        for (line, color) in lines.iter().skip(model.scroll.min(max_scroll)) {
+        let mut band_color = border;
+        band_color[3] *= 0.45;
+        for line in lines.iter().skip(model.scroll.min(max_scroll)) {
             if y + line_h > footer_y - line_h * 0.25 {
                 break;
             }
-            if !line.is_empty() {
-                text!(line, x0, y, *color);
+            if line.band {
+                chrome.push(
+                    RegionDrawInstance::new(
+                        [x0 - char_w * 0.5, y, (x1 - x0) + char_w, line_h],
+                        band_color,
+                    )
+                    .with_radius(2.0),
+                );
+            }
+            let mut x = x0;
+            for (text, color) in &line.runs {
+                if text.is_empty() {
+                    continue;
+                }
+                text!(text, x, y, *color);
+                x += estimate_monospace_width(text, font);
             }
             y += line_h;
         }
 
-        // ── Footer ────────────────────────────────────────────────────────────
-        let mut footer_color = fg_ghost;
-        if model.focused {
-            footer_color = fg_dim;
+        // ── Footer: keycap chips (clickable; hovered = raised, fired = pressed)
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        let chips = problem_footer_chips(&model.actions, x0, x1, footer_y, font, line_h);
+        for (rect, action) in chips {
+            let hovered = model.hovered_action == Some(action.id);
+            let flashed = model.flashed_action == Some(action.id);
+            let mut bg = border;
+            bg[3] = 0.55;
+            let (key_color, label_color) = if flashed {
+                bg = accent;
+                bg[3] = 0.95;
+                (panel_bg, panel_bg)
+            } else if hovered {
+                bg = accent;
+                bg[3] = 0.30;
+                (accent, fg)
+            } else if model.focused {
+                (accent, fg_dim)
+            } else {
+                (accent, fg_ghost)
+            };
+            chrome.push(RegionDrawInstance::new(rect, bg).with_radius(4.0));
+            let text_x = rect[0] + char_w * 0.8;
+            text!(action.key, text_x, footer_y, key_color);
+            let key_w = estimate_monospace_width(action.key, font);
+            text!(action.label, text_x + key_w + char_w, footer_y, label_color);
         }
-        text!(
-            &clip_chars(&footer, width_chars),
-            x0,
-            footer_y,
-            footer_color
-        );
         (chrome, glyphs)
+    }
+
+    /// Footer chip id under `pos` in the Problem tab (same geometry as the
+    /// draw path), or `None`.
+    pub fn problem_footer_action_at(
+        &self,
+        content_bounds: [f32; 4],
+        actions: &[crate::dojo::view::FooterAction],
+        inner_padding: f32,
+        pos: (f32, f32),
+    ) -> Option<&'static str> {
+        let scale = self.ui_scale.max(0.5);
+        let pad = inner_padding.max(8.0 * scale);
+        let font = self.theme.ui.panel_font_size.max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let x0 = content_bounds[0] + pad;
+        let x1 = content_bounds[0] + content_bounds[2] - pad;
+        let footer_y = content_bounds[1] + content_bounds[3] - line_h - pad * 0.5;
+        problem_footer_chips(actions, x0, x1, footer_y, font, line_h)
+            .into_iter()
+            .find(|(r, _)| {
+                pos.0 >= r[0] && pos.0 <= r[0] + r[2] && pos.1 >= r[1] && pos.1 <= r[1] + r[3]
+            })
+            .map(|(_, a)| a.id)
     }
 
     /// Hit-test a point against the Outline list. Returns the symbol index under
@@ -1323,6 +1376,32 @@ pub(super) fn outline_kind_color(
 }
 
 /// Truncate `s` to at most `max` chars, appending `…` when it overflows.
+/// Footer chip rects for the Problem tab; shared by the draw path and the
+/// pointer hit-test so they can never disagree.
+fn problem_footer_chips(
+    actions: &[crate::dojo::view::FooterAction],
+    x0: f32,
+    x1: f32,
+    y: f32,
+    font: f32,
+    line_h: f32,
+) -> Vec<([f32; 4], crate::dojo::view::FooterAction)> {
+    let char_w = estimate_monospace_width("0", font).max(1.0);
+    let gap = char_w * 1.2;
+    let mut x = x0;
+    let mut out = Vec::new();
+    for action in actions {
+        let text = format!("{} {}", action.key, action.label);
+        let w = estimate_monospace_width(&text, font) + char_w * 1.6;
+        if x + w > x1 {
+            break;
+        }
+        out.push(([x, y - 2.0, w, line_h + 4.0], *action));
+        x += w + gap;
+    }
+    out
+}
+
 pub(super) fn clip_chars(s: &str, max: usize) -> String {
     if max == 0 {
         return String::new();

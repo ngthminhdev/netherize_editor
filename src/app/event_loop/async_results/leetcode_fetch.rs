@@ -91,6 +91,7 @@ pub(in crate::app::event_loop) fn handle_leetcode_fetch_result(
         app.app_state.test_runner.launch_error = None;
         let _ = language_key;
         app.dojo_begin_dsa_session(title_slug, title, file_path);
+        app.dojo_auto_generate_cases();
         app.request_redraw();
         return;
     }

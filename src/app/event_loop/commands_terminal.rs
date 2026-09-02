@@ -622,7 +622,7 @@ impl AppShell {
         }
     }
 
-    fn handle_test_runner_generate(&mut self) -> bool {
+    pub(in crate::app::event_loop) fn handle_test_runner_generate(&mut self) -> bool {
         use crate::runner::leetcode_adapter::language_key_for_extension;
         use crate::runner::leetcode_cache::{cache_dir, load_cache_in, parse_header};
 
@@ -957,15 +957,19 @@ impl AppShell {
                     .and_then(|path| path.parent().map(PathBuf::from))
             })
             .unwrap_or_else(|| std::env::temp_dir().join("netherize-leetcode"));
-        self.submit_leetcode_fetch_to(input, language_key, destination_dir);
+        let use_ai = self.ai_config.leetcode_ai_enabled();
+        self.submit_leetcode_fetch_to(input, language_key, destination_dir, use_ai);
     }
 
     /// Fetch + scaffold into an explicit folder (the Dojo's per-problem dir).
+    /// `use_ai = false` keeps the mechanical scaffold: the official starter
+    /// with its empty body, so the user writes the solution.
     pub(in crate::app::event_loop) fn submit_leetcode_fetch_to(
         &mut self,
         input: String,
         language_key: String,
         destination_dir: PathBuf,
+        use_ai: bool,
     ) {
         let provider = self.ai_config.leetcode_ai_provider().cloned();
         self.submit(RequestSpec {
@@ -975,7 +979,7 @@ impl AppShell {
                 input,
                 language_key,
                 destination_dir,
-                use_ai: self.ai_config.leetcode_ai_enabled(),
+                use_ai,
                 provider,
             },
         });

@@ -6523,6 +6523,77 @@ fn dojo_statement_fetch_result_clears_inflight_and_surfaces_errors() {
 }
 
 #[test]
+fn dojo_footer_chips_map_to_commands_and_keys_flash_them() {
+    use crate::dojo::view::PanelContent;
+    let (mut shell, ws) = dojo_shell("chips");
+    assert!(shell.dojo.select_key("two-sum"));
+    let model = shell.dojo_problem_model(true);
+    assert!(matches!(model.content, PanelContent::Problem(_)));
+    let ids: Vec<&str> = model.actions.iter().map(|a| a.id).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "start",
+            "hints",
+            "language",
+            "notebook",
+            "interviewer",
+            "editor"
+        ]
+    );
+    assert_eq!(
+        shell.dojo.last_actions.len(),
+        6,
+        "hit-tests use the drawn chips"
+    );
+    assert!(matches!(
+        AppShell::dojo_footer_command("hints"),
+        Some(Command::DojoToggleHints)
+    ));
+    assert!(AppShell::dojo_footer_command("nope").is_none());
+    // A key press flashes its chip for a moment and wakes the loop for it.
+    assert!(shell.handle_command(Command::DojoUnfocus));
+    assert_eq!(shell.dojo.flashed_chip(), Some("editor"));
+    assert!(shell.dojo.next_deadline().is_some());
+    assert_eq!(
+        shell.dojo_problem_model(false).flashed_action,
+        Some("editor")
+    );
+    // `?` toggles hints when the cache has some; without any it says so
+    // and stays off (the dev machine may hold a real cache for two-sum).
+    let has_hints = shell
+        .dojo
+        .cached("two-sum")
+        .is_some_and(|c| !c.hints.is_empty());
+    shell.dojo.hovered_chip = Some("hints");
+    assert!(shell.handle_command(Command::DojoToggleHints));
+    assert_eq!(shell.dojo.show_hints, has_hints);
+    assert_eq!(
+        shell.dojo_problem_model(false).hovered_action,
+        Some("hints")
+    );
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
+fn dojo_scrolls_statement_and_list_within_bounds() {
+    let (mut shell, ws) = dojo_shell("scroll");
+    assert!(shell.dojo_scroll_statement(6));
+    assert_eq!(shell.dojo.scroll, 6);
+    assert!(shell.dojo_scroll_statement(-20));
+    assert_eq!(shell.dojo.scroll, 0);
+    assert!(!shell.dojo_scroll_statement(-1), "already at the top");
+    let rows = shell.dojo.rows().len();
+    assert!(shell.dojo_scroll_list(5));
+    assert_eq!(shell.dojo.list_scroll, 5);
+    assert!(shell.dojo_scroll_list(rows as isize * 2));
+    assert!(shell.dojo.list_scroll < rows, "clamped to the last page");
+    assert!(shell.dojo_scroll_list(-(rows as isize * 2)));
+    assert_eq!(shell.dojo.list_scroll, 0);
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
 fn dojo_interviewer_launches_the_agent_terminal_for_the_selected_row() {
     use crate::workbench::panel_state::PanelTabId;
     let (mut shell, ws) = dojo_shell("interviewer");

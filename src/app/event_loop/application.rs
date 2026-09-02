@@ -1395,6 +1395,112 @@ impl AppShell {
         true
     }
 
+    /// Content rect of the right-dock Problem tab (below the tab strip).
+    fn current_problem_content_bounds(&self) -> Option<[f32; 4]> {
+        if !self.panel_state.right.visible
+            || self.panel_state.right.active_tab_id() != Some(PanelTabId::Problem)
+        {
+            return None;
+        }
+        let bounds = self.current_right_sidebar_bounds()?;
+        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        Some([
+            bounds[0] + inset,
+            bounds[1] + inset + strip_h,
+            (bounds[2] - inset * 2.0).max(0.0),
+            (bounds[3] - inset * 2.0 - strip_h).max(0.0),
+        ])
+    }
+
+    /// Footer chip under the pointer in the Problem tab, if any.
+    fn problem_chip_under_pointer(&self) -> Option<&'static str> {
+        let position = self.last_cursor_position?;
+        let bounds = self.current_problem_content_bounds()?;
+        if !point_in_bounds(position, bounds) {
+            return None;
+        }
+        let inner_padding = self.layout_engine.config.inner_padding;
+        self.renderer.as_ref()?.problem_footer_action_at(
+            bounds,
+            &self.dojo.last_actions,
+            inner_padding,
+            position,
+        )
+    }
+
+    /// Change-only hover tracking for the Problem tab's footer chips.
+    fn update_problem_chip_hover(&mut self, cursor: (f32, f32)) -> bool {
+        use winit::window::CursorIcon;
+        self.last_cursor_position = Some(cursor);
+        let hovered = self.problem_chip_under_pointer();
+        if hovered == self.dojo.hovered_chip {
+            return false;
+        }
+        self.dojo.hovered_chip = hovered;
+        if hovered.is_some() && self.last_cursor_icon != Some(CursorIcon::Pointer) {
+            if let Some(window) = self.window.as_ref() {
+                window.set_cursor(CursorIcon::Pointer);
+            }
+            self.last_cursor_icon = Some(CursorIcon::Pointer);
+        }
+        true
+    }
+
+    /// Click on a Problem-tab footer chip runs its command.
+    fn handle_problem_footer_click(&mut self) -> bool {
+        let Some(id) = self.problem_chip_under_pointer() else {
+            return false;
+        };
+        let Some(command) = Self::dojo_footer_command(id) else {
+            return false;
+        };
+        self.focus_manager.set(FocusTarget::RightSidebar);
+        let _ = self.handle_command(command);
+        true
+    }
+
+    /// Wheel over the left Dojo tree scrolls the list; over the Problem tab
+    /// it scrolls the statement.
+    fn handle_dojo_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let lines = match delta {
+            MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => {
+                if y > 0.0 {
+                    -(y.abs().ceil() as isize)
+                } else {
+                    y.abs().ceil() as isize
+                }
+            }
+            MouseScrollDelta::PixelDelta(p) if p.y.abs() > f64::EPSILON => {
+                if p.y > 0.0 {
+                    -1
+                } else {
+                    1
+                }
+            }
+            _ => return false,
+        };
+        if let Some(bounds) = self.current_problem_content_bounds()
+            && point_in_bounds(position, bounds)
+        {
+            return self.dojo_scroll_statement(lines * 2);
+        }
+        if self.panel_state.left.visible
+            && self.panel_state.left.active_tab_id() == Some(PanelTabId::Dojo)
+            && let Some(bounds) = self.current_left_sidebar_bounds()
+            && point_in_bounds(position, bounds)
+        {
+            return self.dojo_scroll_list(lines);
+        }
+        false
+    }
+
     /// Click a row in the left-dock Dojo tree: select it (a header click
     /// also folds/unfolds it). Geometry mirrors the Explorer rows.
     fn handle_dojo_mouse_click(&mut self) -> bool {
@@ -2303,13 +2409,18 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 if self.update_dock_tabs_hover(cursor) {
                     self.request_redraw();
                 }
+                if self.update_problem_chip_hover(cursor) {
+                    self.request_redraw();
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 if self.handle_right_terminal_mouse_wheel(delta) {
                     self.request_redraw();
                 } else if self.handle_bottom_terminal_mouse_wheel(delta) {
                     self.request_redraw();
-                } else if self.handle_test_runner_mouse_wheel(delta) {
+                } else if self.handle_dojo_mouse_wheel(delta)
+                    || self.handle_test_runner_mouse_wheel(delta)
+                {
                     self.request_redraw();
                 } else if self.invalidate_editor_overlays() {
                     self.request_redraw();
@@ -2387,7 +2498,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.request_redraw();
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed
-                    && (self.handle_outline_mouse_click() || self.handle_dojo_mouse_click())
+                    && (self.handle_problem_footer_click()
+                        || self.handle_outline_mouse_click()
+                        || self.handle_dojo_mouse_click())
                 {
                     self.request_redraw();
                 } else if button == MouseButton::Left

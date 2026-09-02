@@ -39,7 +39,7 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
 | Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
 | LeetCode test generation | ✅ Stratified case generation + AI verification |
-| Dojo (interview prep) | ✅ `g o` / Cmd+P "Dojo: Open": switches to your LeetCode workspace folder, NeetCode 150 tree in the left dock (18 categories, difficulty + status), statement/examples/hints in the right "Problem" tab, 25'/45' timed sessions, auto-logged error notebook, spaced redo, Claude interviewer |
+| Dojo (interview prep) | ✅ `g o` / Cmd+P "Dojo: Open": switches to your LeetCode workspace folder, NeetCode 150 tree in the left dock (18 categories, Easy→Hard, status), formatted statement + hints in the right "Problem" tab with clickable keycap chips, mechanical starter scaffold (you write the solution), AI test cases on fetch, 25'/45' timed sessions, auto-logged error notebook, spaced redo, Claude interviewer |
 | Single instance + `netherize` CLI | ✅ One dock icon; `netherize .` routes to the running window; in-app PATH installer |
 | Spatial Canvas (NetherCanvas) | ✅ Navigable 2D code canvas with LSP-driven cards, auto-arrange, scope-aware editing |
 | Workbench panel slide animation | ✅ Hyprland-style timeline-based slide for docks + zen mode |
@@ -343,6 +343,7 @@ netherize_editor/
 │   │   ├── session.rs             # phase clock (pure, takes `now`)
 │   │   ├── notebook.rs            # error-notebook stubs, HTML → text
 │   │   ├── files.rs               # <workspace>/0001-two-sum, notes.md, sd/, current.md paths
+│   │   ├── statement.rs           # LeetCode HTML → styled lines (code/bold/pre), wrap
 │   │   └── view.rs                # left tree rows + right Problem panel models
 │   ├── plan.rs                # config/dojo/plan.toml: pattern groups, SD cases, budgets
 │   │   ├── problems.rs            # config/dojo/neetcode150.toml: 150 problems
