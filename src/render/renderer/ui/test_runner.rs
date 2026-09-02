@@ -942,6 +942,9 @@ impl crate::render::renderer::Renderer {
         model: &crate::dojo::view::ProblemPanelModel,
         inner_padding: f32,
     ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
+        use super::super::components::{
+            HelpKeycapPalette, flat_keycap_palette, keycap_metrics, layout_keycap, mix,
+        };
         use crate::dojo::{
             session::SessionKind,
             statement::{Style, wrap_line},
@@ -1224,32 +1227,62 @@ impl crate::render::renderer::Renderer {
             y += line_h;
         }
 
-        // ── Footer: keycap chips (clickable; hovered = raised, fired = pressed)
+        // ── Footer: the app's keycap component, one chip per action
+        // (clickable; hovered = accent outline, fired = filled accent).
         let panel_bg = self.theme.ui.panel_bg.as_f32();
-        let chips = problem_footer_chips(&model.actions, x0, x1, footer_y, font, line_h);
-        for (rect, action) in chips {
+        let key_font = problem_footer_key_font(font);
+        let (row_top, row_h) = problem_footer_row(footer_y, line_h);
+        let metrics = keycap_metrics(row_top, key_font, row_h);
+        let base = flat_keycap_palette(fg, panel_bg);
+        let hovered_palette = HelpKeycapPalette {
+            border: accent,
+            fill: mix(panel_bg, accent, 0.22, 1.0),
+            text: accent,
+        };
+        let flashed_palette = HelpKeycapPalette {
+            border: accent,
+            fill: [accent[0], accent[1], accent[2], 0.95],
+            text: panel_bg,
+        };
+        let label_gap = (font * 0.45).max(6.0);
+        for (rect, action) in problem_footer_chips(&model.actions, x0, x1, footer_y, font, line_h) {
             let hovered = model.hovered_action == Some(action.id);
             let flashed = model.flashed_action == Some(action.id);
-            let mut bg = border;
-            bg[3] = 0.55;
-            let (key_color, label_color) = if flashed {
-                bg = accent;
-                bg[3] = 0.95;
-                (panel_bg, panel_bg)
+            let palette = if flashed {
+                &flashed_palette
             } else if hovered {
-                bg = accent;
-                bg[3] = 0.30;
-                (accent, fg)
-            } else if model.focused {
-                (accent, fg_dim)
+                &hovered_palette
             } else {
-                (accent, fg_ghost)
+                &base
             };
-            chrome.push(RegionDrawInstance::new(rect, bg).with_radius(4.0));
-            let text_x = rect[0] + char_w * 0.8;
-            text!(action.key, text_x, footer_y, key_color);
-            let key_w = estimate_monospace_width(action.key, font);
-            text!(action.label, text_x + key_w + char_w, footer_y, label_color);
+            let (key_glyphs, key_w) = layout_keycap(
+                action.key,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                &mut chrome,
+                rect[0],
+                &metrics,
+                key_font,
+                palette,
+            );
+            glyphs.extend(key_glyphs);
+            // `layout_keycap` leaves the text system on the keycap metrics.
+            self.test_runner_text_system
+                .set_metrics(cosmic_text::Metrics::new(font, line_h));
+            let label_color = if flashed || hovered {
+                fg
+            } else if model.focused {
+                fg_dim
+            } else {
+                fg_ghost
+            };
+            text!(
+                action.label,
+                rect[0] + key_w + label_gap,
+                footer_y,
+                label_color
+            );
         }
         (chrome, glyphs)
     }
@@ -1376,28 +1409,42 @@ pub(super) fn outline_kind_color(
 }
 
 /// Truncate `s` to at most `max` chars, appending `…` when it overflows.
-/// Footer chip rects for the Problem tab; shared by the draw path and the
-/// pointer hit-test so they can never disagree.
+/// Keycap font inside the Problem footer (same ratio as palette footers).
+fn problem_footer_key_font(font: f32) -> f32 {
+    (font * 0.82).max(10.0)
+}
+
+/// Row the footer keycaps are centred in: (top, height).
+fn problem_footer_row(footer_y: f32, line_h: f32) -> (f32, f32) {
+    (footer_y - 3.0, line_h + 6.0)
+}
+
+/// Footer chip rects for the Problem tab — keycap + label — shared by the
+/// draw path and the pointer hit-test so they can never disagree.
 fn problem_footer_chips(
     actions: &[crate::dojo::view::FooterAction],
     x0: f32,
     x1: f32,
-    y: f32,
+    footer_y: f32,
     font: f32,
     line_h: f32,
 ) -> Vec<([f32; 4], crate::dojo::view::FooterAction)> {
-    let char_w = estimate_monospace_width("0", font).max(1.0);
-    let gap = char_w * 1.2;
+    use super::super::components::estimate_keycap_width;
+    let key_font = problem_footer_key_font(font);
+    let (row_top, row_h) = problem_footer_row(footer_y, line_h);
+    let label_gap = (font * 0.45).max(6.0);
+    let chip_gap = (font * 1.1).max(12.0);
     let mut x = x0;
     let mut out = Vec::new();
     for action in actions {
-        let text = format!("{} {}", action.key, action.label);
-        let w = estimate_monospace_width(&text, font) + char_w * 1.6;
+        let key_w = estimate_keycap_width(action.key, key_font);
+        let label_w = estimate_monospace_width(action.label, font);
+        let w = key_w + label_gap + label_w;
         if x + w > x1 {
             break;
         }
-        out.push(([x, y - 2.0, w, line_h + 4.0], *action));
-        x += w + gap;
+        out.push(([x, row_top, w, row_h], *action));
+        x += w + chip_gap;
     }
     out
 }

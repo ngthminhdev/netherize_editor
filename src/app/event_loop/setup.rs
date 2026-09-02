@@ -854,6 +854,7 @@ impl AppShell {
                     Some(PanelTabId::TestRunner) => InputFocusContext::TestRunner,
                     Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,
                     Some(PanelTabId::Outline) => InputFocusContext::Outline,
+                    Some(PanelTabId::Problem) => InputFocusContext::DojoProblem,
                     Some(PanelTabId::Dojo) => InputFocusContext::Dojo,
                     Some(PanelTabId::Terminal)
                         if matches!(

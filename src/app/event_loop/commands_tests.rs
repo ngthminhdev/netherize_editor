@@ -6576,6 +6576,70 @@ fn dojo_footer_chips_map_to_commands_and_keys_flash_them() {
 }
 
 #[test]
+fn dojo_keys_route_end_to_end_on_both_docks() {
+    use crate::app::input::{InputRouteOutcome, NormalizedInput};
+    use crate::app::input_map::InputFocusContext;
+    use winit::keyboard::{KeyCode, ModifiersState};
+    let (mut shell, ws) = dojo_shell("keys");
+    assert!(shell.dojo.select_key("two-sum"));
+    // Left dock (tree) after g o.
+    assert_eq!(shell.focus_manager.current(), FocusTarget::LeftSidebar);
+    let ctx = shell.build_context();
+    assert_eq!(ctx.focus, InputFocusContext::Dojo);
+    let press = |shell: &mut AppShell, ch: char, code: KeyCode| {
+        let ctx = shell.build_context();
+        let input = NormalizedInput {
+            physical_key: Some(code),
+            named_key: None,
+            text: Some(ch.to_string()),
+            modifiers: ModifiersState::empty(),
+        };
+        match shell.input_handler.route_normalized_input(
+            input,
+            &shell.input_map,
+            ctx,
+            std::time::Instant::now(),
+        ) {
+            Some(InputRouteOutcome::Dispatch(t)) => Some(t.command),
+            _ => None,
+        }
+    };
+    assert_eq!(
+        press(&mut shell, 'x', KeyCode::KeyX),
+        Some(Command::DojoGiveUp)
+    );
+    assert_eq!(
+        press(&mut shell, 'n', KeyCode::KeyN),
+        Some(Command::DojoOpenNotebook)
+    );
+    // Right dock (Problem tab) after a click there.
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let ctx = shell.build_context();
+    assert_eq!(
+        ctx.focus,
+        InputFocusContext::DojoProblem,
+        "welcome={} mode={:?}",
+        shell.app_state.is_initial_launch_welcome(),
+        ctx.mode
+    );
+    assert_eq!(
+        press(&mut shell, 'x', KeyCode::KeyX),
+        Some(Command::DojoGiveUp)
+    );
+    assert_eq!(
+        press(&mut shell, 'c', KeyCode::KeyC),
+        Some(Command::DojoLanguage)
+    );
+    // The dispatched command actually runs through the shell.
+    assert!(shell.handle_command(Command::DojoLanguage));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::DojoLanguage)
+    );
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
 fn dojo_scrolls_statement_and_list_within_bounds() {
     let (mut shell, ws) = dojo_shell("scroll");
     assert!(shell.dojo_scroll_statement(6));
