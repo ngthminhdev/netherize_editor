@@ -2558,7 +2558,10 @@ mod tests {
 
         assert!(state.multi_insert_text("X"));
         assert_eq!(state.text_string(), "X X tail");
-        assert_eq!(state.cursor_char_idx, 1, "primary caret right after its copy");
+        assert_eq!(
+            state.cursor_char_idx, 1,
+            "primary caret right after its copy"
+        );
         assert_eq!(
             state.virtual_cursors()[0].char_idx,
             3,
@@ -2725,6 +2728,7 @@ mod tests {
                     input: r#"{"nums":[2,7],"target":9}"#.into(),
                     expected: "[0,1]".into(),
                 }],
+                hints: Vec::new(),
             },
         )
         .expect("seed cache");

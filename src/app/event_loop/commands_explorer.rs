@@ -278,6 +278,8 @@ impl AppShell {
 
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;
+        // A `g o` that had to switch projects shows its panels now.
+        self.dojo_after_workspace_switch(&root_path);
         true
     }
 
@@ -298,7 +300,7 @@ impl AppShell {
 
     /// Number of fully-visible explorer rows in the current sidebar viewport.
     /// Falls back to a constant when the sidebar has not been laid out yet.
-    fn explorer_page_rows(&self) -> usize {
+    pub(in crate::app::event_loop) fn explorer_page_rows(&self) -> usize {
         const FALLBACK_PAGE_ROWS: usize = 20;
         let Some(bounds) = self.last_sidebar_bounds else {
             return FALLBACK_PAGE_ROWS;
@@ -795,10 +797,7 @@ impl AppShell {
                 if !report.success {
                     // Surface refusals (e.g. the 10 MiB interactive limit) —
                     // a silent failure here looks like a dead click.
-                    self.show_transient_toast_kind(
-                        report.message.clone(),
-                        ToastKind::Error,
-                    );
+                    self.show_transient_toast_kind(report.message.clone(), ToastKind::Error);
                     return Some(false);
                 }
                 self.clear_highlight_layers();

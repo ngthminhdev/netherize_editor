@@ -483,6 +483,11 @@ pub enum WorkerRequestPayload {
         use_ai: bool,
         provider: Option<crate::config::ai_config::AiProviderConfig>,
     },
+    /// Dojo preview: refresh the per-problem cache (statement, examples,
+    /// hints) for `slug` without writing a solution file.
+    FetchLeetCodeStatement {
+        slug: String,
+    },
     GenerateLeetCodeTests {
         cache: crate::runner::leetcode_cache::LeetCodeProblemCache,
         language_key: String,
@@ -649,6 +654,14 @@ pub enum WorkerResultPayload {
         cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
     },
     LeetCodeProblemFetchFailed {
+        message: String,
+    },
+    /// `FetchLeetCodeStatement` landed; the cache for `slug` is fresh.
+    LeetCodeStatementFetched {
+        slug: String,
+    },
+    LeetCodeStatementFetchFailed {
+        slug: String,
         message: String,
     },
     LeetCodeTestsGenerated {

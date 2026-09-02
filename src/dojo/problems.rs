@@ -22,6 +22,32 @@ pub struct Problems {
 
 pub const BUNDLED_PROBLEMS: &str = include_str!("../../config/dojo/neetcode150.toml");
 
+/// Display label for a NeetCode category key; unknown keys pass through.
+pub fn category_label(key: &str) -> String {
+    match key {
+        "arrays_hashing" => "Arrays & Hashing",
+        "two_pointers" => "Two Pointers",
+        "sliding_window" => "Sliding Window",
+        "stack" => "Stack",
+        "binary_search" => "Binary Search",
+        "linked_list" => "Linked List",
+        "trees" => "Trees",
+        "tries" => "Tries",
+        "heap" => "Heap / Priority Queue",
+        "backtracking" => "Backtracking",
+        "graphs" => "Graphs",
+        "advanced_graphs" => "Advanced Graphs",
+        "dp_1d" => "1-D Dynamic Programming",
+        "dp_2d" => "2-D Dynamic Programming",
+        "greedy" => "Greedy",
+        "intervals" => "Intervals",
+        "math_geometry" => "Math & Geometry",
+        "bit_manipulation" => "Bit Manipulation",
+        other => other,
+    }
+    .to_string()
+}
+
 impl Problems {
     pub fn parse(text: &str) -> Result<Self, String> {
         let parsed: Self =
@@ -52,6 +78,21 @@ impl Problems {
 
     pub fn by_slug(&self, slug: &str) -> Option<&Problem> {
         self.problems.iter().find(|p| p.slug == slug)
+    }
+
+    /// Category keys in first-seen order (the file follows the NeetCode order).
+    pub fn categories(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for p in &self.problems {
+            if !out.contains(&p.category) {
+                out.push(p.category.clone());
+            }
+        }
+        out
+    }
+
+    pub fn in_category(&self, key: &str) -> Vec<&Problem> {
+        self.problems.iter().filter(|p| p.category == key).collect()
     }
 
     pub fn len(&self) -> usize {

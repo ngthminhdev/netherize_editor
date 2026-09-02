@@ -6137,44 +6137,155 @@ fn dot_repeat_survives_motions_and_repeats_indefinitely() {
     assert_eq!(shell.app_state.text_string(), "bef");
 }
 
-#[test]
-fn dojo_open_shows_the_dojo_tab_and_focuses_the_right_dock() {
-    use crate::app::input_map::InputFocusContext;
-    use crate::workbench::panel_state::PanelTabId;
+fn dojo_workspace_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("netherize_dojo_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("dojo workspace dir");
+    dir.canonicalize().expect("canonical dojo dir")
+}
+
+/// Shell with a Dojo workspace configured and the panels open on it.
+fn dojo_shell(tag: &str) -> (AppShell, std::path::PathBuf) {
     let mut shell = AppShell::new_for_tests().expect("shell");
+    let ws = dojo_workspace_dir(tag);
+    shell.dojo.state.workspace = Some(ws.to_string_lossy().to_string());
     assert!(shell.handle_command(Command::DojoOpen));
-    assert!(shell.panel_state.right.visible);
-    assert_eq!(
-        shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::Dojo)
-    );
-    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
-    assert_eq!(shell.build_context().focus, InputFocusContext::Dojo);
-    // Selection + paging are clamped and persisted to last_group.
-    let _ = shell.handle_command(Command::DojoSelectNext);
-    assert_eq!(shell.dojo.selected, 1);
-    let _ = shell.handle_command(Command::DojoPageNext);
-    assert_eq!(shell.dojo.page, crate::dojo::plan::Page::Group(1));
-    assert_eq!(
-        shell.dojo.state.last_group.as_deref(),
-        Some("sliding_stack")
-    );
-    assert_eq!(shell.dojo.selected, 0, "page change resets selection");
-    let _ = shell.handle_command(Command::DojoUnfocus);
-    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    (shell, ws)
 }
 
 #[test]
-fn dojo_fetch_result_creates_a_gated_session_instead_of_opening_the_file() {
+fn dojo_open_without_a_workspace_asks_for_a_folder_first() {
+    let mut shell = AppShell::new_for_tests().expect("shell");
+    assert!(
+        !shell.handle_command(Command::DojoOpen),
+        "no folder picked (dialog stubbed) → nothing opens"
+    );
+    assert!(shell.dojo.state.workspace.is_none());
+    assert_ne!(
+        shell.panel_state.left.active_tab_id(),
+        Some(crate::workbench::panel_state::PanelTabId::Dojo)
+    );
+}
+
+#[test]
+fn dojo_open_switches_to_the_workspace_and_shows_tree_plus_problem_tab() {
+    use crate::app::input_map::InputFocusContext;
+    use crate::dojo::view::TreeRow;
+    use crate::workbench::panel_state::PanelTabId;
+    let (mut shell, ws) = dojo_shell("open");
+    assert_eq!(shell.app_state.workspace_root_path(), Some(ws.as_path()));
+    assert!(shell.panel_state.left.visible);
+    assert_eq!(
+        shell.panel_state.left.active_tab_id(),
+        Some(PanelTabId::Dojo)
+    );
+    assert!(shell.panel_state.right.visible);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::Problem)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::LeftSidebar);
+    assert_eq!(shell.build_context().focus, InputFocusContext::Dojo);
+    // Lands on the suggested problem (first todo), not on a header.
+    assert!(matches!(
+        shell.dojo.selected_row(),
+        Some(TreeRow::Problem { slug, .. }) if slug == "contains-duplicate"
+    ));
+    // The preview is armed unless this machine already cached the statement.
+    assert!(
+        matches!(&shell.dojo.pending_preview, Some((slug, _)) if slug == "contains-duplicate")
+            || shell.dojo.cached("contains-duplicate").is_some(),
+        "selection arms the statement preview"
+    );
+    let rows = shell.dojo_sidebar_rows();
+    assert!(rows[0].label.starts_with("Arrays & Hashing"));
+    assert_eq!(rows[1].prefix_marker.as_deref(), Some("E"));
+    assert!(rows[1].label.starts_with("217. Contains Duplicate"));
+    assert!(rows[1].is_selected);
+
+    assert!(shell.handle_command(Command::DojoSelectNext));
+    assert_eq!(shell.dojo.selected, 2);
+    // h on a problem folds its group and lands on the header.
+    assert!(shell.handle_command(Command::DojoCollapse));
+    assert_eq!(shell.dojo.selected, 0);
+    assert_eq!(
+        shell.dojo.state.collapsed,
+        vec!["arrays_hashing".to_string()]
+    );
+    assert!(matches!(
+        shell.dojo.rows().get(1),
+        Some(TreeRow::Group { key, .. }) if key == "two_pointers"
+    ));
+    assert!(shell.handle_command(Command::DojoExpand));
+    assert!(shell.dojo.state.collapsed.is_empty());
+    // Clicking a header folds it; clicking again unfolds.
+    assert!(shell.dojo_click_row(0));
+    assert_eq!(
+        shell.dojo.state.collapsed,
+        vec!["arrays_hashing".to_string()]
+    );
+    assert!(shell.dojo_click_row(0));
+    assert!(shell.dojo.state.collapsed.is_empty());
+
+    // Problem tab model follows the selection.
+    assert!(shell.dojo.select_key("two-sum"));
+    let model = shell.dojo_problem_model(true);
+    match model.content {
+        crate::dojo::view::PanelContent::Problem(p) => {
+            assert_eq!(
+                (p.id, p.category.as_str(), p.language.as_str()),
+                (1, "Arrays & Hashing", "no language")
+            );
+            assert_eq!(p.status_line, "not attempted");
+        }
+        other => panic!("expected a problem view, got {other:?}"),
+    }
+    assert!(shell.handle_command(Command::DojoUnfocus));
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    // Opening again from the same workspace does not switch, just shows.
+    assert!(shell.handle_command(Command::DojoOpen));
+    assert_eq!(shell.app_state.workspace_root_path(), Some(ws.as_path()));
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
+fn dojo_enter_without_a_language_opens_the_picker_and_resumes_after_the_choice() {
     use crate::app::command_palette::CommandPaletteMode;
+    let (mut shell, ws) = dojo_shell("lang");
+    shell.persistent_state.recent_leetcode_languages = vec!["javascript".to_string()];
+    assert!(shell.dojo.select_key("contains-duplicate"));
+    assert!(shell.handle_command(Command::DojoStart));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::DojoLanguage)
+    );
+    assert_eq!(
+        shell.dojo.pending_start.as_deref(),
+        Some("contains-duplicate")
+    );
+    assert!(shell.confirm_dojo_language());
+    assert_eq!(shell.dojo.state.language.as_deref(), Some("javascript"));
+    assert!(shell.app_state.command_palette_mode().is_none());
+    // The start resumed: no file yet → a fetch was submitted for the slug.
+    assert_eq!(
+        shell.dojo.pending_start.as_deref(),
+        Some("contains-duplicate")
+    );
+    assert!(shell.dojo.state.active_session.is_none());
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
+fn dojo_fetch_result_starts_the_session_and_opens_the_file() {
     use crate::async_runtime::message::WorkerResultPayload;
     use crate::workbench::panel_state::PanelTabId;
-    let mut shell = AppShell::new_for_tests().expect("shell");
-    let _ = shell.handle_command(Command::DojoOpen);
+    let (mut shell, ws) = dojo_shell("fetch");
+    shell.dojo.state.language = Some("javascript".to_string());
     shell.dojo.pending_start = Some("two-sum".to_string());
-    let file = std::env::temp_dir().join("netherize_dojo_test_solution.js");
+    let dir = ws.join("0001-two-sum");
+    std::fs::create_dir_all(&dir).expect("problem dir");
+    let file = dir.join("solution.js");
     std::fs::write(&file, "// x\n").expect("write");
-    let file = file.canonicalize().expect("canonical temp path");
     super::async_results::leetcode_fetch::handle_leetcode_fetch_result(
         &mut shell,
         WorkerResultPayload::LeetCodeProblemFetched {
@@ -6182,59 +6293,55 @@ fn dojo_fetch_result_creates_a_gated_session_instead_of_opening_the_file() {
             title_slug: "two-sum".into(),
             language_key: "javascript".into(),
             file_path: file.clone(),
-            cases: vec![],
+            cases: vec![crate::runner::leetcode_api::LeetCodeTestCase {
+                input: "{\"nums\":[2,7],\"target\":9}".into(),
+                expected: "[0,1]".into(),
+            }],
         },
     );
     let session = shell.dojo.state.active_session.clone().expect("session");
-    assert_eq!(
-        (
-            session.slug.as_str(),
-            session.approach.as_deref(),
-            session.budget_s
-        ),
-        ("two-sum", None, 1500)
-    );
+    assert_eq!((session.slug.as_str(), session.budget_s), ("two-sum", 1500));
     assert!(shell.dojo.armed);
-    assert_ne!(
-        shell.app_state.active_file(),
-        Some(file.as_path()),
-        "file stays closed until approach"
-    );
-    assert_eq!(
-        shell.app_state.command_palette_mode(),
-        Some(CommandPaletteMode::DojoApproach)
-    );
-    // Empty approach is refused.
-    let _ = shell.app_state.set_command_palette_query("   ");
-    assert!(shell.confirm_dojo_approach());
-    assert!(
-        shell
-            .dojo
-            .state
-            .active_session
-            .as_ref()
-            .and_then(|s| s.approach.clone())
-            .is_none()
-    );
-    // Real approach opens the file and moves to the Test Runner.
-    let _ = shell.app_state.set_command_palette_query("hash map, O(n)");
-    assert!(shell.confirm_dojo_approach());
-    assert_eq!(
-        shell
-            .dojo
-            .state
-            .active_session
-            .as_ref()
-            .and_then(|s| s.approach.clone())
-            .as_deref(),
-        Some("hash map, O(n)")
-    );
+    assert!(shell.dojo.pending_start.is_none());
     assert_eq!(shell.app_state.active_file(), Some(file.as_path()));
+    assert_eq!(shell.app_state.test_runner.cases.len(), 1);
     assert_eq!(
         shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::TestRunner)
+        Some(PanelTabId::Problem)
     );
-    let _ = std::fs::remove_file(&file);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert!(shell.dojo.statusbar_chip().is_some());
+    // Enter on another problem is refused while the session runs.
+    assert!(shell.dojo.select_key("valid-anagram"));
+    assert!(!shell.dojo_start_selected());
+    assert_eq!(
+        shell
+            .dojo
+            .state
+            .active_session
+            .as_ref()
+            .map(|s| s.slug.as_str()),
+        Some("two-sum")
+    );
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
+fn dojo_enter_on_an_existing_solution_reopens_it_without_fetching() {
+    let (mut shell, ws) = dojo_shell("existing");
+    shell.dojo.state.language = Some("javascript".to_string());
+    let dir = ws.join("0217-contains-duplicate");
+    std::fs::create_dir_all(&dir).expect("problem dir");
+    let file = dir.join("solution.js");
+    std::fs::write(&file, "// keep me\n").expect("write");
+    assert!(shell.dojo.select_key("contains-duplicate"));
+    assert!(shell.handle_command(Command::DojoStart));
+    let session = shell.dojo.state.active_session.clone().expect("session");
+    assert_eq!(session.slug, "contains-duplicate");
+    assert_eq!(session.file, file);
+    assert!(shell.dojo.pending_start.is_none(), "no fetch needed");
+    assert_eq!(shell.app_state.active_file(), Some(file.as_path()));
+    let _ = std::fs::remove_dir_all(&ws);
 }
 
 #[test]
@@ -6251,7 +6358,6 @@ fn dojo_tick_reports_phase_changes_and_expires_the_session() {
         title: "Two Sum".into(),
         started_unix: now - 181,
         budget_s: 1500,
-        approach: Some("x".into()),
         file: "/tmp/none.js".into(),
     });
     shell.dojo.armed = true;
@@ -6261,6 +6367,7 @@ fn dojo_tick_reports_phase_changes_and_expires_the_session() {
     let chip = shell.dojo.statusbar_chip().expect("chip");
     assert!(chip.0.starts_with("⏱ CODE "), "{}", chip.0);
     assert_eq!(chip.1, 1);
+    assert!(shell.dojo.next_deadline().is_some());
     shell
         .dojo
         .state
@@ -6275,22 +6382,18 @@ fn dojo_tick_reports_phase_changes_and_expires_the_session() {
         Some(Outcome::Timeout)
     );
     assert!(shell.dojo.statusbar_chip().is_none());
-    // Note prompts opened (fail path starts at step 1); pending note is live.
-    assert!(shell.dojo.pending_note.is_some());
-    let _ = shell.app_state.close_command_palette();
     assert!(
-        !shell.dojo_tick(),
-        "idle → no redraw (but flushes the abandoned note)"
+        shell.app_state.command_palette_mode().is_none(),
+        "no prompts"
     );
-    assert!(shell.dojo.pending_note.is_none());
+    assert!(!shell.dojo_tick(), "idle → no redraw");
 }
 
 #[test]
-fn dojo_all_passed_ends_the_session_as_pass_and_opens_the_note_prompt() {
-    use crate::app::command_palette::CommandPaletteMode;
+fn dojo_all_passed_ends_the_session_as_pass() {
     use crate::dojo::{
         session::SessionKind,
-        state::{ActiveSession, Outcome, Status},
+        state::{ActiveSession, Status},
     };
     let mut shell = AppShell::new_for_tests().expect("shell");
     let file = std::env::temp_dir().join("netherize_dojo_pass.js");
@@ -6303,7 +6406,6 @@ fn dojo_all_passed_ends_the_session_as_pass_and_opens_the_note_prompt() {
         title: "Two Sum".into(),
         started_unix: now - 700,
         budget_s: 1500,
-        approach: Some("hash".into()),
         file: file.clone(),
     });
     shell.dojo.armed = true;
@@ -6315,33 +6417,18 @@ fn dojo_all_passed_ends_the_session_as_pass_and_opens_the_note_prompt() {
     shell.dojo_on_run_completed(true);
     assert!(shell.dojo.state.active_session.is_none());
     assert_eq!(shell.dojo.state.status_of("two-sum"), Status::Done);
-    assert_eq!(
-        shell.app_state.command_palette_mode(),
-        Some(CommandPaletteMode::DojoNote(0))
-    );
-    let note = shell.dojo.pending_note.as_ref().expect("note");
-    assert_eq!(
-        (note.id, note.outcome, note.redo),
-        (1, Outcome::Pass, false)
-    );
-    let _ = shell.app_state.set_command_palette_query("ok");
-    assert!(shell.confirm_dojo_note(0));
-    assert!(
-        shell.dojo.pending_note.is_none(),
-        "single step for pass → flushed"
-    );
     assert!(shell.app_state.command_palette_mode().is_none());
     let _ = std::fs::remove_file(&file);
 }
 
 #[test]
-fn dojo_give_up_walks_three_note_steps_and_flushes_on_abandon() {
-    use crate::app::command_palette::CommandPaletteMode;
+fn dojo_give_up_marks_the_problem_for_redo() {
     use crate::dojo::{
         session::SessionKind,
-        state::{ActiveSession, Status},
+        state::{ActiveSession, Outcome, Status},
     };
     let mut shell = AppShell::new_for_tests().expect("shell");
+    assert!(!shell.dojo_give_up(), "nothing running");
     let now = crate::dojo::state::now_unix();
     shell.dojo.state.active_session = Some(ActiveSession {
         kind: SessionKind::Dsa,
@@ -6349,44 +6436,28 @@ fn dojo_give_up_walks_three_note_steps_and_flushes_on_abandon() {
         title: "Min Stack".into(),
         started_unix: now - 100,
         budget_s: 1500,
-        approach: None,
         file: "/tmp/none.js".into(),
     });
     shell.dojo.armed = true;
     assert!(shell.dojo_give_up());
     assert_eq!(shell.dojo.state.status_of("min-stack"), Status::Redo);
     assert_eq!(
-        shell.app_state.command_palette_mode(),
-        Some(CommandPaletteMode::DojoNote(1))
+        shell.dojo.state.attempts.last().map(|a| a.outcome),
+        Some(Outcome::Giveup)
     );
-    let _ = shell.app_state.set_command_palette_query("quên stack phụ");
-    assert!(shell.confirm_dojo_note(1));
-    assert_eq!(
-        shell.app_state.command_palette_mode(),
-        Some(CommandPaletteMode::DojoNote(2))
-    );
-    let _ = shell.app_state.close_command_palette(); // user pressed Esc
-    shell.dojo_flush_abandoned_note();
-    assert!(
-        shell.dojo.pending_note.is_none(),
-        "partial note is written, not lost"
-    );
+    assert!(!shell.dojo.armed);
 }
 
 #[test]
 fn dojo_sd_session_creates_the_outline_and_runs_a_45_minute_clock() {
-    use crate::app::command_palette::CommandPaletteMode;
     use crate::dojo::{session::SessionKind, state::Outcome};
-    let mut shell = AppShell::new_for_tests().expect("shell");
-    let dir = std::env::temp_dir().join(format!("dojo_sd_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    shell.dojo.plan.sd_dir = dir.to_string_lossy().to_string();
-    assert!(shell.dojo_begin_sd_session("url_shortener", "Rút gọn URL"));
-    let path = dir.join("url_shortener.md");
+    let (mut shell, ws) = dojo_shell("sd");
+    assert!(shell.dojo_begin_sd_session("url_shortener", "URL shortener"));
+    let path = ws.join("sd").join("url_shortener.md");
     assert!(
         std::fs::read_to_string(&path)
             .expect("outline")
-            .starts_with("# Rút gọn URL — ")
+            .starts_with("# URL shortener — ")
     );
     let s = shell.dojo.state.active_session.clone().expect("session");
     assert_eq!(
@@ -6410,18 +6481,51 @@ fn dojo_sd_session_creates_the_outline_and_runs_a_45_minute_clock() {
             .map(|a| (a.kind, a.outcome)),
         Some((SessionKind::Sd, Outcome::Pass))
     );
+    assert!(shell.app_state.command_palette_mode().is_none());
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
+fn dojo_notebook_key_creates_and_opens_the_notebook() {
+    let (mut shell, ws) = dojo_shell("notebook");
+    assert!(shell.handle_command(Command::DojoOpenNotebook));
+    let path = ws.join("notes.md");
     assert_eq!(
-        shell.app_state.command_palette_mode(),
-        Some(CommandPaletteMode::DojoNote(0))
+        std::fs::read_to_string(&path).expect("notebook"),
+        crate::dojo::notebook::NOTEBOOK_HEADER
     );
-    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(shell.app_state.active_file(), Some(path.as_path()));
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
+fn dojo_statement_fetch_result_clears_inflight_and_surfaces_errors() {
+    use crate::dojo::view::PanelContent;
+    let (mut shell, ws) = dojo_shell("preview");
+    assert!(shell.dojo.select_key("two-sum"));
+    shell.dojo.pending_preview = None;
+    shell.dojo.preview_inflight = Some("two-sum".to_string());
+    shell.dojo_on_statement_fetched("two-sum", Some("HTTP 429".to_string()));
+    assert!(shell.dojo.preview_inflight.is_none());
+    assert!(
+        shell.dojo.pending_preview.is_none(),
+        "a failed slug is not re-armed in a loop"
+    );
+    match shell.dojo_problem_model(false).content {
+        PanelContent::Problem(p) => {
+            assert_eq!(p.title, "Two Sum");
+            assert_eq!(p.error.as_deref(), Some("HTTP 429"));
+            assert!(!p.loading);
+        }
+        other => panic!("expected problem view, got {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(&ws);
 }
 
 #[test]
 fn dojo_interviewer_launches_the_agent_terminal_for_the_selected_row() {
     use crate::workbench::panel_state::PanelTabId;
-    let mut shell = AppShell::new_for_tests().expect("shell");
-    let _ = shell.handle_command(Command::DojoOpen);
+    let (mut shell, ws) = dojo_shell("interviewer");
     assert!(shell.handle_command(Command::DojoInterviewer));
     assert_eq!(
         shell.right_agent_label.as_deref(),
@@ -6432,4 +6536,5 @@ fn dojo_interviewer_launches_the_agent_terminal_for_the_selected_row() {
         shell.panel_state.right.active_tab_id(),
         Some(PanelTabId::AiChat)
     );
+    let _ = std::fs::remove_dir_all(&ws);
 }

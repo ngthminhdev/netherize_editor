@@ -42,6 +42,8 @@ pub struct LeetCodeProblemCache {
     pub parameters: Vec<CachedParam>,
     #[serde(default)]
     pub cases: Vec<CachedCase>,
+    #[serde(default)]
+    pub hints: Vec<String>,
 }
 
 /// Comment prefix for the header line in each language.
@@ -163,6 +165,7 @@ mod tests {
                 input: r#"{"nums":[2,7,11,15],"target":9}"#.into(),
                 expected: "[0,1]".into(),
             }],
+            hints: vec!["Try a hash map.".into()],
         };
         save_cache_in(&dir, &cache).expect("save cache");
         let loaded = load_cache_in(&dir, "1").expect("load cache");

@@ -153,6 +153,7 @@ fn save_problem_cache(
                 expected: case.expected.clone(),
             })
             .collect(),
+        hints: problem.hints.clone(),
     };
     let _ = crate::runner::leetcode_cache::save_cache_in(
         &crate::runner::leetcode_cache::cache_dir(),
@@ -554,7 +555,7 @@ async fn fetch_problem(client: &reqwest::Client, slug: &str) -> Result<LeetCodeP
     let value = graphql(
         client,
         serde_json::json!({
-            "query": "query questionData($titleSlug: String!) { question(titleSlug: $titleSlug) { questionFrontendId title titleSlug content metaData codeSnippets { lang langSlug code } exampleTestcaseList } }",
+            "query": "query questionData($titleSlug: String!) { question(titleSlug: $titleSlug) { questionFrontendId title titleSlug content difficulty hints metaData codeSnippets { lang langSlug code } exampleTestcaseList } }",
             "variables": { "titleSlug": slug }
         }),
     )
@@ -585,6 +586,17 @@ async fn fetch_problem(client: &reqwest::Client, slug: &str) -> Result<LeetCodeP
                 .collect()
         })
         .unwrap_or_default();
+    let hints = question
+        .get("hints")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(LeetCodeProblem {
         frontend_id: string("questionFrontendId")?,
         title: string("title")?,
@@ -594,7 +606,56 @@ async fn fetch_problem(client: &reqwest::Client, slug: &str) -> Result<LeetCodeP
         parameters,
         code_snippets,
         example_testcase_list,
+        difficulty: string("difficulty").unwrap_or_default(),
+        hints,
     })
+}
+
+/// Statement-only fetch for the Dojo preview: no file is written, only the
+/// per-problem cache (statement, example cases, hints) is refreshed.
+pub(super) struct LeetCodeStatementJob {
+    pub request_id: u64,
+    pub revision_id: u64,
+    pub slug: String,
+}
+
+pub(super) async fn run_leetcode_statement_fetch(
+    job: LeetCodeStatementJob,
+    result_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
+) {
+    let fetched = async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .user_agent("NetherizeEditor/0.1")
+            .build()
+            .map_err(|err| format!("LeetCode client build failed: {err}"))?;
+        fetch_problem(&client, &job.slug).await
+    }
+    .await;
+    let payload = match fetched {
+        Ok(problem) => {
+            let cases = extract_test_cases(&problem);
+            save_problem_cache(&problem, &cases);
+            WorkerResultPayload::LeetCodeStatementFetched {
+                slug: job.slug.clone(),
+            }
+        }
+        Err(message) => WorkerResultPayload::LeetCodeStatementFetchFailed {
+            slug: job.slug.clone(),
+            message,
+        },
+    };
+    emit_message_and_wake(
+        &result_tx,
+        &event_proxy,
+        WorkerMessage::Result(WorkerResult {
+            request_id: job.request_id,
+            revision_id: job.revision_id,
+            topic: crate::async_runtime::message::RequestTopic::LeetCode,
+            payload,
+        }),
+    );
 }
 
 async fn adapt_via_ai(
@@ -989,6 +1050,7 @@ mod tests {
             title: "Two Sum".to_string(),
             statement: "Given an array of integers...".to_string(),
             function_name: "twoSum".to_string(),
+            hints: Vec::new(),
             parameters: vec![
                 crate::runner::leetcode_cache::CachedParam {
                     name: "nums".to_string(),
@@ -1045,6 +1107,7 @@ mod tests {
             title: "Two Sum".to_string(),
             statement: "Given an array of integers...".to_string(),
             function_name: "twoSum".to_string(),
+            hints: Vec::new(),
             parameters: vec![crate::runner::leetcode_cache::CachedParam {
                 name: "nums".to_string(),
                 type_name: "number[]".to_string(),
@@ -1076,6 +1139,7 @@ mod tests {
             title: "Two Sum".to_string(),
             statement: "Given an array...".to_string(),
             function_name: "twoSum".to_string(),
+            hints: Vec::new(),
             parameters: vec![crate::runner::leetcode_cache::CachedParam {
                 name: "nums".to_string(),
                 type_name: "number[]".to_string(),

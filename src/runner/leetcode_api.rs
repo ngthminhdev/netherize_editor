@@ -31,6 +31,10 @@ pub struct LeetCodeProblem {
     pub parameters: Vec<LeetCodeParameter>,
     pub code_snippets: Vec<LeetCodeCodeSnippet>,
     pub example_testcase_list: Vec<String>,
+    /// "Easy" / "Medium" / "Hard" as LeetCode reports it (may be empty).
+    pub difficulty: String,
+    /// LeetCode's own hints, in order; shown on demand in the Dojo panel.
+    pub hints: Vec<String>,
 }
 
 pub fn normalize_problem_input(input: &str) -> Result<String, String> {
@@ -187,6 +191,8 @@ mod tests {
             frontend_id: "1".into(),
             title: "Two Sum".into(),
             title_slug: "two-sum".into(),
+            difficulty: "Easy".into(),
+            hints: Vec::new(),
             content: r#"<pre><strong>Input:</strong> nums = [2,7,11,15], target = 9
 <strong>Output:</strong> [0,1]</pre>"#
                 .into(),

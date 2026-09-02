@@ -272,6 +272,9 @@ impl InputHandler {
         if context.focus == InputFocusContext::Dojo {
             return self.route_dojo_input(normalized, input_debug, context);
         }
+        if context.focus == InputFocusContext::DojoProblem {
+            return self.route_dojo_problem_input(normalized, input_debug, context);
+        }
 
         if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
             self.clear_pending_counts();
@@ -393,7 +396,10 @@ impl InputHandler {
         // leader chords reach the keymap instead of being swallowed by j/k routing.
         let outline_allows_leader =
             context.focus == InputFocusContext::Outline && leader_sequence_input;
-        let dojo_allows_leader = context.focus == InputFocusContext::Dojo && leader_sequence_input;
+        let dojo_allows_leader = matches!(
+            context.focus,
+            InputFocusContext::Dojo | InputFocusContext::DojoProblem
+        ) && leader_sequence_input;
 
         // Cmd/Super shortcuts are GUI-global: a chord carrying the command
         // modifier (Cmd on macOS) must trigger its bound command regardless of
@@ -438,12 +444,18 @@ impl InputHandler {
             return self.route_outline_input(normalized, input_debug, context, now);
         }
 
-        // Dojo panel: list navigation + session keys.
+        // Dojo panels: list navigation + session keys.
         if context.focus == InputFocusContext::Dojo
             && !zen_mode_allows_leader
             && !dojo_allows_leader
         {
             return self.route_dojo_input(normalized, input_debug, context);
+        }
+        if context.focus == InputFocusContext::DojoProblem
+            && !zen_mode_allows_leader
+            && !dojo_allows_leader
+        {
+            return self.route_dojo_problem_input(normalized, input_debug, context);
         }
 
         if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
@@ -1884,17 +1896,16 @@ impl InputHandler {
                 false,
             )))
         };
-        if normalized.named_key == Some(NamedKey::Escape) {
-            return make(Command::DojoUnfocus, "leave (Esc)");
-        }
-        if normalized.named_key == Some(NamedKey::Enter) && !normalized.has_command_modifier() {
-            return make(Command::DojoStart, "start (Enter)");
-        }
-        if normalized.named_key == Some(NamedKey::ArrowDown) {
-            return make(Command::DojoSelectNext, "next (Down)");
-        }
-        if normalized.named_key == Some(NamedKey::ArrowUp) {
-            return make(Command::DojoSelectPrev, "prev (Up)");
+        match normalized.named_key {
+            Some(NamedKey::Escape) => return make(Command::DojoUnfocus, "leave (Esc)"),
+            Some(NamedKey::Enter) if !normalized.has_command_modifier() => {
+                return make(Command::DojoStart, "start (Enter)");
+            }
+            Some(NamedKey::ArrowDown) => return make(Command::DojoSelectNext, "next (Down)"),
+            Some(NamedKey::ArrowUp) => return make(Command::DojoSelectPrev, "prev (Up)"),
+            Some(NamedKey::ArrowLeft) => return make(Command::DojoCollapse, "fold (Left)"),
+            Some(NamedKey::ArrowRight) => return make(Command::DojoExpand, "unfold (Right)"),
+            _ => {}
         }
         if normalized.modifiers.control_key() && !normalized.has_command_modifier() {
             match normalized.physical_key {
@@ -1909,9 +1920,64 @@ impl InputHandler {
             match text {
                 "j" => return make(Command::DojoSelectNext, "next (j)"),
                 "k" => return make(Command::DojoSelectPrev, "prev (k)"),
+                "h" => return make(Command::DojoCollapse, "fold (h)"),
+                "l" => return make(Command::DojoExpand, "unfold (l)"),
                 "r" => return make(Command::DojoToggleRedo, "redo filter (r)"),
-                "]" => return make(Command::DojoPageNext, "next page (])"),
-                "[" => return make(Command::DojoPagePrev, "prev page ([)"),
+                "c" => return make(Command::DojoLanguage, "language (c)"),
+                "w" => return make(Command::DojoChooseFolder, "folder (w)"),
+                "n" => return make(Command::DojoOpenNotebook, "notebook (n)"),
+                "?" => return make(Command::DojoToggleHints, "hints (?)"),
+                "i" => return make(Command::DojoInterviewer, "interviewer (i)"),
+                "x" => return make(Command::DojoGiveUp, "give up (x)"),
+                "q" => return make(Command::DojoUnfocus, "leave (q)"),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Right-dock Problem tab: scroll the statement, toggle hints, session keys.
+    fn route_dojo_problem_input(
+        &mut self,
+        normalized: NormalizedInput,
+        input_debug: String,
+        context: KeybindingContext,
+    ) -> Option<InputRouteOutcome> {
+        let focus = context.focus.as_str();
+        let make = |command: Command, reason: &str| {
+            Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug.clone(),
+                format!("focus={focus} -> dojo problem: {reason}"),
+                command,
+                1,
+                false,
+            )))
+        };
+        match normalized.named_key {
+            Some(NamedKey::Escape) => return make(Command::DojoUnfocus, "leave (Esc)"),
+            Some(NamedKey::Enter) if !normalized.has_command_modifier() => {
+                return make(Command::DojoStart, "start (Enter)");
+            }
+            Some(NamedKey::ArrowDown) => return make(Command::DojoScrollDown, "scroll (Down)"),
+            Some(NamedKey::ArrowUp) => return make(Command::DojoScrollUp, "scroll (Up)"),
+            _ => {}
+        }
+        if normalized.modifiers.control_key() && !normalized.has_command_modifier() {
+            match normalized.physical_key {
+                Some(KeyCode::KeyD) => return make(Command::DojoScrollDown, "scroll (C-d)"),
+                Some(KeyCode::KeyU) => return make(Command::DojoScrollUp, "scroll (C-u)"),
+                _ => {}
+            }
+        }
+        if let Some(text) = normalized.text.as_deref()
+            && !normalized.has_command_modifier()
+        {
+            match text {
+                "j" => return make(Command::DojoScrollDown, "scroll (j)"),
+                "k" => return make(Command::DojoScrollUp, "scroll (k)"),
+                "?" => return make(Command::DojoToggleHints, "hints (?)"),
+                "c" => return make(Command::DojoLanguage, "language (c)"),
+                "n" => return make(Command::DojoOpenNotebook, "notebook (n)"),
                 "i" => return make(Command::DojoInterviewer, "interviewer (i)"),
                 "x" => return make(Command::DojoGiveUp, "give up (x)"),
                 "q" => return make(Command::DojoUnfocus, "leave (q)"),

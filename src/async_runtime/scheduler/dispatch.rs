@@ -20,7 +20,8 @@ use super::{
     file_watch::run_file_watch_request,
     fzf::run_fzf_request,
     leetcode_fetch::{
-        LeetCodeFetchJob, LeetCodeGenerateJob, run_leetcode_fetch, run_leetcode_generate,
+        LeetCodeFetchJob, LeetCodeGenerateJob, LeetCodeStatementJob, run_leetcode_fetch,
+        run_leetcode_generate, run_leetcode_statement_fetch,
     },
     lsp::run_lsp_request,
     pty::run_pty_request,
@@ -88,6 +89,21 @@ pub(super) async fn dispatch_loop(
                     destination_dir,
                     use_ai,
                     provider,
+                },
+                worker_tx,
+                worker_proxy,
+            ));
+            continue;
+        }
+
+        if let WorkerRequestPayload::FetchLeetCodeStatement { slug } = request.payload.clone() {
+            let worker_tx = result_tx.clone();
+            let worker_proxy = event_proxy.clone();
+            tokio::spawn(run_leetcode_statement_fetch(
+                LeetCodeStatementJob {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    slug,
                 },
                 worker_tx,
                 worker_proxy,

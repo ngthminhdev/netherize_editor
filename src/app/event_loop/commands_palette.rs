@@ -510,17 +510,10 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
-                        Some(CommandPaletteMode::DojoApproach)
+                        Some(CommandPaletteMode::DojoLanguage)
                     )
                 {
-                    return Some(self.confirm_dojo_approach());
-                }
-
-                if matches!(command, Command::FilePickerConfirmSelection)
-                    && let Some(CommandPaletteMode::DojoNote(step)) =
-                        self.app_state.command_palette_mode()
-                {
-                    return Some(self.confirm_dojo_note(step));
+                    return Some(self.confirm_dojo_language());
                 }
 
                 if matches!(command, Command::FilePickerConfirmSelection)
@@ -696,14 +689,19 @@ impl AppShell {
                     return Some(true);
                 }
 
+                // Same for the Dojo language picker (already populated).
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::DojoLanguage) {
+                    self.arm_palette_ime_commit_suppression();
+                    self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
+
                 // Command palette can open the LeetCode problem-input prompt
                 // without closing the overlay. Keep palette focus so the user
                 // can type a problem ID/slug/URL (the input has no list items).
                 if matches!(
                     self.app_state.command_palette_mode(),
                     Some(CommandPaletteMode::LeetCodeProblemInput)
-                        | Some(CommandPaletteMode::DojoApproach)
-                        | Some(CommandPaletteMode::DojoNote(_))
                 ) {
                     self.arm_palette_ime_commit_suppression();
                     self.focus_manager.set(FocusTarget::OverlayLayer);

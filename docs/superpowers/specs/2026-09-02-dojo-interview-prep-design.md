@@ -407,3 +407,15 @@ the user (fetch a real problem, run the 25' loop with a shortened
   buffer with a preview and hides the outline file) — the user toggles it.
 - Statistics page (avg time per pattern, weakest category).
 - Cloud/mobile sync of dojo.toml.
+
+## 15. v2 rework (2026-09-02, after the first GUI round)
+
+The user could not use v1 ("chưa dùng được cái gì cả"): the solution file was dropped into the open project, the language was picked silently, the list was in the wrong dock with no difficulty and an opaque order, and the statement only showed after Enter plus a text prompt. v2 supersedes §5–§7 and §10 where they conflict:
+
+- **LeetCode workspace.** A user-chosen folder (system dialog; Cmd+P "Dojo: Choose Folder" or `w`), stored in `dojo.toml` as `workspace`. `g o` / "Dojo: Open (LeetCode workspace)" switches the editor to that folder (dirty-buffer guard applies) and shows the panels. Each problem lives in `<workspace>/0001-two-sum/solution.<ext>`; `notes.md` and `sd/` live there too (plan.toml `notebook`/`sd_dir` remain as overrides). The Explorer of that workspace therefore lists exactly the attempted problems.
+- **Left dock: Dojo tree.** 18 NeetCode categories in file order, collapsible (`h`/`l`/←/→, Enter or click on a header), each row `E/M/H` + status glyph (`○` todo, `●` solved + best time, `↻` redo due, `·` redo date) + `id. title`, plus a System Design group. `r` = only due redos. Collapsed set persists.
+- **Right dock: Problem tab.** Title + difficulty, status line, category, language, then the statement, example cases and (on `?`) LeetCode's hints — fetched on selection with a 300 ms debounce through a statement-only worker job that refreshes the per-problem cache; no file is written until Enter. While a session runs the tab keeps the session's problem and shows the phase clock.
+- **Enter = start.** No approach prompt. Missing language → picker (Cmd+P "Dojo: Language" / `c`, remembered), then fetch into the problem folder, open the file, load the example cases, start the 25' clock. An existing `solution.<ext>` is reopened instead of re-fetched.
+- **Session end.** F5 all green / `x` / timeout → attempt recorded, spaced redo applied, one notebook stub appended (`- Note:` for a pass, `- Stuck at / Right pattern / Signal next time` otherwise). No prompts; `n` opens the notebook.
+- **UI language:** English everywhere (toasts, footers, notebook, SD template, case labels).
+- Removed: pages/groups in plan.toml, `DojoApproach`/`DojoNote` palette modes, `approach` on sessions/attempts, `[`/`]` paging.

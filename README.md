@@ -39,7 +39,7 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
 | Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
 | LeetCode test generation | ✅ Stratified case generation + AI verification |
-| Dojo (interview prep) | ✅ `g o`: NeetCode 150 menu by pattern, 25'/45' timed sessions with approach gate, error notebook, spaced redo, Claude interviewer |
+| Dojo (interview prep) | ✅ `g o` / Cmd+P "Dojo: Open": switches to your LeetCode workspace folder, NeetCode 150 tree in the left dock (18 categories, difficulty + status), statement/examples/hints in the right "Problem" tab, 25'/45' timed sessions, auto-logged error notebook, spaced redo, Claude interviewer |
 | Single instance + `netherize` CLI | ✅ One dock icon; `netherize .` routes to the running window; in-app PATH installer |
 | Spatial Canvas (NetherCanvas) | ✅ Navigable 2D code canvas with LSP-driven cards, auto-arrange, scope-aware editing |
 | Workbench panel slide animation | ✅ Hyprland-style timeline-based slide for docks + zen mode |
@@ -337,7 +337,14 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   ├── dojo/                      # Interview-prep Dojo (pure logic, no UI)
-│   │   ├── plan.rs                # config/dojo/plan.toml: pattern groups, SD cases, budgets
+│   │   ├── plan.rs                # config/dojo/plan.toml: timer budgets, SD cases
+│   │   ├── problems.rs            # config/dojo/neetcode150.toml: 150 problems, category labels
+│   │   ├── state.rs               # ~/.config/netherize/dojo.toml: workspace, language, attempts, spaced redo
+│   │   ├── session.rs             # phase clock (pure, takes `now`)
+│   │   ├── notebook.rs            # error-notebook stubs, HTML → text
+│   │   ├── files.rs               # <workspace>/0001-two-sum, notes.md, sd/, current.md paths
+│   │   └── view.rs                # left tree rows + right Problem panel models
+│   ├── plan.rs                # config/dojo/plan.toml: pattern groups, SD cases, budgets
 │   │   ├── problems.rs            # config/dojo/neetcode150.toml: 150 problems
 │   │   ├── state.rs               # ~/.config/netherize/dojo.toml: attempts, spaced redo, streak
 │   │   ├── session.rs             # phase clock (THINK/CODE/TEST/REVIEW), expiry
@@ -619,7 +626,7 @@ Use this table when you want to jump straight to the likely file instead of read
 | Markdown preview | `src/render/renderer/ui/markdown_preview.rs`, `src/app/event_loop/commands.rs` | Markdown rendering and preview toggle |
 | LeetCode problem fetch, code runner | `src/runner/`, `src/app/event_loop/async_results/runner.rs`, `src/async_runtime/scheduler/leetcode_fetch.rs` | Runner logic, async results, and scheduler tasks |
 | Test runner behavior | `src/app/event_loop/commands_tests.rs`, `src/render/renderer/ui/test_runner.rs` | Test runner commands and rendering |
-| Dojo panel, timed sessions, notebook | `src/dojo/`, `src/app/event_loop/commands_dojo.rs`, `config/dojo/`, `src/render/renderer/ui/test_runner.rs` (`build_dojo_content`) | Pure rules in `src/dojo`; editor glue (fetch gate, clock tick, note prompts, interviewer launch) in `commands_dojo.rs`; panel drawn in the test-runner surface |
+| Dojo tree, Problem tab, timed sessions, notebook | `src/dojo/`, `src/app/event_loop/commands_dojo.rs`, `config/dojo/`, `src/render/renderer/ui/test_runner.rs` (`build_problem_content`) | Pure rules in `src/dojo`; editor glue (workspace switch, folder/language pickers, debounced statement fetch, clock tick, notebook append) in `commands_dojo.rs`; the left list reuses the Explorer row renderer via `dojo_sidebar_rows`, the right tab is drawn in the test-runner surface |
 | `gf` git UI target (lazygit PTY buffer vs GitMin app) | `src/config/git_config.rs`, `src/app/event_loop/commands_lsp.rs`, `~/.config/netherize/ui.toml` (`[git]`) | Config selects the backend; handler branches and spawns GitMin with the repo root as argv |
 | Live grep / workspace search | `src/app/event_loop/commands_palette.rs`, `src/render/renderer/palette/live_grep.rs`, `src/workspace/fuzzy.rs` | Search initiation, rendering, and fuzzy matching |
 | Spatial Canvas (NetherCanvas) | `src/canvas/`, `src/app/app_state/canvas.rs`, `src/app/app_state/canvas_edit.rs`, `src/app/event_loop/commands_canvas.rs`, `src/render/renderer/canvas.rs` | Canvas model, state, editing, commands, and rendering |

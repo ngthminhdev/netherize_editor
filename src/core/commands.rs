@@ -340,16 +340,26 @@ pub enum Command {
     /// Return focus from the Test Runner panel to the editor.
     TestRunnerUnfocus,
     // ── Dojo (interview-prep panel) ──────────────────────────────────────
-    /// Show the right-dock Dojo tab and focus it (`g o`).
+    /// Switch to the LeetCode workspace and show the Dojo list + Problem tab (`g o`).
     DojoOpen,
     DojoSelectNext,
     DojoSelectPrev,
-    /// Enter on a row: fetch + start a timed session (or reopen the approach prompt).
+    /// Enter: fold/unfold a group, or start a session on a problem / SD case.
     DojoStart,
     /// Toggle the "only due redos" filter.
     DojoToggleRedo,
-    DojoPageNext,
-    DojoPagePrev,
+    /// Fold the selected group (or the group of the selected problem).
+    DojoCollapse,
+    /// Unfold the selected group.
+    DojoExpand,
+    /// Show/hide LeetCode's hints in the Problem tab.
+    DojoToggleHints,
+    /// Pick the coding language used for new solution files.
+    DojoLanguage,
+    /// Pick (or change) the LeetCode workspace folder.
+    DojoChooseFolder,
+    /// Open the error notebook in the editor.
+    DojoOpenNotebook,
     /// Launch the Claude interviewer agent for the selected problem.
     DojoInterviewer,
     /// End the running session early (`x`).

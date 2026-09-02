@@ -50,8 +50,6 @@ pub struct Attempt {
     pub ended_unix: u64,
     pub outcome: Outcome,
     pub elapsed_s: u64,
-    #[serde(default)]
-    pub approach: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -72,15 +70,21 @@ pub struct ActiveSession {
     pub title: String,
     pub started_unix: u64,
     pub budget_s: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approach: Option<String>,
     pub file: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DojoState {
+    /// Folder holding one sub-folder per attempted problem (user-chosen via
+    /// the folder dialog; machine-local, hence state not plan).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_group: Option<String>,
+    pub workspace: Option<String>,
+    /// LeetCode template key (`javascript`, `python`…); `None` until picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Collapsed category keys in the left tree.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collapsed: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_session: Option<ActiveSession>,
     #[serde(default, rename = "attempt")]
@@ -279,7 +283,6 @@ mod tests {
             ended_unix: ended,
             outcome,
             elapsed_s: 600,
-            approach: String::new(),
         }
     }
 
@@ -377,7 +380,9 @@ mod tests {
             "missing → default"
         );
         let mut s = DojoState {
-            last_group: Some("graph".to_string()),
+            workspace: Some("/tmp/leetcode".to_string()),
+            language: Some("javascript".to_string()),
+            collapsed: vec!["trees".to_string()],
             ..Default::default()
         };
         s.active_session = Some(ActiveSession {
@@ -386,7 +391,6 @@ mod tests {
             title: "Two Sum".to_string(),
             started_unix: 10,
             budget_s: 1500,
-            approach: None,
             file: std::path::PathBuf::from("/tmp/solution.js"),
         });
         s.record_attempt(

@@ -957,6 +957,16 @@ impl AppShell {
                     .and_then(|path| path.parent().map(PathBuf::from))
             })
             .unwrap_or_else(|| std::env::temp_dir().join("netherize-leetcode"));
+        self.submit_leetcode_fetch_to(input, language_key, destination_dir);
+    }
+
+    /// Fetch + scaffold into an explicit folder (the Dojo's per-problem dir).
+    pub(in crate::app::event_loop) fn submit_leetcode_fetch_to(
+        &mut self,
+        input: String,
+        language_key: String,
+        destination_dir: PathBuf,
+    ) {
         let provider = self.ai_config.leetcode_ai_provider().cloned();
         self.submit(RequestSpec {
             revision_id: 0,

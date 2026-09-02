@@ -1,88 +1,49 @@
-# Netherize Dojo plan. Pages, not a calendar — open any group any time.
-notebook = "~/Work/docs/interview-notes.md"
-sd_dir = "~/Work/docs/sd"
+# Netherize Dojo plan. Override by copying to ~/.config/netherize/dojo/plan.toml.
+# Problems + categories come from neetcode150.toml; the workspace folder and
+# the coding language are chosen in the app (dojo.toml).
+#
+# notebook = "~/Work/docs/interview-notes.md"   # default: <workspace>/notes.md
+# sd_dir   = "~/Work/docs/sd"                   # default: <workspace>/sd
 dsa_minutes = 25
 dsa_phases = [["THINK", 3], ["CODE", 15], ["TEST", 5], ["REVIEW", 2]]
 sd_minutes = 45
 
-[[group]]
-key = "hash_two_pointers"
-label = "Array/Hash Map, Two Pointers"
-categories = ["arrays_hashing", "two_pointers"]
-note = "Đổi O(n²)→O(n) bằng hash; template two pointer."
-
-[[group]]
-key = "sliding_stack"
-label = "Sliding Window, Stack"
-categories = ["sliding_window", "stack"]
-note = "Window co giãn; monotonic stack."
-
-[[group]]
-key = "bsearch_list"
-label = "Binary Search, Linked List"
-categories = ["binary_search", "linked_list"]
-note = "Bounds lo/hi không off-by-one; fast/slow pointer."
-
-[[group]]
-key = "tree_trie"
-label = "Tree (DFS/BFS), Trie"
-categories = ["trees", "tries"]
-note = "Đệ quy trên cây; BFS theo tầng."
-
-[[group]]
-key = "heap_bt_interval"
-label = "Heap, Backtracking, Interval"
-categories = ["heap", "backtracking", "intervals"]
-note = "Top-K bằng heap; cắt nhánh; merge interval."
-
-[[group]]
-key = "graph"
-label = "Graph (BFS/DFS/Topo/Union-Find)"
-categories = ["graphs", "advanced_graphs"]
-note = "Topological sort; detect cycle; DSU. CHECKPOINT: 2 medium / 45'."
-
-[[group]]
-key = "extra"
-label = "Extra: DP, Greedy, Math, Bit"
-categories = ["dp_1d", "dp_2d", "greedy", "math_geometry", "bit_manipulation"]
-note = "Sau 6 nhóm chính. Không bắt buộc."
-
 [[sd_case]]
 key = "wallet_v1"
-label = "Ví điện tử / chuyển tiền (bản 1)"
+label = "Digital wallet / money transfer (v1)"
 topic = "Scaling: LB, replication, sharding, CAP, consistency levels"
 
 [[sd_case]]
 key = "url_shortener"
-label = "Rút gọn URL"
+label = "URL shortener"
 topic = "Cache-aside vs write-through, invalidation, queue"
 
 [[sd_case]]
 key = "rate_limiter"
-label = "Rate limiter phân tán"
+label = "Distributed rate limiter"
 topic = "Storage: SQL vs NoSQL, index, LSM vs B-tree, hot partition"
 
 [[sd_case]]
 key = "leaderboard"
-label = "Bảng xếp hạng realtime"
+label = "Realtime leaderboard"
 topic = "Reliability: idempotency, outbox, saga, circuit breaker, backpressure"
 
 [[sd_case]]
 key = "feed"
-label = "Feed mạng xã hội"
+label = "Social feed"
 topic = "Fan-out on write vs read"
 
 [[sd_case]]
 key = "chat_notification"
-label = "Chat / notification"
+label = "Chat / notifications"
 topic = "WebSocket, delivery guarantee"
 
 [[sd_case]]
 key = "log_metrics"
-label = "Thu thập & xử lý log/metrics"
+label = "Log & metrics pipeline"
 topic = "Streaming, at-least-once + idempotent consumer"
 
 [[sd_case]]
 key = "wallet_v2"
-label = "Ví điện tử (bản 2) — so với bản 1"
-topic = "Vận hành: observability, rate limit, deploy an toàn, feature flag"
+label = "Digital wallet (v2) — compared with v1"
+topic = "Operations: observability, rate limiting, safe deploys, feature flags"

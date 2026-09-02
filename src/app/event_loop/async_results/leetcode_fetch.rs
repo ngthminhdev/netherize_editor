@@ -56,19 +56,28 @@ pub(in crate::app::event_loop) fn handle_leetcode_fetch_result(
         cases,
     } = payload
     else {
-        if let WorkerResultPayload::LeetCodeProblemFetchFailed { message } = payload {
-            app.dojo.pending_start = None;
-            app.show_transient_toast_kind(
-                format!("Fetch LeetCode Problem\n{message}"),
-                ToastKind::Error,
-            );
-            app.request_redraw();
+        match payload {
+            WorkerResultPayload::LeetCodeProblemFetchFailed { message } => {
+                app.dojo.pending_start = None;
+                app.show_transient_toast_kind(
+                    format!("Fetch LeetCode Problem\n{message}"),
+                    ToastKind::Error,
+                );
+                app.request_redraw();
+            }
+            WorkerResultPayload::LeetCodeStatementFetched { slug } => {
+                app.dojo_on_statement_fetched(&slug, None);
+            }
+            WorkerResultPayload::LeetCodeStatementFetchFailed { slug, message } => {
+                app.dojo_on_statement_fetched(&slug, Some(message));
+            }
+            _ => {}
         }
         return;
     };
 
-    // Dojo-initiated fetch: keep the file CLOSED until the approach is typed
-    // (THINK gate). The Test Runner still gets the example cases now.
+    // Dojo-initiated fetch: load the example cases, then start the session
+    // (opens the file, keeps the Problem tab on the right).
     if app.dojo.pending_start.as_deref() == Some(title_slug.as_str()) {
         app.dojo.pending_start = None;
         app.app_state.test_runner.cases = cases
@@ -80,7 +89,8 @@ pub(in crate::app::event_loop) fn handle_leetcode_fetch_result(
         app.app_state.test_runner.focused_field = crate::runner::TestField::Input;
         app.app_state.test_runner.is_running = false;
         app.app_state.test_runner.launch_error = None;
-        app.dojo_begin_dsa_session(title_slug, title, file_path, language_key);
+        let _ = language_key;
+        app.dojo_begin_dsa_session(title_slug, title, file_path);
         app.request_redraw();
         return;
     }

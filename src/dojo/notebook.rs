@@ -1,7 +1,9 @@
 //! Error-notebook formatting (append-only markdown the user reads on Sundays).
+//! Blocks are stubs: the app appends them at session end, the user fills the
+//! lines in the editor (`n` in the Dojo opens the file).
 use super::state::Outcome;
 
-pub const NOTEBOOK_HEADER: &str = "# Sổ tay lỗi\n\n";
+pub const NOTEBOOK_HEADER: &str = "# Error notebook\n\n";
 
 pub fn mm_ss(secs: u64) -> String {
     format!("{:02}:{:02}", secs / 60, secs % 60)
@@ -34,7 +36,7 @@ pub fn html_to_text(html: &str) -> String {
         .to_string()
 }
 
-#[allow(clippy::too_many_arguments)]
+/// DSA block. Pass → one note line; anything else → the three fail questions.
 pub fn format_block(
     date: &str,
     id: u32,
@@ -42,8 +44,6 @@ pub fn format_block(
     outcome: Outcome,
     elapsed_s: u64,
     redo: bool,
-    approach: &str,
-    answers: &[(&str, &str)],
 ) -> String {
     let mut out = format!(
         "## {date} · #{id} {title} · {} {}",
@@ -54,25 +54,20 @@ pub fn format_block(
         out.push_str(" · #redo");
     }
     out.push('\n');
-    if !approach.trim().is_empty() {
-        out.push_str(&format!("- Hướng: {}\n", approach.trim()));
-    }
-    for (label, answer) in answers {
-        if !answer.trim().is_empty() {
-            out.push_str(&format!("- {label}: {}\n", answer.trim()));
-        }
+    if outcome == Outcome::Pass {
+        out.push_str("- Note: \n");
+    } else {
+        out.push_str("- Stuck at: \n- Right pattern: \n- Signal next time: \n");
     }
     out.push('\n');
     out
 }
 
-pub fn format_sd_block(date: &str, label: &str, elapsed_s: u64, note: &str) -> String {
-    let mut out = format!("## {date} · SD · {label} · {}\n", mm_ss(elapsed_s));
-    if !note.trim().is_empty() {
-        out.push_str(&format!("- Ghi chú: {}\n", note.trim()));
-    }
-    out.push('\n');
-    out
+pub fn format_sd_block(date: &str, label: &str, elapsed_s: u64) -> String {
+    format!(
+        "## {date} · SD · {label} · {}\n- Note: \n\n",
+        mm_ss(elapsed_s)
+    )
 }
 
 #[cfg(test)]
@@ -102,31 +97,19 @@ mod tests {
             Outcome::Timeout,
             1500,
             true,
-            "sliding window + set, O(n)",
-            &[
-                ("Bí", "quên co cửa sổ"),
-                ("Pattern", "window co giãn"),
-                ("Dấu hiệu", ""),
-            ],
         );
         assert_eq!(
             block,
-            "## 2026-09-02 · #3 Longest Substring · timeout 25:00 · #redo\n- Hướng: sliding window + set, O(n)\n- Bí: quên co cửa sổ\n- Pattern: window co giãn\n\n"
+            "## 2026-09-02 · #3 Longest Substring · timeout 25:00 · #redo\n- Stuck at: \n- Right pattern: \n- Signal next time: \n\n"
         );
-        let pass = format_block(
-            "2026-09-02",
-            1,
-            "Two Sum",
-            Outcome::Pass,
-            760,
-            false,
-            "",
-            &[("Ghi chú", "")],
-        );
-        assert_eq!(pass, "## 2026-09-02 · #1 Two Sum · pass 12:40\n\n");
+        let pass = format_block("2026-09-02", 1, "Two Sum", Outcome::Pass, 760, false);
         assert_eq!(
-            format_sd_block("2026-09-02", "Rút gọn URL", 2700, "ok"),
-            "## 2026-09-02 · SD · Rút gọn URL · 45:00\n- Ghi chú: ok\n\n"
+            pass,
+            "## 2026-09-02 · #1 Two Sum · pass 12:40\n- Note: \n\n"
+        );
+        assert_eq!(
+            format_sd_block("2026-09-02", "URL shortener", 2700),
+            "## 2026-09-02 · SD · URL shortener · 45:00\n- Note: \n\n"
         );
     }
 }

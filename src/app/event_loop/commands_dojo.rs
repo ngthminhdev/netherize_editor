@@ -1,48 +1,45 @@
-//! Dojo panel handlers: open/navigate the problem menu, run timed sessions,
-//! collect the error-notebook entry. Pure rules live in `crate::dojo`; this
-//! file is the editor glue on `AppShell`.
-use std::path::PathBuf;
+//! Dojo glue on `AppShell`: the LeetCode workspace, the problem tree in the
+//! left dock, the Problem tab in the right dock, timed sessions. Pure rules
+//! live in `crate::dojo`.
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 use crate::{
     async_runtime::message::{RequestSpec, RequestTopic, TextFileOp, WorkerRequestPayload},
     core::commands::Command,
     dojo::{
-        notebook::{html_to_text, mm_ss},
-        plan::{Page, Plan},
+        files::{
+            INTERVIEWER_PROMPT, current_md, current_md_path, expand_tilde, interviewer_md_path,
+            notebook_path, problem_dir, sd_dir, sd_template,
+        },
+        notebook::{NOTEBOOK_HEADER, format_block, format_sd_block, html_to_text, mm_ss},
+        plan::Plan,
         problems::Problems,
         session::{SessionKind, phase_at, single_phase},
-        state::{DojoState, Outcome, now_unix, today_local},
-        view::{self, DojoPanelModel, DojoSessionView},
+        state::{
+            ActiveSession, Attempt, DojoState, Outcome, Status, date_str, now_millis, now_unix,
+            parse_date, today_local,
+        },
+        view::{
+            self, DojoSessionView, PanelContent, ProblemPanelModel, RowGlyph, SdView, TreeRow,
+            difficulty_letter,
+        },
+    },
+    render::renderer::SidebarRow,
+    runner::{
+        TestStatus,
+        leetcode_cache::{LeetCodeProblemCache, cache_dir, load_cache_in},
     },
     workbench::{focus_manager::FocusTarget, panel_state::PanelTabId},
 };
 
 use super::*;
-use crate::{
-    app::command_palette::CommandPaletteMode,
-    dojo::{
-        files::{
-            INTERVIEWER_PROMPT, current_md, current_md_path, expand_tilde, interviewer_md_path,
-            sd_template,
-        },
-        notebook::{NOTEBOOK_HEADER, format_block, format_sd_block},
-        state::{ActiveSession, Attempt, Status, date_str, parse_date},
-    },
-    runner::TestStatus,
-};
+use crate::app::command_palette::{CommandPaletteAction, CommandPaletteItem};
 
-/// Notebook block being collected through the `DojoNote` prompts.
-pub(in crate::app::event_loop) struct PendingNote {
-    pub date: String,
-    pub id: u32,
-    pub title: String,
-    pub outcome: Outcome,
-    pub elapsed_s: u64,
-    pub redo: bool,
-    pub approach: String,
-    pub kind: SessionKind,
-    pub answers: Vec<(&'static str, String)>,
-}
+/// Selection must rest this long before the statement preview is fetched.
+const PREVIEW_DEBOUNCE: Duration = Duration::from_millis(300);
 
 pub(in crate::app::event_loop) struct DojoRuntime {
     pub plan: Plan,
@@ -50,39 +47,51 @@ pub(in crate::app::event_loop) struct DojoRuntime {
     pub state: DojoState,
     /// `None` in tests: saves are skipped so the real `dojo.toml` is untouched.
     pub save_path: Option<PathBuf>,
-    pub page: Page,
+    /// Index into `rows()` (the flattened tree).
     pub selected: usize,
+    /// First tree row drawn in the left dock.
+    pub list_scroll: usize,
     pub redo_only: bool,
+    /// Statement scroll (lines) in the Problem tab.
     pub scroll: usize,
+    pub show_hints: bool,
     /// Fetch submitted by the Dojo; matched against the fetch result's slug.
     pub pending_start: Option<String>,
-    pub pending_note: Option<PendingNote>,
+    /// Debounced statement preview: (slug, earliest submit time).
+    pub pending_preview: Option<(String, Instant)>,
+    pub preview_inflight: Option<String>,
+    pub preview_error: Option<(String, String)>,
+    /// `g o` asked for a workspace switch; show the panels once it lands.
+    pub open_after_switch: bool,
     pub last_phase: Option<usize>,
     pub last_tick_second: u64,
-    /// Set when a session is started or resumed via `g o`; gates the tick.
+    /// Set when a session is started or resumed; gates the tick.
     pub armed: bool,
-    /// (slug, plain statement) so the panel doesn't hit the disk every frame.
-    pub statement_cache: Option<(String, String)>,
+    /// Memoised per-problem cache lookup: (slug, on-disk cache or None).
+    cache: Option<(String, Option<LeetCodeProblemCache>)>,
 }
 
 impl DojoRuntime {
     fn with(plan: Plan, problems: Problems, state: DojoState, save_path: Option<PathBuf>) -> Self {
-        let page = view::initial_page(&plan, &problems, &state);
         Self {
             plan,
             problems,
             state,
             save_path,
-            page,
             selected: 0,
+            list_scroll: 0,
             redo_only: false,
             scroll: 0,
+            show_hints: false,
             pending_start: None,
-            pending_note: None,
+            pending_preview: None,
+            preview_inflight: None,
+            preview_error: None,
+            open_after_switch: false,
             last_phase: None,
             last_tick_second: 0,
             armed: false,
-            statement_cache: None,
+            cache: None,
         }
     }
 
@@ -115,29 +124,56 @@ impl DojoRuntime {
         }
     }
 
-    pub fn rows(&self) -> Vec<view::DojoRow> {
-        view::list_rows(
-            &self.plan,
+    pub fn workspace(&self) -> Option<PathBuf> {
+        self.state
+            .workspace
+            .as_deref()
+            .filter(|w| !w.trim().is_empty())
+            .map(expand_tilde)
+    }
+
+    pub fn rows(&self) -> Vec<TreeRow> {
+        view::tree_rows(
             &self.problems,
+            &self.plan,
             &self.state,
-            self.page,
             self.redo_only,
             today_local(),
         )
     }
 
     pub fn header(&self) -> view::DojoHeader {
-        view::header(
-            &self.plan,
-            &self.problems,
-            &self.state,
-            self.page,
-            today_local(),
-        )
+        view::header(&self.problems, &self.state, today_local())
     }
 
-    pub fn selected_row(&self) -> Option<view::DojoRow> {
+    pub fn selected_row(&self) -> Option<TreeRow> {
         self.rows().into_iter().nth(self.selected)
+    }
+
+    /// Move the selection to the row with `key` (expanding its group first).
+    pub fn select_key(&mut self, key: &str) -> bool {
+        if let Some(p) = self.problems.by_slug(key) {
+            let category = p.category.clone();
+            self.state.collapsed.retain(|c| *c != category);
+        }
+        let Some(idx) = self.rows().iter().position(|r| r.key() == key) else {
+            return false;
+        };
+        self.selected = idx;
+        true
+    }
+
+    fn toggle_group(&mut self, key: &str, expand: bool) -> bool {
+        let is_collapsed = self.state.collapsed.iter().any(|c| c == key);
+        if expand != is_collapsed {
+            return false;
+        }
+        if expand {
+            self.state.collapsed.retain(|c| c != key);
+        } else {
+            self.state.collapsed.push(key.to_string());
+        }
+        true
     }
 
     pub fn session_phases(&self, kind: SessionKind) -> Vec<(String, u32)> {
@@ -145,6 +181,35 @@ impl DojoRuntime {
             SessionKind::Dsa => self.plan.dsa_phases.clone(),
             SessionKind::Sd => single_phase("SD", self.plan.sd_minutes),
         }
+    }
+
+    pub fn language_key(&self) -> Option<&str> {
+        self.state.language.as_deref()
+    }
+
+    /// "JavaScript" / "Python"…, or "no language" until picked.
+    pub fn language_label(&self) -> String {
+        self.language_key()
+            .and_then(crate::runner::leetcode::leetcode_template)
+            .map(|t| t.label.to_string())
+            .unwrap_or_else(|| "no language".to_string())
+    }
+
+    /// Per-problem LeetCode cache (statement, cases, hints), memoised per slug.
+    pub fn cached(&mut self, slug: &str) -> Option<&LeetCodeProblemCache> {
+        let fresh = !matches!(&self.cache, Some((s, _)) if s == slug);
+        if fresh {
+            let loaded = self
+                .problems
+                .by_slug(slug)
+                .and_then(|p| load_cache_in(&cache_dir(), &p.id.to_string()));
+            self.cache = Some((slug.to_string(), loaded));
+        }
+        self.cache.as_ref().and_then(|(_, c)| c.as_ref())
+    }
+
+    pub fn invalidate_cache(&mut self) {
+        self.cache = None;
     }
 
     /// Statusbar chip: `⏱ CODE 11:42` + color code (0 info / 1 accent /
@@ -158,7 +223,7 @@ impl DojoRuntime {
         let name = phase
             .as_ref()
             .map(|p| p.name.clone())
-            .unwrap_or_else(|| "HẾT".to_string());
+            .unwrap_or_else(|| "OVER".to_string());
         let remaining = s.remaining_s(now);
         let code = if remaining < 60 {
             5
@@ -176,13 +241,21 @@ impl DojoRuntime {
 
     /// Welcome-screen card text (title, subtitle). Field-level borrow.
     pub fn welcome_card(&self) -> (String, String) {
-        view::welcome_card(
-            &self.plan,
-            &self.problems,
-            &self.state,
-            self.page,
-            today_local(),
-        )
+        view::welcome_card(&self.problems, &self.state, today_local())
+    }
+
+    /// Earliest moment the event loop must wake for the Dojo: the next whole
+    /// second while a clock runs, or the debounced preview submit.
+    pub fn next_deadline(&self) -> Option<Instant> {
+        let mut deadline: Option<Instant> = None;
+        if self.armed && self.state.active_session.is_some() {
+            let to_next_second = 1000 - (now_millis() % 1000);
+            deadline = Some(Instant::now() + Duration::from_millis(to_next_second.max(1)));
+        }
+        if let Some((_, due)) = &self.pending_preview {
+            deadline = Some(deadline.map_or(*due, |d| d.min(*due)));
+        }
+        deadline
     }
 
     fn clamp_selection(&mut self) {
@@ -207,16 +280,25 @@ impl AppShell {
             Command::DojoToggleRedo => {
                 self.dojo.redo_only = !self.dojo.redo_only;
                 self.dojo.selected = 0;
+                self.dojo.list_scroll = 0;
+                self.dojo_selection_changed();
                 Some(true)
             }
-            Command::DojoPageNext => Some(self.dojo_turn_page(1)),
-            Command::DojoPagePrev => Some(self.dojo_turn_page(-1)),
+            Command::DojoCollapse => Some(self.dojo_fold(false)),
+            Command::DojoExpand => Some(self.dojo_fold(true)),
+            Command::DojoToggleHints => {
+                self.dojo.show_hints = !self.dojo.show_hints;
+                Some(true)
+            }
+            Command::DojoLanguage => Some(self.dojo_language_picker()),
+            Command::DojoChooseFolder => Some(self.dojo_choose_folder_and_open()),
+            Command::DojoOpenNotebook => Some(self.dojo_open_notebook()),
             Command::DojoScrollDown => {
-                self.dojo.scroll = self.dojo.scroll.saturating_add(10);
+                self.dojo.scroll = self.dojo.scroll.saturating_add(8);
                 Some(true)
             }
             Command::DojoScrollUp => {
-                self.dojo.scroll = self.dojo.scroll.saturating_sub(10);
+                self.dojo.scroll = self.dojo.scroll.saturating_sub(8);
                 Some(true)
             }
             Command::DojoUnfocus => {
@@ -233,20 +315,112 @@ impl AppShell {
         }
     }
 
+    // ── Workspace ─────────────────────────────────────────────────────────
+
+    /// `g o`: make sure the LeetCode workspace is the open project, then show
+    /// the tree + Problem tab. No workspace yet → folder dialog first.
     pub(in crate::app::event_loop) fn dojo_open(&mut self) -> bool {
+        self.dojo.open_after_switch = false;
+        let Some(ws) = self.dojo.workspace() else {
+            return self.dojo_choose_folder_and_open();
+        };
+        let already_open = self
+            .app_state
+            .workspace_root_path()
+            .is_some_and(|root| crate::app::app_state::path_matches(root, &ws));
+        if already_open {
+            return self.dojo_show_panels();
+        }
+        if let Err(err) = std::fs::create_dir_all(&ws) {
+            self.show_transient_toast_kind(
+                format!("Dojo\nCannot create {}: {err}", ws.display()),
+                ToastKind::Error,
+            );
+            return false;
+        }
+        self.dojo.open_after_switch = true;
+        // May defer behind the dirty-buffer confirmation; the switch tail
+        // calls `dojo_after_workspace_switch`.
+        self.switch_workspace_with_files(ws, Vec::new())
+    }
+
+    /// Tail of `perform_workspace_switch`: finish a `g o` that had to switch.
+    pub(in crate::app::event_loop) fn dojo_after_workspace_switch(&mut self, root: &Path) {
+        if !self.dojo.open_after_switch {
+            return;
+        }
+        self.dojo.open_after_switch = false;
+        if self
+            .dojo
+            .workspace()
+            .is_some_and(|ws| crate::app::app_state::path_matches(root, &ws))
+        {
+            self.dojo_show_panels();
+        }
+    }
+
+    fn dojo_show_panels(&mut self) -> bool {
         let _ = self.release_focus_mode_to_editor();
         self.dojo_resume_if_needed();
+        self.panel_state.left.visible = true;
+        self.panel_state.left.switch_to_tab(PanelTabId::Dojo);
         self.panel_state.right.visible = true;
-        self.panel_state.right.switch_to_tab(PanelTabId::Dojo);
-        let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
-        if focus_changed {
+        self.panel_state.right.switch_to_tab(PanelTabId::Problem);
+        if self.focus_manager.set(FocusTarget::LeftSidebar) {
             self.input_handler.clear_pending_prefix();
         }
         let _ = self.dismiss_initial_launch_welcome_if_active();
         self.dojo.clamp_selection();
+        // Land on something useful the first time: the running session's
+        // problem, else the suggested next problem.
+        let target = match self.dojo.state.active_session.as_ref() {
+            Some(s) if s.kind == SessionKind::Dsa => Some(s.slug.clone()),
+            _ => match self.dojo.selected_row() {
+                Some(TreeRow::Problem { .. }) | Some(TreeRow::SdCase { .. }) => None,
+                _ => view::suggested_next(&self.dojo.problems, &self.dojo.state, today_local())
+                    .map(|r| r.key().to_string()),
+            },
+        };
+        if let Some(key) = target {
+            let _ = self.dojo.select_key(&key);
+        }
+        self.dojo_selection_changed();
         self.sidebar_needs_layout = true;
+        self.editor_needs_layout = true;
         true
     }
+
+    #[cfg(not(test))]
+    fn dojo_pick_folder_dialog() -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .set_title("Choose the folder for your LeetCode solutions")
+            .pick_folder()
+    }
+
+    #[cfg(test)]
+    fn dojo_pick_folder_dialog() -> Option<PathBuf> {
+        None
+    }
+
+    /// `w` / "Dojo: Choose Folder": system folder dialog, then open the Dojo there.
+    pub(in crate::app::event_loop) fn dojo_choose_folder_and_open(&mut self) -> bool {
+        let Some(dir) = Self::dojo_pick_folder_dialog() else {
+            self.show_transient_toast_kind(
+                "Dojo\nPick a folder to keep your solutions in (Cmd+P → Dojo: Choose Folder).",
+                ToastKind::Warning,
+            );
+            return false;
+        };
+        self.dojo.state.workspace = Some(dir.to_string_lossy().to_string());
+        self.dojo.save();
+        self.show_transient_toast_kind(
+            format!("Dojo\nWorkspace: {}", dir.display()),
+            ToastKind::Success,
+        );
+        self.dojo_open()
+    }
+
+    // ── Tree navigation ───────────────────────────────────────────────────
 
     fn dojo_move_selection(&mut self, delta: i32) -> bool {
         let len = self.dojo.rows().len();
@@ -254,10 +428,420 @@ impl AppShell {
             return false;
         }
         let next = (self.dojo.selected as i64 + i64::from(delta)).clamp(0, len as i64 - 1) as usize;
-        let changed = next != self.dojo.selected;
+        if next == self.dojo.selected {
+            return false;
+        }
         self.dojo.selected = next;
-        changed
+        self.dojo_selection_changed();
+        true
     }
+
+    /// Selection landed somewhere new: reset the statement view, keep the row
+    /// on screen, and arm the debounced preview fetch.
+    pub(in crate::app::event_loop) fn dojo_selection_changed(&mut self) {
+        self.dojo.scroll = 0;
+        self.dojo.show_hints = false;
+        let visible = self.explorer_page_rows().max(1);
+        if self.dojo.selected < self.dojo.list_scroll {
+            self.dojo.list_scroll = self.dojo.selected;
+        } else if self.dojo.selected >= self.dojo.list_scroll + visible {
+            self.dojo.list_scroll = self.dojo.selected + 1 - visible;
+        }
+        self.dojo_request_preview();
+        self.sidebar_needs_layout = true;
+    }
+
+    /// Arm a statement fetch for the selected problem unless it is cached
+    /// (or already being fetched).
+    fn dojo_request_preview(&mut self) {
+        let Some(TreeRow::Problem { slug, .. }) = self.dojo.selected_row() else {
+            self.dojo.pending_preview = None;
+            return;
+        };
+        if self.dojo.cached(&slug).is_some()
+            || self.dojo.preview_inflight.as_deref() == Some(slug.as_str())
+            || self
+                .dojo
+                .preview_error
+                .as_ref()
+                .is_some_and(|(s, _)| *s == slug)
+        {
+            self.dojo.pending_preview = None;
+            return;
+        }
+        self.dojo.pending_preview = Some((slug, Instant::now() + PREVIEW_DEBOUNCE));
+    }
+
+    /// `h`/`l`: fold or unfold. `h` on a problem folds its group and selects
+    /// the header; `l` on an open group jumps to its first child.
+    fn dojo_fold(&mut self, expand: bool) -> bool {
+        let Some(row) = self.dojo.selected_row() else {
+            return false;
+        };
+        let key = match (&row, expand) {
+            (TreeRow::Group { key, .. }, _) => key.clone(),
+            (TreeRow::SdGroup { .. }, _) => view::SD_GROUP_KEY.to_string(),
+            (TreeRow::Problem { slug, .. }, false) => self
+                .dojo
+                .problems
+                .by_slug(slug)
+                .map(|p| p.category.clone())
+                .unwrap_or_default(),
+            (TreeRow::SdCase { .. }, false) => view::SD_GROUP_KEY.to_string(),
+            (_, true) => return false,
+        };
+        if self.dojo.redo_only {
+            return false;
+        }
+        let changed = self.dojo.toggle_group(&key, expand);
+        if changed {
+            self.dojo.save();
+        }
+        if !expand {
+            // Land on the header so the cursor doesn't fall into another group.
+            if let Some(idx) = self
+                .dojo
+                .rows()
+                .iter()
+                .position(|r| r.group_key() == Some(key.as_str()))
+            {
+                self.dojo.selected = idx;
+            }
+        } else if !changed && row.is_group() {
+            self.dojo.selected =
+                (self.dojo.selected + 1).min(self.dojo.rows().len().saturating_sub(1));
+        }
+        self.dojo_selection_changed();
+        true
+    }
+
+    /// Left-dock rows for the renderer (Explorer row shape; no filter bar).
+    pub(in crate::app::event_loop) fn dojo_sidebar_rows(&self) -> Vec<SidebarRow> {
+        let theme = &self.theme;
+        let fg_dim = theme.ui.fg_dim.as_f32();
+        let fg_ghost = theme.ui.fg_ghost.as_f32();
+        let success = theme.ui.success.as_f32();
+        let warning = theme.ui.warning.as_f32();
+        let error = theme.ui.error.as_f32();
+        let status_color = |g: RowGlyph| match g {
+            RowGlyph::Done => success,
+            RowGlyph::RedoDue => warning,
+            RowGlyph::RedoLater => fg_ghost,
+            RowGlyph::Todo => fg_dim,
+        };
+        let base = SidebarRow {
+            path: None,
+            depth: 0,
+            arrow: String::new(),
+            nerd_icon: String::new(),
+            icon_color: fg_dim,
+            label: String::new(),
+            prefix_marker: None,
+            prefix_color: None,
+            git_marker: None,
+            git_color: None,
+            is_selected: false,
+            is_dim: false,
+        };
+        let rows = self.dojo.rows();
+        if rows.is_empty() {
+            return vec![SidebarRow {
+                label: if self.dojo.redo_only {
+                    "(no redos due)".to_string()
+                } else {
+                    "(no problems)".to_string()
+                },
+                ..base
+            }];
+        }
+        rows.iter()
+            .enumerate()
+            .skip(self.dojo.list_scroll)
+            .map(|(idx, row)| {
+                let is_selected = idx == self.dojo.selected;
+                match row {
+                    TreeRow::Group {
+                        key,
+                        label,
+                        done,
+                        total,
+                        expanded,
+                    } => {
+                        let icon = theme.icon_theme_for_path(Path::new(key), true, *expanded);
+                        SidebarRow {
+                            arrow: theme.sidebar_arrow(true, *expanded).to_string(),
+                            nerd_icon: icon.glyph.clone(),
+                            icon_color: icon.color.as_f32(),
+                            label: format!("{label}  {done}/{total}"),
+                            is_selected,
+                            ..base.clone()
+                        }
+                    }
+                    TreeRow::SdGroup {
+                        done,
+                        total,
+                        expanded,
+                    } => {
+                        let icon = theme.icon_theme_for_path(Path::new("sd"), true, *expanded);
+                        SidebarRow {
+                            arrow: theme.sidebar_arrow(true, *expanded).to_string(),
+                            nerd_icon: icon.glyph.clone(),
+                            icon_color: icon.color.as_f32(),
+                            label: format!("System Design  {done}/{total}"),
+                            is_selected,
+                            ..base.clone()
+                        }
+                    }
+                    TreeRow::Problem {
+                        id,
+                        title,
+                        difficulty,
+                        glyph,
+                        trailing,
+                        ..
+                    } => {
+                        let letter = difficulty_letter(difficulty);
+                        let label = if trailing.is_empty() {
+                            format!("{id}. {title}")
+                        } else {
+                            format!("{id}. {title}  {trailing}")
+                        };
+                        SidebarRow {
+                            depth: 1,
+                            arrow: theme.sidebar_arrow(false, false).to_string(),
+                            nerd_icon: glyph.symbol().to_string(),
+                            icon_color: status_color(*glyph),
+                            label,
+                            prefix_marker: Some(letter.to_string()),
+                            prefix_color: Some(match letter {
+                                'E' => success,
+                                'H' => error,
+                                _ => warning,
+                            }),
+                            is_selected,
+                            is_dim: *glyph == RowGlyph::Done,
+                            ..base.clone()
+                        }
+                    }
+                    TreeRow::SdCase { label, done, .. } => SidebarRow {
+                        depth: 1,
+                        arrow: theme.sidebar_arrow(false, false).to_string(),
+                        nerd_icon: if *done { "●" } else { "○" }.to_string(),
+                        icon_color: if *done { success } else { fg_dim },
+                        label: label.clone(),
+                        is_selected,
+                        is_dim: *done,
+                        ..base.clone()
+                    },
+                }
+            })
+            .collect()
+    }
+
+    /// Click on a left-dock Dojo row: select it; a header also toggles its fold.
+    pub(in crate::app::event_loop) fn dojo_click_row(&mut self, row_index: usize) -> bool {
+        let idx = row_index + self.dojo.list_scroll;
+        let rows = self.dojo.rows();
+        if idx >= rows.len() {
+            return false;
+        }
+        self.dojo.selected = idx;
+        if self.focus_manager.set(FocusTarget::LeftSidebar) {
+            self.input_handler.clear_pending_prefix();
+        }
+        if rows[idx].is_group() {
+            let key = rows[idx].group_key().unwrap_or_default().to_string();
+            let expanded = matches!(
+                rows[idx],
+                TreeRow::Group { expanded: true, .. } | TreeRow::SdGroup { expanded: true, .. }
+            );
+            if self.dojo.toggle_group(&key, !expanded) {
+                self.dojo.save();
+            }
+        }
+        self.dojo_selection_changed();
+        true
+    }
+
+    // ── Problem tab model ─────────────────────────────────────────────────
+
+    /// One frame of the right-dock Problem tab. While a DSA session runs its
+    /// problem stays on screen regardless of the tree selection.
+    pub(in crate::app::event_loop) fn dojo_problem_model(
+        &mut self,
+        focused: bool,
+    ) -> ProblemPanelModel {
+        let today = today_local();
+        let session = self
+            .dojo
+            .state
+            .active_session
+            .clone()
+            .filter(|_| self.dojo.armed);
+        let session_view = session.as_ref().map(|s| {
+            let now = now_unix();
+            let phases = self.dojo.session_phases(s.kind);
+            let phase = phase_at(&phases, s.elapsed_s(now));
+            DojoSessionView {
+                title: s.title.clone(),
+                phase: phase
+                    .as_ref()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "TIME'S UP".to_string()),
+                phase_index: phase.as_ref().map(|p| p.index).unwrap_or(usize::MAX),
+                remaining: mm_ss(s.remaining_s(now)),
+                remaining_s: s.remaining_s(now),
+                kind: s.kind,
+                expired: s.is_expired(now),
+            }
+        });
+        let shown = match &session {
+            Some(s) if s.kind == SessionKind::Dsa => Some(TreeRow::Problem {
+                slug: s.slug.clone(),
+                id: 0,
+                title: String::new(),
+                difficulty: String::new(),
+                glyph: RowGlyph::Todo,
+                trailing: String::new(),
+            }),
+            _ => self.dojo.selected_row(),
+        };
+        let language = self.dojo.language_label();
+        let content = match shown {
+            Some(TreeRow::Problem { slug, .. }) => {
+                match self.dojo.problems.by_slug(&slug).cloned() {
+                    Some(p) => {
+                        let loading = self.dojo.preview_inflight.as_deref() == Some(slug.as_str())
+                            || self
+                                .dojo
+                                .pending_preview
+                                .as_ref()
+                                .is_some_and(|(s, _)| *s == slug);
+                        let error = self
+                            .dojo
+                            .preview_error
+                            .as_ref()
+                            .filter(|(s, _)| *s == slug)
+                            .map(|(_, m)| m.clone());
+                        let cache = self.dojo.cached(&slug).cloned();
+                        PanelContent::Problem(view::problem_view(
+                            &p,
+                            &self.dojo.state,
+                            cache.as_ref(),
+                            &language,
+                            loading,
+                            error,
+                            today,
+                        ))
+                    }
+                    None => PanelContent::Empty(format!("Unknown problem {slug}")),
+                }
+            }
+            Some(TreeRow::SdCase { key, label, done }) => PanelContent::Sd(SdView {
+                topic: self
+                    .dojo
+                    .plan
+                    .sd_case(&key)
+                    .map(|c| c.topic.clone())
+                    .unwrap_or_default(),
+                key,
+                label,
+                done,
+            }),
+            Some(TreeRow::Group { label, .. }) => {
+                PanelContent::Empty(format!("{label} — pick a problem (j/k), Enter to start"))
+            }
+            Some(TreeRow::SdGroup { .. }) => {
+                PanelContent::Empty("System Design — pick a case, Enter to start".to_string())
+            }
+            None => PanelContent::Empty("Press g o to open the Dojo".to_string()),
+        };
+        ProblemPanelModel {
+            header: self.dojo.header(),
+            content,
+            session: session_view,
+            show_hints: self.dojo.show_hints,
+            scroll: self.dojo.scroll,
+            focused,
+        }
+    }
+
+    // ── Language ──────────────────────────────────────────────────────────
+
+    /// `c` / "Dojo: Language": MRU-sorted picker; the choice is remembered.
+    pub(in crate::app::event_loop) fn dojo_language_picker(&mut self) -> bool {
+        let recent = &self.persistent_state.recent_leetcode_languages;
+        let current = self.dojo.language_key().map(str::to_string);
+        let mut templates: Vec<&crate::runner::leetcode::LeetCodeTemplate> =
+            crate::runner::leetcode::leetcode_templates()
+                .iter()
+                .collect();
+        templates.sort_by_key(|t| {
+            if current.as_deref() == Some(t.key) {
+                0
+            } else {
+                1 + recent
+                    .iter()
+                    .position(|k| k == t.key)
+                    .unwrap_or(usize::MAX - 1)
+            }
+        });
+        let items: Vec<CommandPaletteItem> = templates
+            .into_iter()
+            .map(|t| CommandPaletteItem::leetcode_language(t.key, t.label, t.hint))
+            .collect();
+        let current_mode = self.app_state.current_mode();
+        if current_mode != EditorMode::PaletteFocus
+            && !self.app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+        {
+            return false;
+        }
+        self.app_state.open_dojo_language_selector_with_items(items);
+        if current_mode != EditorMode::PaletteFocus
+            && let Err(err) = self.app_state.apply_mode_event(ModeEvent::OpenPalette)
+        {
+            let _ = self.app_state.close_command_palette();
+            eprintln!("[AppShell] dojo language picker mode change failed: {err:?}");
+            return false;
+        }
+        self.arm_palette_ime_commit_suppression();
+        if self.focus_manager.set(FocusTarget::OverlayLayer) {
+            self.input_handler.clear_pending_prefix();
+        }
+        true
+    }
+
+    /// Picker confirmed: remember the language, then resume a pending start.
+    pub(in crate::app::event_loop) fn confirm_dojo_language(&mut self) -> bool {
+        let Some(CommandPaletteAction::CreateLeetCodeFile(key)) =
+            self.app_state.command_palette_selected_action()
+        else {
+            return false;
+        };
+        let _ = self.app_state.close_command_palette();
+        if self.app_state.current_mode() == EditorMode::PaletteFocus
+            && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
+        {
+            let _ = result;
+        }
+        self.persistent_state.push_recent_leetcode_language(&key);
+        self.persistent_state.save();
+        self.dojo.state.language = Some(key);
+        self.dojo.save();
+        self.focus_manager.set(FocusTarget::LeftSidebar);
+        self.input_handler.clear_pending_prefix();
+        self.show_transient_toast_kind(
+            format!("Dojo\nLanguage: {}", self.dojo.language_label()),
+            ToastKind::Success,
+        );
+        if let Some(slug) = self.dojo.pending_start.take() {
+            let _ = self.dojo.select_key(&slug);
+            return self.dojo_start_selected();
+        }
+        true
+    }
+
+    // ── Sessions ──────────────────────────────────────────────────────────
 
     /// Fire-and-forget small text writes (notebook, current.md…); failures toast.
     pub(in crate::app::event_loop) fn submit_text_file_ops(&mut self, ops: Vec<TextFileOp>) {
@@ -271,91 +855,24 @@ impl AppShell {
         });
     }
 
-    /// (id, plain statement) for a slug. The statement comes from the LeetCode
-    /// per-problem cache once a fetch has run; cached in memory so the panel
-    /// doesn't touch the disk every frame.
+    /// (id, plain statement) for a slug, from the per-problem cache.
     pub(in crate::app::event_loop) fn dojo_problem_context(&mut self, slug: &str) -> (u32, String) {
         let Some(id) = self.dojo.problems.by_slug(slug).map(|p| p.id) else {
             return (0, String::new());
         };
-        if let Some((cached_slug, text)) = &self.dojo.statement_cache
-            && cached_slug == slug
-        {
-            return (id, text.clone());
-        }
-        let text = crate::runner::leetcode_cache::load_cache_in(
-            &crate::runner::leetcode_cache::cache_dir(),
-            &id.to_string(),
-        )
-        .map(|cache| html_to_text(&cache.statement))
-        .unwrap_or_default();
-        if !text.is_empty() {
-            self.dojo.statement_cache = Some((slug.to_string(), text.clone()));
-        }
+        let text = self
+            .dojo
+            .cached(slug)
+            .map(|c| html_to_text(&c.statement))
+            .unwrap_or_default();
         (id, text)
     }
 
-    fn dojo_session_phases(&self, kind: SessionKind) -> Vec<(String, u32)> {
-        self.dojo.session_phases(kind)
-    }
-
-    /// One frame's worth of panel data (rows + optional session view).
-    pub(in crate::app::event_loop) fn dojo_panel_model(&mut self, focused: bool) -> DojoPanelModel {
-        let session = self
-            .dojo
-            .state
-            .active_session
-            .clone()
-            .filter(|_| self.dojo.armed);
-        let session = session.map(|s| {
-            let now = now_unix();
-            let phases = self.dojo_session_phases(s.kind);
-            let phase = phase_at(&phases, s.elapsed_s(now));
-            let (id, statement) = match s.kind {
-                SessionKind::Dsa => self.dojo_problem_context(&s.slug),
-                SessionKind::Sd => (0, String::new()),
-            };
-            DojoSessionView {
-                title: if id > 0 {
-                    format!("#{id} {}", s.title)
-                } else {
-                    s.title.clone()
-                },
-                phase: phase
-                    .as_ref()
-                    .map(|p| p.name.clone())
-                    .unwrap_or_else(|| "HẾT GIỜ".to_string()),
-                phase_index: phase.as_ref().map(|p| p.index).unwrap_or(usize::MAX),
-                remaining: mm_ss(s.remaining_s(now)),
-                remaining_s: s.remaining_s(now),
-                statement_lines: statement.split("\n\n").map(str::to_string).collect(),
-                approach: s.approach.clone(),
-                kind: s.kind,
-                expired: s.is_expired(now),
-            }
-        });
-        DojoPanelModel {
-            header: self.dojo.header(),
-            rows: self.dojo.rows(),
-            selected: self.dojo.selected,
-            scroll: self.dojo.scroll,
-            redo_only: self.dojo.redo_only,
-            session,
-            focused,
-        }
-    }
-
-    fn dojo_session_language(&self) -> String {
-        self.persistent_state
-            .recent_leetcode_languages
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "javascript".to_string())
-    }
-
-    /// Enter on a row. With a live session: reopen the approach gate (DSA,
-    /// no approach yet) or jump to the Test Runner. Otherwise start the row.
+    /// Enter: fold a header, start an SD case, or start/resume a problem.
     pub(in crate::app::event_loop) fn dojo_start_selected(&mut self) -> bool {
+        let Some(row) = self.dojo.selected_row() else {
+            return false;
+        };
         if let Some(session) = self
             .dojo
             .state
@@ -363,22 +880,59 @@ impl AppShell {
             .clone()
             .filter(|_| self.dojo.armed)
         {
-            if session.kind == SessionKind::Dsa && session.approach.is_none() {
-                return self.open_prompt_overlay(CommandPaletteMode::DojoApproach);
+            let same = row.key() == session.slug;
+            if same || row.is_group() {
+                self.dojo_open_session_file(&session.file.clone());
+                self.focus_manager.set(FocusTarget::CenterEditor);
+                self.input_handler.clear_pending_prefix();
+                self.editor_needs_layout = true;
+                return true;
             }
-            return self.handle_test_runner_focus();
-        }
-        let Some(row) = self.dojo.selected_row() else {
+            self.show_transient_toast_kind(
+                format!(
+                    "Dojo\nFinish {} first (F5 all green, or x to give up).",
+                    session.title
+                ),
+                ToastKind::Warning,
+            );
             return false;
-        };
-        match row.kind {
-            SessionKind::Sd => self.dojo_begin_sd_session(&row.slug, &row.title),
-            SessionKind::Dsa => {
-                let language = self.dojo_session_language();
-                self.dojo.pending_start = Some(row.slug.clone());
-                self.submit_leetcode_fetch(row.slug.clone(), language);
+        }
+        match row {
+            TreeRow::Group { .. } | TreeRow::SdGroup { .. } => {
+                let expanded = matches!(
+                    row,
+                    TreeRow::Group { expanded: true, .. } | TreeRow::SdGroup { expanded: true, .. }
+                );
+                self.dojo_fold(!expanded)
+            }
+            TreeRow::SdCase { key, label, .. } => self.dojo_begin_sd_session(&key, &label),
+            TreeRow::Problem {
+                slug, id, title, ..
+            } => {
+                let Some(language) = self.dojo.language_key().map(str::to_string) else {
+                    self.dojo.pending_start = Some(slug);
+                    return self.dojo_language_picker();
+                };
+                let Some(ws) = self.dojo.workspace() else {
+                    return self.dojo_choose_folder_and_open();
+                };
+                let Some(template) = crate::runner::leetcode::leetcode_template(&language) else {
+                    self.dojo.state.language = None;
+                    self.dojo.pending_start = Some(slug);
+                    return self.dojo_language_picker();
+                };
+                let dir = problem_dir(&ws, id, &slug);
+                let file = dir.join(format!("solution.{}", template.extension));
+                if file.exists() {
+                    // Redo: keep the user's file, reload the example cases.
+                    self.dojo_load_cached_cases(&slug);
+                    self.dojo_begin_dsa_session(slug, title, file);
+                    return true;
+                }
+                self.dojo.pending_start = Some(slug.clone());
+                self.submit_leetcode_fetch_to(slug, language, dir);
                 self.show_transient_toast_kind(
-                    format!("Dojo\nĐang tải #{} {}…", row.id, row.title),
+                    format!("Dojo\nFetching #{id} {title}…"),
                     ToastKind::Info,
                 );
                 true
@@ -386,14 +940,83 @@ impl AppShell {
         }
     }
 
+    fn dojo_load_cached_cases(&mut self, slug: &str) {
+        let cases: Vec<crate::runner::TestCase> = self
+            .dojo
+            .cached(slug)
+            .map(|c| {
+                c.cases
+                    .iter()
+                    .map(|case| {
+                        crate::runner::TestCase::new(case.input.clone(), case.expected.clone())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let runner = &mut self.app_state.test_runner;
+        runner.cases = cases;
+        runner.selected = (!runner.cases.is_empty()).then_some(0);
+        runner.focused_field = crate::runner::TestField::Input;
+        runner.is_running = false;
+        runner.launch_error = None;
+    }
+
+    /// Fetch landed (or an existing file was reopened): start the clock, open
+    /// the file in the center, keep the statement on the right.
+    pub(in crate::app::event_loop) fn dojo_begin_dsa_session(
+        &mut self,
+        slug: String,
+        title: String,
+        file: PathBuf,
+    ) {
+        self.dojo.pending_start = None;
+        self.dojo.state.active_session = Some(ActiveSession {
+            kind: SessionKind::Dsa,
+            slug: slug.clone(),
+            title,
+            started_unix: now_unix(),
+            budget_s: self.dojo.plan.dsa_budget_s(),
+            file: file.clone(),
+        });
+        self.dojo.armed = true;
+        self.dojo.last_phase = Some(0);
+        self.dojo.last_tick_second = now_unix();
+        self.dojo.invalidate_cache();
+        self.dojo.save();
+        self.dojo_ensure_interviewer_prompt();
+        self.dojo_write_current_md();
+        let _ = self.dojo.select_key(&slug);
+        self.dojo.scroll = 0;
+        self.dojo_open_session_file(&file);
+        self.panel_state.left.visible = true;
+        self.panel_state.left.switch_to_tab(PanelTabId::Dojo);
+        self.panel_state.right.visible = true;
+        self.panel_state.right.switch_to_tab(PanelTabId::Problem);
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+        self.sidebar_needs_layout = true;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        self.show_transient_toast_kind(
+            format!(
+                "{} min on the clock\nF5 runs the example cases — all green = solved. x gives up.",
+                self.dojo.plan.dsa_minutes
+            ),
+            ToastKind::Success,
+        );
+    }
+
     /// System-design session: outline file from the 45' framework template,
-    /// markdown preview beside it, single-phase clock. `x` finishes it.
+    /// single-phase clock. `x` finishes it.
     pub(in crate::app::event_loop) fn dojo_begin_sd_session(
         &mut self,
         key: &str,
         label: &str,
     ) -> bool {
-        let dir = expand_tilde(&self.dojo.plan.sd_dir);
+        let Some(ws) = self.dojo.workspace() else {
+            return self.dojo_choose_folder_and_open();
+        };
+        let dir = sd_dir(&self.dojo.plan, &ws);
         let path = dir.join(format!("{key}.md"));
         if !path.exists() {
             // ponytail: tiny file written sync so OpenFile below sees it
@@ -402,7 +1025,7 @@ impl AppShell {
                 .and_then(|_| std::fs::write(&path, sd_template(label, &date_str(today_local()))));
             if let Err(err) = written {
                 self.show_transient_toast_kind(
-                    format!("Dojo\nKhông tạo được {}: {err}", path.display()),
+                    format!("Dojo\nCannot create {}: {err}", path.display()),
                     ToastKind::Error,
                 );
                 return false;
@@ -414,28 +1037,52 @@ impl AppShell {
             title: label.to_string(),
             started_unix: now_unix(),
             budget_s: self.dojo.plan.sd_budget_s(),
-            approach: None,
             file: path.clone(),
         });
         self.dojo.armed = true;
         self.dojo.last_phase = Some(0);
         self.dojo.last_tick_second = now_unix();
-        self.dojo.statement_cache = None;
         self.dojo.save();
         self.dojo_ensure_interviewer_prompt();
-        self.dojo_write_current_md(None);
+        self.dojo_write_current_md();
         self.dojo_open_session_file(&path);
-        // ponytail: no auto markdown preview — ToggleMarkdownPreview swaps the
-        // center buffer for a preview and hides the file; the user toggles it.
         self.focus_manager.set(FocusTarget::CenterEditor);
         self.input_handler.clear_pending_prefix();
+        self.editor_needs_layout = true;
         self.show_transient_toast_kind(
             format!(
-                "SD · {} phút\n1 Yêu cầu 5' → 2 Quy mô 5' → 3 API 5' → 4 Kiến trúc 10' → 5 Đào sâu 15' → 6 Đánh đổi 5'",
+                "System design · {} min\n1 Requirements 5' → 2 Scale 5' → 3 API 5' → 4 Design 10' → 5 Deep dive 15' → 6 Trade-offs 5'",
                 self.dojo.plan.sd_minutes
             ),
             ToastKind::Info,
         );
+        true
+    }
+
+    /// `n`: open the notebook (created with its header when missing).
+    pub(in crate::app::event_loop) fn dojo_open_notebook(&mut self) -> bool {
+        let Some(ws) = self.dojo.workspace() else {
+            return self.dojo_choose_folder_and_open();
+        };
+        let path = notebook_path(&self.dojo.plan, &ws);
+        if !path.exists() {
+            let written = path
+                .parent()
+                .map(std::fs::create_dir_all)
+                .unwrap_or(Ok(()))
+                .and_then(|_| std::fs::write(&path, NOTEBOOK_HEADER));
+            if let Err(err) = written {
+                self.show_transient_toast_kind(
+                    format!("Dojo\nCannot create {}: {err}", path.display()),
+                    ToastKind::Error,
+                );
+                return false;
+            }
+        }
+        self.dojo_open_session_file(&path);
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+        self.editor_needs_layout = true;
         true
     }
 
@@ -447,20 +1094,25 @@ impl AppShell {
         };
         self.dojo_ensure_interviewer_prompt();
         if self.dojo.state.active_session.is_some() && self.dojo.armed {
-            self.dojo_write_current_md(None);
+            self.dojo_write_current_md();
         } else if let Some(row) = self.dojo.selected_row() {
-            let (id, statement) = match row.kind {
-                SessionKind::Dsa => self.dojo_problem_context(&row.slug),
+            let (kind, key, title) = match &row {
+                TreeRow::Problem { slug, title, .. } => {
+                    (SessionKind::Dsa, slug.clone(), title.clone())
+                }
+                TreeRow::SdCase { key, label, .. } => (SessionKind::Sd, key.clone(), label.clone()),
+                _ => return false,
+            };
+            let (id, statement) = match kind {
+                SessionKind::Dsa => self.dojo_problem_context(&key),
                 SessionKind::Sd => (0, String::new()),
             };
-            let phases = self.dojo.session_phases(row.kind);
-            let language = match row.kind {
-                SessionKind::Dsa => self.dojo_session_language(),
+            let phases = self.dojo.session_phases(kind);
+            let language = match kind {
+                SessionKind::Dsa => self.dojo.language_key().unwrap_or("").to_string(),
                 SessionKind::Sd => String::new(),
             };
-            let text = current_md(
-                row.kind, id, &row.title, &statement, &language, &phases, None,
-            );
+            let text = current_md(kind, id, &title, &statement, &language, &phases);
             self.submit_text_file_ops(vec![TextFileOp::Write {
                 path: current_md_path(),
                 contents: text,
@@ -478,96 +1130,18 @@ impl AppShell {
             let _ = result;
         }
         self.right_terminal_needs_layout = true;
-        self.show_transient_toast("Interviewer\nĐang mở claude… nói hướng làm trước khi code.");
-        true
-    }
-
-    /// Fetch landed for a Dojo start: open the session in THINK with the file
-    /// still closed, and ask for the approach line.
-    pub(in crate::app::event_loop) fn dojo_begin_dsa_session(
-        &mut self,
-        slug: String,
-        title: String,
-        file: PathBuf,
-        _language: String,
-    ) {
-        let budget_s = self.dojo.plan.dsa_budget_s();
-        self.dojo.state.active_session = Some(ActiveSession {
-            kind: SessionKind::Dsa,
-            slug,
-            title,
-            started_unix: now_unix(),
-            budget_s,
-            approach: None,
-            file,
-        });
-        self.dojo.armed = true;
-        self.dojo.last_phase = Some(0);
-        self.dojo.last_tick_second = now_unix();
-        self.dojo.statement_cache = None;
-        self.dojo.save();
-        self.dojo_ensure_interviewer_prompt();
-        self.dojo_write_current_md(None);
-        self.dojo_open();
-        let minutes = self.dojo.plan.dsa_phases.first().map(|p| p.1).unwrap_or(3);
-        self.show_transient_toast_kind(
-            format!("THINK · {minutes} phút\nĐọc đề, gõ hướng làm + độ phức tạp."),
-            ToastKind::Info,
-        );
-        if !self.open_prompt_overlay(CommandPaletteMode::DojoApproach) {
-            self.show_transient_toast("Dojo\nEnter trong panel để nhập hướng làm.");
-        }
-    }
-
-    /// Approach prompt confirmed: a non-empty line unlocks the solution file.
-    pub(in crate::app::event_loop) fn confirm_dojo_approach(&mut self) -> bool {
-        let text = self
-            .app_state
-            .command_palette_query_text()
-            .trim()
-            .to_string();
-        if text.is_empty() {
-            self.show_transient_toast_kind(
-                "Dojo\nGõ hướng làm trước đã (Esc = để sau).",
-                ToastKind::Warning,
-            );
-            return true;
-        }
-        let Some(file) = self.dojo.state.active_session.as_mut().map(|s| {
-            s.approach = Some(text.clone());
-            s.file.clone()
-        }) else {
-            return false;
-        };
-        self.dojo.save();
-        self.dojo_write_current_md(Some(&text));
-        let _ = self.app_state.close_command_palette();
-        if self.app_state.current_mode() == EditorMode::PaletteFocus
-            && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
-        {
-            let _ = result;
-        }
-        self.dojo_open_session_file(&file);
-        self.panel_state.right.visible = true;
-        self.panel_state.right.switch_to_tab(PanelTabId::TestRunner);
-        self.focus_manager.set(FocusTarget::CenterEditor);
-        self.input_handler.clear_pending_prefix();
-        self.editor_needs_layout = true;
-        self.editor_caret_needs_layout = false;
-        let code_minutes = self.dojo.plan.dsa_phases.get(1).map(|p| p.1).unwrap_or(15);
-        self.show_transient_toast_kind(
-            format!("CODE · {code_minutes} phút\nF5 chạy case. Pass hết = xong."),
-            ToastKind::Success,
+        self.show_transient_toast(
+            "Interviewer\nOpening claude… state your approach before coding.",
         );
         true
     }
 
     /// Open a session file with the same post-open plumbing the fetch handler uses.
-    pub(in crate::app::event_loop) fn dojo_open_session_file(&mut self, file: &std::path::Path) {
+    pub(in crate::app::event_loop) fn dojo_open_session_file(&mut self, file: &Path) {
         let report = dispatch_command(&mut self.app_state, Command::OpenFile(file.to_path_buf()));
         if !report.success {
             self.show_transient_toast_kind(
-                format!("Dojo\nKhông mở được {}", file.display()),
+                format!("Dojo\nCannot open {}", file.display()),
                 ToastKind::Error,
             );
             return;
@@ -582,7 +1156,7 @@ impl AppShell {
     }
 
     /// Rewrite `current.md` (what the AI interviewer reads) for the live session.
-    pub(in crate::app::event_loop) fn dojo_write_current_md(&mut self, approach: Option<&str>) {
+    pub(in crate::app::event_loop) fn dojo_write_current_md(&mut self) {
         let Some(s) = self.dojo.state.active_session.clone() else {
             return;
         };
@@ -590,20 +1164,12 @@ impl AppShell {
             SessionKind::Dsa => self.dojo_problem_context(&s.slug),
             SessionKind::Sd => (0, String::new()),
         };
-        let phases = self.dojo_session_phases(s.kind);
+        let phases = self.dojo.session_phases(s.kind);
         let language = match s.kind {
-            SessionKind::Dsa => self.dojo_session_language(),
+            SessionKind::Dsa => self.dojo.language_key().unwrap_or("").to_string(),
             SessionKind::Sd => String::new(),
         };
-        let text = current_md(
-            s.kind,
-            id,
-            &s.title,
-            &statement,
-            &language,
-            &phases,
-            approach.or(s.approach.as_deref()),
-        );
+        let text = current_md(s.kind, id, &s.title, &statement, &language, &phases);
         self.submit_text_file_ops(vec![TextFileOp::Write {
             path: current_md_path(),
             contents: text,
@@ -619,7 +1185,7 @@ impl AppShell {
     }
 
     /// A session saved before a restart: arm it again on the first `g o`.
-    /// An expired one ends as `timeout` on the next tick (note prompts follow).
+    /// An expired one ends as `timeout` on the next tick.
     fn dojo_resume_if_needed(&mut self) {
         if self.dojo.armed {
             return;
@@ -629,17 +1195,32 @@ impl AppShell {
         };
         self.dojo.armed = true;
         self.dojo.last_phase = None;
-        self.dojo.statement_cache = None;
-        if session.approach.is_some() && session.file.exists() {
+        if session.file.exists() {
+            if session.kind == SessionKind::Dsa {
+                self.dojo_load_cached_cases(&session.slug);
+            }
             self.dojo_open_session_file(&session.file);
         }
     }
 
-    // ── Clock ─────────────────────────────────────────────────────────────
+    // ── Clock + preview ───────────────────────────────────────────────────
 
-    /// Once per event-loop turn. Returns true when the chip/panel must redraw.
+    /// Once per event-loop turn. Returns true when the panels must redraw.
     pub(in crate::app::event_loop) fn dojo_tick(&mut self) -> bool {
-        self.dojo_flush_abandoned_note();
+        let mut changed = false;
+        if let Some((slug, due)) = self.dojo.pending_preview.clone()
+            && Instant::now() >= due
+            && self.dojo.preview_inflight.is_none()
+        {
+            self.dojo.pending_preview = None;
+            self.dojo.preview_inflight = Some(slug.clone());
+            let _ = self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::LeetCode,
+                payload: WorkerRequestPayload::FetchLeetCodeStatement { slug },
+            });
+            changed = true;
+        }
         let Some(session) = self
             .dojo
             .state
@@ -647,14 +1228,14 @@ impl AppShell {
             .clone()
             .filter(|_| self.dojo.armed)
         else {
-            return false;
+            return changed;
         };
         let now = now_unix();
         if session.is_expired(now) {
             self.dojo_end_session(Outcome::Timeout);
             return true;
         }
-        let phases = self.dojo_session_phases(session.kind);
+        let phases = self.dojo.session_phases(session.kind);
         if let Some(phase) = phase_at(&phases, session.elapsed_s(now))
             && self.dojo.last_phase != Some(phase.index)
         {
@@ -662,13 +1243,14 @@ impl AppShell {
             self.dojo.last_tick_second = now;
             let minutes = phases.get(phase.index).map(|p| p.1).unwrap_or(0);
             let hint = match phase.name.as_str() {
-                "CODE" => "Gõ đi. F5 để chạy case.",
-                "TEST" => "Tự test: rỗng, 1 phần tử, trùng, âm, tràn.",
-                "REVIEW" => "Xem lời giải tối ưu, ghi sổ nếu lệch.",
+                "THINK" => "Read the statement, say the approach + complexity out loud.",
+                "CODE" => "Type it out. F5 runs the cases.",
+                "TEST" => "Edge cases: empty, one element, duplicates, negatives, overflow.",
+                "REVIEW" => "Compare with the optimal solution; note the gap in the notebook.",
                 _ => "",
             };
             self.show_transient_toast_kind(
-                format!("{} · {minutes} phút\n{hint}", phase.name),
+                format!("{} · {minutes} min\n{hint}", phase.name),
                 ToastKind::Info,
             );
             return true;
@@ -677,7 +1259,23 @@ impl AppShell {
             self.dojo.last_tick_second = now;
             return true;
         }
-        false
+        changed
+    }
+
+    /// Statement-only fetch landed (or failed) for the preview.
+    pub(in crate::app::event_loop) fn dojo_on_statement_fetched(
+        &mut self,
+        slug: &str,
+        error: Option<String>,
+    ) {
+        if self.dojo.preview_inflight.as_deref() == Some(slug) {
+            self.dojo.preview_inflight = None;
+        }
+        self.dojo.invalidate_cache();
+        self.dojo.preview_error = error.map(|m| (slug.to_string(), m));
+        // The selection may have moved on while the fetch ran.
+        self.dojo_request_preview();
+        self.request_redraw();
     }
 
     // ── Session end ───────────────────────────────────────────────────────
@@ -713,7 +1311,7 @@ impl AppShell {
             .clone()
             .filter(|_| self.dojo.armed)
         else {
-            self.show_transient_toast("Dojo\nKhông có phiên nào đang chạy.");
+            self.show_transient_toast("Dojo\nNo session running.");
             return false;
         };
         let outcome = match session.kind {
@@ -736,8 +1334,8 @@ impl AppShell {
         true
     }
 
-    /// Record the attempt, apply spaced redo, toast the summary, then collect
-    /// the notebook entry through the `DojoNote` prompts.
+    /// Record the attempt, apply spaced redo, toast the summary, and append a
+    /// notebook stub for the user to fill in (`n` opens it).
     pub(in crate::app::event_loop) fn dojo_end_session(&mut self, outcome: Outcome) {
         let Some(session) = self.dojo.state.active_session.take() else {
             return;
@@ -745,7 +1343,6 @@ impl AppShell {
         let now = now_unix();
         let elapsed_s = session.elapsed_s(now).min(session.budget_s);
         let today = today_local();
-        let approach = session.approach.clone().unwrap_or_default();
         self.dojo.state.record_attempt(
             Attempt {
                 slug: session.slug.clone(),
@@ -754,7 +1351,6 @@ impl AppShell {
                 ended_unix: now,
                 outcome,
                 elapsed_s,
-                approach: approach.clone(),
             },
             today,
         );
@@ -783,7 +1379,7 @@ impl AppShell {
         let (summary, kind) = match outcome {
             Outcome::Pass => (
                 format!(
-                    "{} · pass {} · streak {streak}",
+                    "{} · solved in {} · streak {streak}",
                     session.title,
                     mm_ss(elapsed_s)
                 ),
@@ -791,7 +1387,7 @@ impl AppShell {
             ),
             _ => (
                 format!(
-                    "{} · {} {} · redo {redo_at}",
+                    "{} · {} at {} · redo on {redo_at}",
                     session.title,
                     outcome.label(),
                     mm_ss(elapsed_s)
@@ -801,126 +1397,24 @@ impl AppShell {
         };
         self.show_transient_toast_kind(summary, kind);
 
-        self.dojo.pending_note = Some(PendingNote {
-            date: date_str(today),
-            id,
-            title: session.title.clone(),
-            outcome,
-            elapsed_s,
-            redo,
-            approach,
-            kind: session.kind,
-            answers: Vec::new(),
-        });
-        self.dojo_open();
-        let step = if outcome == Outcome::Pass || session.kind == SessionKind::Sd {
-            0
-        } else {
-            1
-        };
-        if !self.open_prompt_overlay(CommandPaletteMode::DojoNote(step)) {
-            self.dojo_flush_pending_note();
-        }
-    }
-
-    /// Notebook prompt step confirmed. Step 0 (pass note) is single; fail
-    /// walks 1 → 2 → 3. The block is written when the last step lands.
-    pub(in crate::app::event_loop) fn confirm_dojo_note(&mut self, step: u8) -> bool {
-        let text = self
-            .app_state
-            .command_palette_query_text()
-            .trim()
-            .to_string();
-        let label = match step {
-            0 => "Ghi chú",
-            1 => "Bí",
-            2 => "Pattern",
-            _ => "Dấu hiệu",
-        };
-        if let Some(note) = self.dojo.pending_note.as_mut() {
-            note.answers.push((label, text));
-        }
-        if step == 0 || step >= 3 {
-            self.dojo_flush_pending_note();
-            let _ = self.app_state.close_command_palette();
-            if self.app_state.current_mode() == EditorMode::PaletteFocus
-                && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
-            {
-                let _ = result;
-            }
-            self.focus_manager.set(FocusTarget::RightSidebar);
-            self.input_handler.clear_pending_prefix();
-            return true;
-        }
-        let opened = self.open_prompt_overlay(CommandPaletteMode::DojoNote(step + 1));
-        let _ = self.app_state.set_command_palette_query("");
-        opened
-    }
-
-    /// Append the collected block to the notebook (worker write).
-    pub(in crate::app::event_loop) fn dojo_flush_pending_note(&mut self) {
-        let Some(note) = self.dojo.pending_note.take() else {
-            return;
-        };
-        let contents = match note.kind {
-            SessionKind::Sd => format_sd_block(
-                &note.date,
-                &note.title,
-                note.elapsed_s,
-                note.answers.first().map(|a| a.1.as_str()).unwrap_or(""),
+        let contents = match session.kind {
+            SessionKind::Sd => format_sd_block(&date_str(today), &session.title, elapsed_s),
+            SessionKind::Dsa => format_block(
+                &date_str(today),
+                id,
+                &session.title,
+                outcome,
+                elapsed_s,
+                redo,
             ),
-            SessionKind::Dsa => {
-                let answers: Vec<(&str, &str)> = note
-                    .answers
-                    .iter()
-                    .map(|(label, answer)| (*label, answer.as_str()))
-                    .collect();
-                format_block(
-                    &note.date,
-                    note.id,
-                    &note.title,
-                    note.outcome,
-                    note.elapsed_s,
-                    note.redo,
-                    &note.approach,
-                    &answers,
-                )
-            }
         };
-        let path = expand_tilde(&self.dojo.plan.notebook);
-        self.submit_text_file_ops(vec![TextFileOp::Append {
-            path,
-            header: NOTEBOOK_HEADER.to_string(),
-            contents,
-        }]);
-    }
-
-    /// Esc mid-way through the note prompts: write what was collected so far.
-    pub(in crate::app::event_loop) fn dojo_flush_abandoned_note(&mut self) {
-        if self.dojo.pending_note.is_some()
-            && !matches!(
-                self.app_state.command_palette_mode(),
-                Some(CommandPaletteMode::DojoNote(_))
-            )
-        {
-            self.dojo_flush_pending_note();
+        if let Some(ws) = self.dojo.workspace() {
+            self.submit_text_file_ops(vec![TextFileOp::Append {
+                path: notebook_path(&self.dojo.plan, &ws),
+                header: NOTEBOOK_HEADER.to_string(),
+                contents,
+            }]);
         }
-    }
-
-    fn dojo_turn_page(&mut self, delta: i32) -> bool {
-        let pages = self.dojo.plan.pages();
-        let Some(idx) = pages.iter().position(|p| *p == self.dojo.page) else {
-            return false;
-        };
-        let next = (idx as i64 + i64::from(delta)).clamp(0, pages.len() as i64 - 1) as usize;
-        if next == idx {
-            return false;
-        }
-        self.dojo.page = pages[next];
-        self.dojo.selected = 0;
-        self.dojo.scroll = 0;
-        self.dojo.state.last_group = Some(self.dojo.plan.page_key(self.dojo.page));
-        self.dojo.save();
-        true
+        self.sidebar_needs_layout = true;
     }
 }

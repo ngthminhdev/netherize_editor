@@ -163,6 +163,8 @@ mod tests {
             frontend_id: "1".into(),
             title: "Two Sum".into(),
             title_slug: "two-sum".into(),
+            difficulty: "Easy".into(),
+            hints: Vec::new(),
             content: String::new(),
             function_name: "twoSum".into(),
             parameters: vec![

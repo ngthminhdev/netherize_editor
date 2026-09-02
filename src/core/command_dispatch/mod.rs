@@ -415,8 +415,12 @@ fn dispatch_command_with_clipboard_once(
         | Command::DojoSelectPrev
         | Command::DojoStart
         | Command::DojoToggleRedo
-        | Command::DojoPageNext
-        | Command::DojoPagePrev
+        | Command::DojoCollapse
+        | Command::DojoExpand
+        | Command::DojoToggleHints
+        | Command::DojoLanguage
+        | Command::DojoChooseFolder
+        | Command::DojoOpenNotebook
         | Command::DojoInterviewer
         | Command::DojoGiveUp
         | Command::DojoScrollDown

@@ -834,6 +834,7 @@ impl AppShell {
             match self.focus_manager.current() {
                 FocusTarget::LeftSidebar => match self.panel_state.left.active_tab_id() {
                     Some(PanelTabId::Outline) => InputFocusContext::Outline,
+                    Some(PanelTabId::Dojo) => InputFocusContext::Dojo,
                     _ => InputFocusContext::Explorer,
                 },
                 FocusTarget::RightSidebar => match self.panel_state.right.active_tab_id() {

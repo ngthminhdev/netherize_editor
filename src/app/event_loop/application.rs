@@ -1133,14 +1133,17 @@ impl AppShell {
         if self.input_handler.current_modifiers().alt_key()
             && !matches!(self.app_state.current_mode(), EditorMode::Insert)
         {
-            return self.app_state.add_cursor_at(hit);
+            let changed = self.app_state.add_cursor_at(hit);
+            return self.finish_editor_pointer_change(changed);
         }
         if double_click {
-            return self.app_state.select_word_at(hit);
+            let changed = self.app_state.select_word_at(hit);
+            return self.finish_editor_pointer_change(changed);
         }
         // Plain press: caret to the point; a following drag extends selection.
         self.editor_text_drag_anchor = Some(hit);
-        self.app_state.place_caret_at(hit)
+        let changed = self.app_state.place_caret_at(hit);
+        self.finish_editor_pointer_change(changed)
     }
 
     /// CursorMoved during an active editor text drag — extend the selection.
@@ -1161,7 +1164,15 @@ impl AppShell {
         if head == anchor && self.app_state.current_mode() == EditorMode::Normal {
             return false; // pointer hasn't moved past the press point yet
         }
-        self.app_state.drag_select_to(anchor, head)
+        let changed = self.app_state.drag_select_to(anchor, head);
+        self.finish_editor_pointer_change(changed)
+    }
+
+    fn finish_editor_pointer_change(&mut self, changed: bool) -> bool {
+        if changed && !self.editor_needs_layout {
+            self.editor_caret_needs_layout = true;
+        }
+        changed
     }
 
     /// Left press inside the editor text area — see [`Self::handle_editor_text_mouse_press`].
@@ -1382,6 +1393,42 @@ impl AppShell {
         self.panel_state.left.switch_to_index(idx);
         self.focus_manager.set(FocusTarget::LeftSidebar);
         true
+    }
+
+    /// Click a row in the left-dock Dojo tree: select it (a header click
+    /// also folds/unfolds it). Geometry mirrors the Explorer rows.
+    fn handle_dojo_mouse_click(&mut self) -> bool {
+        if !self.panel_state.left.visible
+            || self.panel_state.left.active_tab_id() != Some(PanelTabId::Dojo)
+        {
+            return false;
+        }
+        let Some((x, y)) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_left_sidebar_bounds() else {
+            return false;
+        };
+        let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let left = bounds[0] + inset;
+        let right = bounds[0] + bounds[2] - inset;
+        let top = bounds[1] + inset + strip_h;
+        let bottom = bounds[1] + bounds[3] - inset;
+        if x < left || x > right || y < top || y > bottom {
+            return false;
+        }
+        let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
+        let rows_top = top + scaled_ui.spacing.panel_padding;
+        if y < rows_top {
+            return false;
+        }
+        let line_h = self.theme.ui.sidebar_line_height.max(1.0);
+        let row = ((y - rows_top) / line_h).floor() as usize;
+        self.dojo_click_row(row)
     }
 
     /// Click a symbol in the Outline panel to jump the editor to its location.
@@ -2340,7 +2387,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.request_redraw();
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed
-                    && self.handle_outline_mouse_click()
+                    && (self.handle_outline_mouse_click() || self.handle_dojo_mouse_click())
                 {
                     self.request_redraw();
                 } else if button == MouseButton::Left
@@ -2528,10 +2575,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 None => whichkey_deadline,
             });
         }
-        if self.dojo.armed && self.dojo.state.active_session.is_some() {
-            // Wake on the next whole second so the clock chip ticks evenly.
-            let to_next_second = 1000 - (crate::dojo::state::now_millis() % 1000);
-            let dojo_deadline = Instant::now() + Duration::from_millis(to_next_second.max(1));
+        // Dojo: next whole second while a clock runs, or the debounced
+        // statement preview.
+        if let Some(dojo_deadline) = self.dojo.next_deadline() {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(dojo_deadline),
                 None => dojo_deadline,
@@ -3593,6 +3639,7 @@ impl AppShell {
         let left_active_tab_id = self.panel_state.left.active_tab_id();
         let left_is_explorer = left_active_tab_id == Some(PanelTabId::Explorer);
         let left_is_outline = left_active_tab_id == Some(PanelTabId::Outline);
+        let left_is_dojo = left_active_tab_id == Some(PanelTabId::Dojo);
 
         if left_is_outline {
             self.ensure_outline_symbols();
@@ -3620,13 +3667,23 @@ impl AppShell {
         } else {
             0
         };
-        let sidebar_rows = build_sidebar_rows(
-            &self.explorer_snapshot.entries,
-            self.explorer_cursor,
-            &self.theme,
-            self.app_state.workspace_has_active_filter(),
-            sidebar_scroll_offset_rows,
-        );
+        // The Dojo tab reuses the Explorer row renderer with its own rows.
+        let sidebar_rows = if left_is_dojo {
+            self.dojo_sidebar_rows()
+        } else {
+            build_sidebar_rows(
+                &self.explorer_snapshot.entries,
+                self.explorer_cursor,
+                &self.theme,
+                self.app_state.workspace_has_active_filter(),
+                sidebar_scroll_offset_rows,
+            )
+        };
+        let sidebar_filter_state = if left_is_dojo {
+            None
+        } else {
+            sidebar_filter_state
+        };
         // Hover-highlight input for the left-dock tab strip: which tab (if
         // any) sits under the pointer. Resolved before the renderer mutable
         // borrow below; validated against the label count at use time because
@@ -3668,7 +3725,7 @@ impl AppShell {
                     // closed (same guard as the topbar render path).
                     let hovered_tab_index = left_dock_hover.filter(|&index| index < labels.len());
 
-                    let explorer_rows_opt = if left_is_explorer {
+                    let explorer_rows_opt = if left_is_explorer || left_is_dojo {
                         Some(sidebar_rows.as_slice())
                     } else {
                         None
@@ -3741,11 +3798,11 @@ impl AppShell {
             if is_outline {
                 self.ensure_outline_symbols();
             }
-            // Dojo tab: rows + optional session view, built from pure state.
+            // Problem tab: the Dojo's selected problem, built from pure state.
             // Computed first because it needs `&mut self` (statement cache).
-            let dojo_model = if active_tab_id == Some(PanelTabId::Dojo) {
+            let dojo_model = if active_tab_id == Some(PanelTabId::Problem) {
                 let focused = self.focus_manager.current() == FocusTarget::RightSidebar;
-                Some(self.dojo_panel_model(focused))
+                Some(self.dojo_problem_model(focused))
             } else {
                 None
             };
@@ -4900,6 +4957,21 @@ mod tests {
         shell.editor_caret_needs_layout = false;
 
         assert!(shell.tick_bracket_ripple());
+        assert!(!shell.editor_needs_layout);
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn editor_pointer_change_invalidates_cached_caret_layout() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.app_state = AppState::from_text(PathBuf::from("mouse-caret.txt"), "abcdef");
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = false;
+
+        let changed = shell.app_state.place_caret_at(4);
+
+        assert!(shell.finish_editor_pointer_change(changed));
+        assert_eq!(shell.app_state.cursor_char_idx(), 4);
         assert!(!shell.editor_needs_layout);
         assert!(shell.editor_caret_needs_layout);
     }

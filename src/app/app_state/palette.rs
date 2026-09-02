@@ -75,6 +75,15 @@ impl AppState {
             .open_with_items(CommandPaletteMode::LeetCodeLanguageSelector, items);
     }
 
+    /// Dojo language picker: same items as the LeetCode selector, different mode.
+    pub fn open_dojo_language_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::DojoLanguage, items);
+    }
+
     pub fn open_dart_env_selector(&mut self) -> bool {
         let workspace = self.workspace_model.as_ref();
         self.command_palette

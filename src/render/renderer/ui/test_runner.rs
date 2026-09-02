@@ -409,7 +409,7 @@ impl crate::render::renderer::Renderer {
             f32,
         )>,
         agent_picker: Option<(&[(&str, &str)], usize, bool)>,
-        dojo: Option<(&crate::dojo::view::DojoPanelModel, f32)>,
+        dojo: Option<(&crate::dojo::view::ProblemPanelModel, f32)>,
         mode: EditorMode,
     ) {
         if rb[2] <= 2.0 || rb[3] <= 2.0 {
@@ -466,7 +466,7 @@ impl crate::render::renderer::Renderer {
             chrome.extend(cc);
             glyphs.extend(cg);
         } else if let Some((model, inner_padding)) = dojo {
-            let (cc, cg) = self.build_dojo_content(content_bounds, model, inner_padding);
+            let (cc, cg) = self.build_problem_content(content_bounds, model, inner_padding);
             chrome.extend(cc);
             glyphs.extend(cg);
         }
@@ -934,17 +934,17 @@ impl crate::render::renderer::Renderer {
         (chrome, glyphs, icons)
     }
 
-    /// Dojo tab: header + progress + problem rows, or the running session
-    /// (statement + phase clock). Pure model in, instances out.
-    fn build_dojo_content(
+    /// Problem tab: header, the selected problem (statement, examples,
+    /// hints) or SD case, the session clock. Pure model in, instances out.
+    fn build_problem_content(
         &mut self,
         bounds: [f32; 4],
-        model: &crate::dojo::view::DojoPanelModel,
+        model: &crate::dojo::view::ProblemPanelModel,
         inner_padding: f32,
     ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
         use crate::dojo::{
             session::SessionKind,
-            view::{RowGlyph, wrap_text},
+            view::{PanelContent, RowGlyph, difficulty_label, wrap_text},
         };
         let mut chrome: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
@@ -967,10 +967,6 @@ impl crate::render::renderer::Renderer {
         let info = self.theme.ui.info.as_f32();
         let magenta = self.theme.ui.magenta.as_f32();
         let cyan = self.theme.ui.cyan.as_f32();
-        let mut selection_bg = self.theme.ui.selection_bg.as_f32();
-        if !model.focused {
-            selection_bg[3] *= 0.5;
-        }
 
         let x0 = bounds[0] + pad;
         let x1 = bounds[0] + bounds[2] - pad;
@@ -978,6 +974,7 @@ impl crate::render::renderer::Renderer {
         let char_w = estimate_monospace_width("0", font).max(1.0);
         let width_chars = ((x1 - x0) / char_w).max(8.0) as usize;
         let mut y = bounds[1] + pad * 0.5;
+        let footer_y = bottom - line_h - pad * 0.5;
 
         macro_rules! text {
             ($t:expr, $x:expr, $y:expr, $c:expr) => {
@@ -999,52 +996,35 @@ impl crate::render::renderer::Renderer {
                 text!(s, (x1 - w).max(x0), $y, $c);
             }};
         }
+        macro_rules! separator {
+            () => {{
+                chrome.push(RegionDrawInstance::new(
+                    [bounds[0], y + 2.0, bounds[2], 1.0],
+                    border,
+                ));
+                y += line_h * 0.5;
+            }};
+        }
 
-        let h = &model.header;
         // ── Header ────────────────────────────────────────────────────────────
-        let right = format!(
-            "{}/{} · streak {}",
+        let h = &model.header;
+        let mut right = format!(
+            "{}/{} solved · streak {}",
             h.overall_done, h.overall_total, h.streak
         );
-        let right_w = estimate_monospace_width(&right, font);
-        let left = format!(
-            "DOJO · {} ({}/{})",
-            h.page_label, h.page_index, h.page_count
-        );
-        let left_max = (((x1 - x0) - right_w - char_w) / char_w).max(4.0) as usize;
-        text!(&clip_chars(&left, left_max), x0, y, fg);
-        text_right!(&right, y, fg_dim);
-        y += line_h;
-
-        // ── Progress bar ──────────────────────────────────────────────────────
-        let bar_w = ((x1 - x0) * 0.45).max(40.0);
-        let bar_h = (line_h * 0.4).max(4.0);
-        let bar_y = y + (line_h - bar_h) * 0.5;
-        chrome.push(RegionDrawInstance::new([x0, bar_y, bar_w, bar_h], border).with_radius(2.0));
-        if h.page_total > 0 && h.page_done > 0 {
-            let fill = bar_w * (h.page_done as f32 / h.page_total as f32).min(1.0);
-            chrome.push(RegionDrawInstance::new([x0, bar_y, fill, bar_h], accent).with_radius(2.0));
+        if h.redo_due > 0 {
+            right.push_str(&format!(" · {} redo due", h.redo_due));
         }
-        let progress = format!("{}/{}", h.page_done, h.page_total);
-        text!(&progress, x0 + bar_w + char_w, y, fg_dim);
-        let redo = format!("redo tới hạn: {}", h.redo_due);
-        text_right!(&redo, y, if h.redo_due > 0 { warning } else { fg_ghost });
+        let right_w = estimate_monospace_width(&right, font);
+        let left_max = (((x1 - x0) - right_w - char_w) / char_w).max(4.0) as usize;
+        text!(&clip_chars("DOJO", left_max), x0, y, accent);
+        text_right!(&right, y, if h.redo_due > 0 { warning } else { fg_dim });
         y += line_h;
+        separator!();
 
-        // ── Separator ─────────────────────────────────────────────────────────
-        chrome.push(RegionDrawInstance::new(
-            [bounds[0], y + 2.0, bounds[2], 1.0],
-            border,
-        ));
-        y += line_h * 0.5;
-
-        let footer_y = bottom - line_h - pad * 0.5;
-
-        if let Some(s) = &model.session {
-            // ── Session view ──────────────────────────────────────────────────
-            let clock_color = if s.expired {
-                error
-            } else if s.remaining_s < 60 {
+        // ── Session clock (any kind) ──────────────────────────────────────────
+        let clock = model.session.as_ref().map(|s| {
+            let color = if s.expired || s.remaining_s < 60 {
                 error
             } else {
                 match (s.kind, s.phase_index) {
@@ -1055,107 +1035,193 @@ impl crate::render::renderer::Renderer {
                     _ => magenta,
                 }
             };
-            let clock = format!("{} {}", s.phase, s.remaining);
-            let clock_w = estimate_monospace_width(&clock, font);
-            let title_max = (((x1 - x0) - clock_w - char_w) / char_w).max(4.0) as usize;
-            text!(&clip_chars(&s.title, title_max), x0, y, fg);
-            text_right!(&clock, y, clock_color);
-            y += line_h;
+            (format!("⏱ {} {}", s.phase, s.remaining), color)
+        });
 
-            let mut lines: Vec<String> = Vec::new();
-            for paragraph in &s.statement_lines {
-                lines.extend(wrap_text(paragraph, width_chars));
-                lines.push(String::new());
-            }
-            if lines.is_empty() {
-                lines.push("Chưa có đề (fetch đang chạy…)".to_string());
-            }
-            for line in lines.iter().skip(model.scroll) {
-                if y + line_h > footer_y - line_h * 0.5 {
-                    break;
+        // Body lines: (text, color), wrapped to the panel width; `scroll`
+        // skips leading lines.
+        let mut lines: Vec<(String, [f32; 4])> = Vec::new();
+        let footer: String = match &model.content {
+            PanelContent::Empty(message) => {
+                for line in wrap_text(message, width_chars) {
+                    lines.push((line, fg_ghost));
                 }
-                if !line.is_empty() {
-                    text!(line, x0, y, fg_dim);
+                "[j/k] move  [Enter] start  [c] language  [w] folder  [n] notebook  [Esc] editor"
+                    .to_string()
+            }
+            PanelContent::Sd(sd) => {
+                let title_color = fg;
+                let (clock_text, clock_color) = clock.clone().unwrap_or_default();
+                let clock_w = if clock_text.is_empty() {
+                    0.0
+                } else {
+                    estimate_monospace_width(&clock_text, font) + char_w
+                };
+                let title_max = (((x1 - x0) - clock_w) / char_w).max(4.0) as usize;
+                text!(&clip_chars(&sd.label, title_max), x0, y, title_color);
+                if !clock_text.is_empty() {
+                    text_right!(&clock_text, y, clock_color);
                 }
                 y += line_h;
+                let meta = format!(
+                    "System Design · {}",
+                    if sd.done { "done" } else { "not attempted" }
+                );
+                text!(&clip_chars(&meta, width_chars), x0, y, fg_dim);
+                y += line_h;
+                separator!();
+                if !sd.topic.is_empty() {
+                    lines.push(("Focus".to_string(), fg));
+                    for line in wrap_text(&sd.topic, width_chars) {
+                        lines.push((line, fg_dim));
+                    }
+                    lines.push((String::new(), fg_dim));
+                }
+                for line in wrap_text(
+                    "45 minutes: 1 Requirements 5' → 2 Scale 5' → 3 API + data model 5' → 4 High-level design 10' → 5 Deep dive 15' → 6 Bottlenecks + trade-offs 5'. Always ask: what happens when this request dies halfway?",
+                    width_chars,
+                ) {
+                    lines.push((line, fg_dim));
+                }
+                if model.session.is_some() {
+                    "[x] finish  [i] interviewer  [Esc] editor".to_string()
+                } else {
+                    "[Enter] start (creates the outline)  [i] interviewer  [Esc] editor".to_string()
+                }
             }
+            PanelContent::Problem(p) => {
+                let title = format!("#{} {}", p.id, p.title);
+                let diff = difficulty_label(&p.difficulty);
+                let diff_color = match p.difficulty.as_str() {
+                    "easy" => success,
+                    "hard" => error,
+                    _ => warning,
+                };
+                let diff_w = estimate_monospace_width(diff, font) + char_w;
+                let title_max = (((x1 - x0) - diff_w) / char_w).max(4.0) as usize;
+                text!(&clip_chars(&title, title_max), x0, y, fg);
+                text_right!(diff, y, diff_color);
+                y += line_h;
 
-            let approach = match &s.approach {
-                Some(a) => format!("Hướng làm: {a}"),
-                None => "Hướng làm: (chưa có)".to_string(),
-            };
-            let keys = match (s.kind, s.approach.is_some()) {
-                (SessionKind::Sd, _) => "[x] kết thúc  [i] interviewer",
-                (_, false) => "[Enter] nhập  [x] bỏ phiên  [i] interviewer",
-                (_, true) => "[Enter] test runner  [x] bỏ phiên  [i] interviewer",
-            };
-            let keys_w = estimate_monospace_width(keys, font);
-            let approach_max = (((x1 - x0) - keys_w - char_w) / char_w).max(4.0) as usize;
-            text!(&clip_chars(&approach, approach_max), x0, footer_y, fg);
-            text_right!(keys, footer_y, fg_ghost);
-            return (chrome, glyphs);
-        }
+                let glyph_color = match p.glyph {
+                    RowGlyph::Done => success,
+                    RowGlyph::RedoDue => warning,
+                    RowGlyph::RedoLater => fg_ghost,
+                    RowGlyph::Todo => fg_dim,
+                };
+                let (clock_text, clock_color) = clock.clone().unwrap_or_default();
+                let clock_w = if clock_text.is_empty() {
+                    0.0
+                } else {
+                    estimate_monospace_width(&clock_text, font) + char_w
+                };
+                text!(p.glyph.symbol(), x0, y, glyph_color);
+                let meta = format!("{} · {} · {}", p.status_line, p.category, p.language);
+                let meta_max = (((x1 - x0) - clock_w - char_w * 2.0) / char_w).max(4.0) as usize;
+                text!(&clip_chars(&meta, meta_max), x0 + char_w * 2.0, y, fg_dim);
+                if !clock_text.is_empty() {
+                    text_right!(&clock_text, y, clock_color);
+                }
+                y += line_h;
+                separator!();
 
-        // ── Rows ──────────────────────────────────────────────────────────────
-        let visible = (((footer_y - y) / line_h).floor() as usize).max(1);
-        let start = if model.selected >= model.scroll + visible {
-            model.selected + 1 - visible
-        } else if model.selected < model.scroll {
-            model.selected
-        } else {
-            model.scroll
+                if let Some(err) = &p.error {
+                    for line in
+                        wrap_text(&format!("Could not load the statement: {err}"), width_chars)
+                    {
+                        lines.push((line, error));
+                    }
+                    lines.push((
+                        "Enter still starts (LeetCode is fetched again).".to_string(),
+                        fg_ghost,
+                    ));
+                } else if p.statement_lines.is_empty() {
+                    lines.push((
+                        if p.loading {
+                            "Loading statement…".to_string()
+                        } else {
+                            "Enter to fetch the statement and start.".to_string()
+                        },
+                        fg_ghost,
+                    ));
+                } else {
+                    for source in &p.statement_lines {
+                        if source.trim().is_empty() {
+                            lines.push((String::new(), fg_dim));
+                            continue;
+                        }
+                        for line in wrap_text(source, width_chars) {
+                            lines.push((line, fg_dim));
+                        }
+                    }
+                    lines.push((String::new(), fg_dim));
+                    if !p.examples.is_empty() {
+                        lines.push(("Examples".to_string(), fg));
+                        for (i, (input, expected)) in p.examples.iter().enumerate() {
+                            for line in wrap_text(&format!("{}. in  {input}", i + 1), width_chars) {
+                                lines.push((line, fg_dim));
+                            }
+                            for line in wrap_text(&format!("   out {expected}"), width_chars) {
+                                lines.push((line, fg_dim));
+                            }
+                        }
+                        lines.push((String::new(), fg_dim));
+                    }
+                    if !p.hints.is_empty() {
+                        if model.show_hints {
+                            lines.push(("Hints".to_string(), fg));
+                            for (i, hint) in p.hints.iter().enumerate() {
+                                for line in wrap_text(&format!("{}. {hint}", i + 1), width_chars) {
+                                    lines.push((line, info));
+                                }
+                            }
+                        } else {
+                            lines.push((
+                                format!(
+                                    "[?] show {} hint{}",
+                                    p.hints.len(),
+                                    if p.hints.len() == 1 { "" } else { "s" }
+                                ),
+                                fg_ghost,
+                            ));
+                        }
+                    }
+                }
+                if model.session.is_some() {
+                    "[Enter] back to code  [x] give up  [?] hints  [i] interviewer  [Esc] editor"
+                        .to_string()
+                } else {
+                    "[Enter] start  [?] hints  [c] language  [n] notebook  [i] interviewer  [Esc] editor".to_string()
+                }
+            }
         };
-        if model.rows.is_empty() {
-            text!("Không có bài trên trang này.", x0, y, fg_ghost);
+
+        // Trim trailing blank lines so scrolling stops at real content.
+        while lines.last().is_some_and(|(l, _)| l.is_empty()) {
+            lines.pop();
         }
-        for (i, row) in model.rows.iter().enumerate().skip(start) {
-            if y + line_h > footer_y {
+        let max_scroll = lines.len().saturating_sub(1);
+        for (line, color) in lines.iter().skip(model.scroll.min(max_scroll)) {
+            if y + line_h > footer_y - line_h * 0.25 {
                 break;
             }
-            let selected = i == model.selected;
-            if selected {
-                chrome.push(RegionDrawInstance::new(
-                    [bounds[0], y - 1.0, bounds[2], line_h],
-                    selection_bg,
-                ));
-            }
-            let (glyph, glyph_color) = match row.glyph {
-                RowGlyph::RedoDue => ("↻", warning),
-                RowGlyph::RedoLater => ("·", fg_ghost),
-                RowGlyph::Todo => ("○", fg_dim),
-                RowGlyph::Done => ("●", success),
-            };
-            text!(glyph, x0, y, glyph_color);
-            let id = if row.id > 0 {
-                format!("{:>4}", row.id)
-            } else {
-                "    ".to_string()
-            };
-            text!(&id, x0 + char_w * 2.0, y, fg_ghost);
-            let title_x = x0 + char_w * 7.0;
-            let trailing_w = if row.trailing.is_empty() {
-                0.0
-            } else {
-                estimate_monospace_width(&row.trailing, font) + char_w
-            };
-            let avail = (x1 - title_x - trailing_w).max(char_w * 4.0);
-            let title = clip_chars(&row.title, (avail / char_w) as usize);
-            text!(&title, title_x, y, if selected { fg } else { fg_dim });
-            if !row.trailing.is_empty() {
-                let trail_max = (((x1 - title_x) * 0.5) / char_w).max(6.0) as usize;
-                let trailing = clip_chars(&row.trailing, trail_max);
-                text_right!(&trailing, y, fg_ghost);
+            if !line.is_empty() {
+                text!(line, x0, y, *color);
             }
             y += line_h;
         }
 
         // ── Footer ────────────────────────────────────────────────────────────
-        let footer = if model.redo_only {
-            "CHỈ REDO · [r] tất cả  [Enter] bắt đầu  [Esc] editor"
-        } else {
-            "[Enter] bắt đầu  [r] chỉ redo  [ ] ] nhóm  [i] interviewer  [Esc] editor"
-        };
-        text!(&clip_chars(footer, width_chars), x0, footer_y, fg_ghost);
+        let mut footer_color = fg_ghost;
+        if model.focused {
+            footer_color = fg_dim;
+        }
+        text!(
+            &clip_chars(&footer, width_chars),
+            x0,
+            footer_y,
+            footer_color
+        );
         (chrome, glyphs)
     }
 

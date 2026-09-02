@@ -91,7 +91,6 @@ mod tests {
             title: String::new(),
             started_unix: 1000,
             budget_s: 60,
-            approach: None,
             file: "/tmp/x.md".into(),
         };
         assert_eq!(s.elapsed_s(999), 0, "clock skew clamps to 0");
