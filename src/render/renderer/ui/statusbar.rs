@@ -44,6 +44,9 @@ impl Renderer {
         python_version: Option<&str>,
         node_version: Option<&str>,
         go_version: Option<&str>,
+        // Dojo session clock: (label, color code 0 info / 1 accent / 2 warning /
+        // 3 magenta / 4 cyan / 5+ error).
+        dojo_chip: Option<(&str, u8)>,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -77,6 +80,7 @@ impl Renderer {
             python_version: python_version.map(str::to_string),
             node_version: node_version.map(str::to_string),
             go_version: go_version.map(str::to_string),
+            dojo_chip: dojo_chip.map(|(label, code)| (label.to_string(), code)),
         };
         if self.last_statusbar_layout_key.as_ref() == Some(&layout_key) {
             return self.statusbar_chrome_instances.clone();
@@ -355,6 +359,19 @@ impl Renderer {
             if let Some(ver) = go_version.filter(|s| !s.is_empty()) {
                 right_items.push((format!("go {ver}"), fg_ghost));
             }
+        }
+
+        // ── Dojo session clock ────────────────────────────────────────────────
+        if let Some((label, code)) = dojo_chip {
+            let color = match code {
+                0 => self.theme.ui.info.as_f32(),
+                1 => accent,
+                2 => warning_fg,
+                3 => self.theme.ui.magenta.as_f32(),
+                4 => self.theme.ui.cyan.as_f32(),
+                _ => error_fg,
+            };
+            right_items.push((label.to_string(), color));
         }
 
         // ── AI inline completion chip ─────────────────────────────────────────

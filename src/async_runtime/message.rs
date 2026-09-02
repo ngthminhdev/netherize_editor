@@ -423,6 +423,11 @@ pub enum WorkerRequestPayload {
         source_path: PathBuf,
         target_path: PathBuf,
     },
+    /// Small text-file writes off the UI thread (Dojo notebook, current.md…).
+    /// Ops run sequentially in the order given.
+    WriteTextFiles {
+        ops: Vec<TextFileOp>,
+    },
     /// Read contents of externally changed files off the UI thread.
     /// Phase 2 of the external-change pipeline: the main thread only decides
     /// WHICH paths need reloading; the worker does the actual disk reads.
@@ -888,6 +893,10 @@ pub enum WorkerResultPayload {
         success: bool,
         error_message: Option<String>,
     },
+    /// Outcome of `WriteTextFiles`: one (path, error) per failed op.
+    TextFilesWritten {
+        failures: Vec<(PathBuf, String)>,
+    },
     /// Contents of externally changed files, read off the UI thread.
     /// `content: None` means the read failed (deleted/permission/binary).
     ExternalFilesRead {
@@ -991,4 +1000,21 @@ pub struct RequestSpec {
     pub revision_id: u64,
     pub topic: RequestTopic,
     pub payload: WorkerRequestPayload,
+}
+
+/// One write in a `WorkerRequestPayload::WriteTextFiles` batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextFileOp {
+    /// Create or overwrite.
+    Write { path: PathBuf, contents: String },
+    /// Create with `header` if missing, then append `contents`.
+    Append {
+        path: PathBuf,
+        header: String,
+        contents: String,
+    },
+    /// Write only when the file does not exist.
+    WriteIfMissing { path: PathBuf, contents: String },
+    /// Delete; a missing file is not an error.
+    Remove { path: PathBuf },
 }

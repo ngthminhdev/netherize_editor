@@ -44,7 +44,10 @@ pub(super) fn handle_leetcode_generate_result(app: &mut AppShell, payload: Worke
     }
 }
 
-pub(super) fn handle_leetcode_fetch_result(app: &mut AppShell, payload: WorkerResultPayload) {
+pub(in crate::app::event_loop) fn handle_leetcode_fetch_result(
+    app: &mut AppShell,
+    payload: WorkerResultPayload,
+) {
     let WorkerResultPayload::LeetCodeProblemFetched {
         title,
         title_slug,
@@ -54,6 +57,7 @@ pub(super) fn handle_leetcode_fetch_result(app: &mut AppShell, payload: WorkerRe
     } = payload
     else {
         if let WorkerResultPayload::LeetCodeProblemFetchFailed { message } = payload {
+            app.dojo.pending_start = None;
             app.show_transient_toast_kind(
                 format!("Fetch LeetCode Problem\n{message}"),
                 ToastKind::Error,
@@ -62,6 +66,24 @@ pub(super) fn handle_leetcode_fetch_result(app: &mut AppShell, payload: WorkerRe
         }
         return;
     };
+
+    // Dojo-initiated fetch: keep the file CLOSED until the approach is typed
+    // (THINK gate). The Test Runner still gets the example cases now.
+    if app.dojo.pending_start.as_deref() == Some(title_slug.as_str()) {
+        app.dojo.pending_start = None;
+        app.app_state.test_runner.cases = cases
+            .into_iter()
+            .map(|case| crate::runner::TestCase::new(case.input, case.expected))
+            .collect();
+        app.app_state.test_runner.selected =
+            (!app.app_state.test_runner.cases.is_empty()).then_some(0);
+        app.app_state.test_runner.focused_field = crate::runner::TestField::Input;
+        app.app_state.test_runner.is_running = false;
+        app.app_state.test_runner.launch_error = None;
+        app.dojo_begin_dsa_session(title_slug, title, file_path, language_key);
+        app.request_redraw();
+        return;
+    }
 
     let report = dispatch_command(&mut app.app_state, Command::OpenFile(file_path.clone()));
     if !report.success {

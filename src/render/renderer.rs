@@ -180,6 +180,8 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) python_version: Option<String>,
     pub(super) node_version: Option<String>,
     pub(super) go_version: Option<String>,
+    /// Dojo session clock chip: (label, color code) — see `update_statusbar_content`.
+    pub(super) dojo_chip: Option<(String, u8)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

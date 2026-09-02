@@ -10,6 +10,8 @@ pub enum PanelTabId {
     Problems,
     AiChat,
     MarkdownPreview,
+    /// Interview-prep practice panel (problem menu + timed sessions).
+    Dojo,
 }
 
 impl PanelTabId {
@@ -25,6 +27,7 @@ impl PanelTabId {
             Self::Problems => "Problems",
             Self::AiChat => "AI Chat",
             Self::MarkdownPreview => "Preview",
+            Self::Dojo => "Dojo",
         }
     }
 
@@ -41,6 +44,8 @@ impl PanelTabId {
             Self::Problems => Some("built_in:warning"),
             Self::AiChat => Some("built_in:sparkles"),
             Self::MarkdownPreview => Some("\u{f15c}"), // nf-fa-file_text
+            // ponytail: reuses the flask icon; a dedicated dojo glyph is a follow-up.
+            Self::Dojo => Some("built_in:flask"),
         }
     }
 }
@@ -135,7 +140,7 @@ impl Default for WorkbenchPanelState {
             right: PanelState::new(
                 false,
                 650.0,
-                vec![PanelTabId::AiChat, PanelTabId::TestRunner],
+                vec![PanelTabId::AiChat, PanelTabId::TestRunner, PanelTabId::Dojo],
             ),
             // Bottom dock only exposes the Terminal; its outer tab strip lists each
             // terminal instance as a tab. Debug Console and Problems have no content

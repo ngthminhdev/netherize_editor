@@ -130,6 +130,10 @@ pub enum CommandPaletteMode {
     LeetCodeLanguageSelector,
     /// Free-text problem ID, slug, or URL prompt.
     LeetCodeProblemInput,
+    /// Dojo THINK gate: one line of approach + complexity before the file opens.
+    DojoApproach,
+    /// Dojo error-notebook prompt; step 0 = pass note, 1–3 = fail questions.
+    DojoNote(u8),
 }
 
 impl CommandPaletteMode {
@@ -158,6 +162,8 @@ impl CommandPaletteMode {
             Self::DartEnvSelector => "dart> ",
             Self::LeetCodeLanguageSelector => "language> ",
             Self::LeetCodeProblemInput => "leetcode> ",
+            Self::DojoApproach => "hướng làm> ",
+            Self::DojoNote(_) => "sổ lỗi> ",
         }
     }
 
@@ -186,6 +192,11 @@ impl CommandPaletteMode {
             Self::DartEnvSelector => "scanning Dart environments...",
             Self::LeetCodeLanguageSelector => "type to filter languages...",
             Self::LeetCodeProblemInput => "enter problem ID, slug, or URL...",
+            Self::DojoApproach => "hướng làm + độ phức tạp, rồi Enter",
+            Self::DojoNote(0) => "ghi chú (Enter bỏ qua)",
+            Self::DojoNote(1) => "bí ở đâu?",
+            Self::DojoNote(2) => "pattern đúng là gì?",
+            Self::DojoNote(_) => "dấu hiệu nhận biết lần sau?",
         }
     }
 
@@ -214,6 +225,8 @@ impl CommandPaletteMode {
             Self::DartEnvSelector => "DART ENV",
             Self::LeetCodeLanguageSelector => "NEW LEETCODE",
             Self::LeetCodeProblemInput => "FETCH LEETCODE",
+            Self::DojoApproach => "DOJO · THINK",
+            Self::DojoNote(_) => "DOJO · SỔ LỖI",
         }
     }
 
@@ -1035,7 +1048,9 @@ impl CommandPalette {
             | CommandPaletteMode::ExplorerPasteFile
             | CommandPaletteMode::LspRename
             | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
-            CommandPaletteMode::LeetCodeProblemInput => Vec::new(),
+            CommandPaletteMode::LeetCodeProblemInput
+            | CommandPaletteMode::DojoApproach
+            | CommandPaletteMode::DojoNote(_) => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
@@ -1559,6 +1574,7 @@ pub(crate) const COMMAND_PALETTE_ACTIONS: &[(&str, &str)] = &[
     ("runner.run", "Run Test Cases"),
     ("runner.new_leetcode_file", "New LeetCode File"),
     ("runner.fetch_leetcode_problem", "Fetch LeetCode Problem"),
+    ("dojo.open", "Dojo: Open"),
     // ── View / layout ─────────────────────────────────────────────────
     ("app.open_theme_selector", "Select Theme"),
     ("app.open_settings", "Open Settings"),

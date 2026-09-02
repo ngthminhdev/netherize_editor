@@ -3,11 +3,12 @@ use crate::async_runtime::message::{RequestTopic, WorkerEvent, WorkerResult, Wor
 
 mod ai;
 pub(crate) mod canvas_scope;
+mod dojo;
 mod failure;
 mod filesystem;
 mod fzf;
 mod git;
-mod leetcode_fetch;
+pub(super) mod leetcode_fetch;
 mod lsp;
 mod preview;
 mod runner;
@@ -105,6 +106,9 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::FileCopyResult { .. } => {
                 filesystem::handle_file_copy_result(self, result.payload);
+            }
+            WorkerResultPayload::TextFilesWritten { .. } => {
+                dojo::handle_text_files_written(self, result.payload);
             }
             WorkerResultPayload::ExternalFilesRead { .. } => {
                 filesystem::handle_external_files_read(self, result.payload);

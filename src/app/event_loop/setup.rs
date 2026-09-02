@@ -141,6 +141,10 @@ impl AppShell {
         let window_width = ui_config.window.width;
         let window_height = ui_config.window.height;
 
+        #[cfg(test)]
+        let dojo = super::commands::commands_dojo::DojoRuntime::for_tests();
+        #[cfg(not(test))]
+        let dojo = super::commands::commands_dojo::DojoRuntime::load();
         Ok(Self {
             app_state,
             persistent_state,
@@ -185,6 +189,7 @@ impl AppShell {
             cached_document_symbols: Vec::new(),
             outline_fetch_path: None,
             outline_selected: None,
+            dojo,
             syntax_engine: None,
             syntax_engine_file: None,
             terminal_tabs: {
@@ -848,6 +853,7 @@ impl AppShell {
                     Some(PanelTabId::TestRunner) => InputFocusContext::TestRunner,
                     Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,
                     Some(PanelTabId::Outline) => InputFocusContext::Outline,
+                    Some(PanelTabId::Dojo) => InputFocusContext::Dojo,
                     Some(PanelTabId::Terminal)
                         if matches!(
                             mode,

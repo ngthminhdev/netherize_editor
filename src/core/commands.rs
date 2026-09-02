@@ -339,6 +339,24 @@ pub enum Command {
     TestRunnerFocus,
     /// Return focus from the Test Runner panel to the editor.
     TestRunnerUnfocus,
+    // ── Dojo (interview-prep panel) ──────────────────────────────────────
+    /// Show the right-dock Dojo tab and focus it (`g o`).
+    DojoOpen,
+    DojoSelectNext,
+    DojoSelectPrev,
+    /// Enter on a row: fetch + start a timed session (or reopen the approach prompt).
+    DojoStart,
+    /// Toggle the "only due redos" filter.
+    DojoToggleRedo,
+    DojoPageNext,
+    DojoPagePrev,
+    /// Launch the Claude interviewer agent for the selected problem.
+    DojoInterviewer,
+    /// End the running session early (`x`).
+    DojoGiveUp,
+    DojoScrollDown,
+    DojoScrollUp,
+    DojoUnfocus,
     /// Append a new empty case and begin editing its Input field.
     TestRunnerAddCase,
     /// Delete the selected case.

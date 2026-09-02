@@ -409,6 +409,7 @@ impl crate::render::renderer::Renderer {
             f32,
         )>,
         agent_picker: Option<(&[(&str, &str)], usize, bool)>,
+        dojo: Option<(&crate::dojo::view::DojoPanelModel, f32)>,
         mode: EditorMode,
     ) {
         if rb[2] <= 2.0 || rb[3] <= 2.0 {
@@ -462,6 +463,10 @@ impl crate::render::renderer::Renderer {
             content_icons.extend(ci);
         } else if let Some((agents, selected, focused)) = agent_picker {
             let (cc, cg) = self.build_ai_agent_picker(content_bounds, agents, selected, focused);
+            chrome.extend(cc);
+            glyphs.extend(cg);
+        } else if let Some((model, inner_padding)) = dojo {
+            let (cc, cg) = self.build_dojo_content(content_bounds, model, inner_padding);
             chrome.extend(cc);
             glyphs.extend(cg);
         }
@@ -927,6 +932,231 @@ impl crate::render::renderer::Renderer {
         }
 
         (chrome, glyphs, icons)
+    }
+
+    /// Dojo tab: header + progress + problem rows, or the running session
+    /// (statement + phase clock). Pure model in, instances out.
+    fn build_dojo_content(
+        &mut self,
+        bounds: [f32; 4],
+        model: &crate::dojo::view::DojoPanelModel,
+        inner_padding: f32,
+    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
+        use crate::dojo::{
+            session::SessionKind,
+            view::{RowGlyph, wrap_text},
+        };
+        let mut chrome: Vec<RegionDrawInstance> = Vec::new();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        if bounds[2] <= 2.0 || bounds[3] <= 2.0 {
+            return (chrome, glyphs);
+        }
+
+        let scale = self.ui_scale.max(0.5);
+        let pad = inner_padding.max(8.0 * scale);
+        let font = self.theme.ui.panel_font_size.max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let border = self.theme.ui.border_color.as_f32();
+        let success = self.theme.ui.success.as_f32();
+        let warning = self.theme.ui.warning.as_f32();
+        let error = self.theme.ui.error.as_f32();
+        let info = self.theme.ui.info.as_f32();
+        let magenta = self.theme.ui.magenta.as_f32();
+        let cyan = self.theme.ui.cyan.as_f32();
+        let mut selection_bg = self.theme.ui.selection_bg.as_f32();
+        if !model.focused {
+            selection_bg[3] *= 0.5;
+        }
+
+        let x0 = bounds[0] + pad;
+        let x1 = bounds[0] + bounds[2] - pad;
+        let bottom = bounds[1] + bounds[3];
+        let char_w = estimate_monospace_width("0", font).max(1.0);
+        let width_chars = ((x1 - x0) / char_w).max(8.0) as usize;
+        let mut y = bounds[1] + pad * 0.5;
+
+        macro_rules! text {
+            ($t:expr, $x:expr, $y:expr, $c:expr) => {
+                glyphs.extend(layout_panel_text(
+                    $t,
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    $x,
+                    $y,
+                    $c,
+                ));
+            };
+        }
+        macro_rules! text_right {
+            ($t:expr, $y:expr, $c:expr) => {{
+                let s: &str = $t;
+                let w = estimate_monospace_width(s, font);
+                text!(s, (x1 - w).max(x0), $y, $c);
+            }};
+        }
+
+        let h = &model.header;
+        // ── Header ────────────────────────────────────────────────────────────
+        let right = format!(
+            "{}/{} · streak {}",
+            h.overall_done, h.overall_total, h.streak
+        );
+        let right_w = estimate_monospace_width(&right, font);
+        let left = format!(
+            "DOJO · {} ({}/{})",
+            h.page_label, h.page_index, h.page_count
+        );
+        let left_max = (((x1 - x0) - right_w - char_w) / char_w).max(4.0) as usize;
+        text!(&clip_chars(&left, left_max), x0, y, fg);
+        text_right!(&right, y, fg_dim);
+        y += line_h;
+
+        // ── Progress bar ──────────────────────────────────────────────────────
+        let bar_w = ((x1 - x0) * 0.45).max(40.0);
+        let bar_h = (line_h * 0.4).max(4.0);
+        let bar_y = y + (line_h - bar_h) * 0.5;
+        chrome.push(RegionDrawInstance::new([x0, bar_y, bar_w, bar_h], border).with_radius(2.0));
+        if h.page_total > 0 && h.page_done > 0 {
+            let fill = bar_w * (h.page_done as f32 / h.page_total as f32).min(1.0);
+            chrome.push(RegionDrawInstance::new([x0, bar_y, fill, bar_h], accent).with_radius(2.0));
+        }
+        let progress = format!("{}/{}", h.page_done, h.page_total);
+        text!(&progress, x0 + bar_w + char_w, y, fg_dim);
+        let redo = format!("redo tới hạn: {}", h.redo_due);
+        text_right!(&redo, y, if h.redo_due > 0 { warning } else { fg_ghost });
+        y += line_h;
+
+        // ── Separator ─────────────────────────────────────────────────────────
+        chrome.push(RegionDrawInstance::new(
+            [bounds[0], y + 2.0, bounds[2], 1.0],
+            border,
+        ));
+        y += line_h * 0.5;
+
+        let footer_y = bottom - line_h - pad * 0.5;
+
+        if let Some(s) = &model.session {
+            // ── Session view ──────────────────────────────────────────────────
+            let clock_color = if s.expired {
+                error
+            } else if s.remaining_s < 60 {
+                error
+            } else {
+                match (s.kind, s.phase_index) {
+                    (SessionKind::Sd, _) => cyan,
+                    (_, 0) => info,
+                    (_, 1) => accent,
+                    (_, 2) => warning,
+                    _ => magenta,
+                }
+            };
+            let clock = format!("{} {}", s.phase, s.remaining);
+            let clock_w = estimate_monospace_width(&clock, font);
+            let title_max = (((x1 - x0) - clock_w - char_w) / char_w).max(4.0) as usize;
+            text!(&clip_chars(&s.title, title_max), x0, y, fg);
+            text_right!(&clock, y, clock_color);
+            y += line_h;
+
+            let mut lines: Vec<String> = Vec::new();
+            for paragraph in &s.statement_lines {
+                lines.extend(wrap_text(paragraph, width_chars));
+                lines.push(String::new());
+            }
+            if lines.is_empty() {
+                lines.push("Chưa có đề (fetch đang chạy…)".to_string());
+            }
+            for line in lines.iter().skip(model.scroll) {
+                if y + line_h > footer_y - line_h * 0.5 {
+                    break;
+                }
+                if !line.is_empty() {
+                    text!(line, x0, y, fg_dim);
+                }
+                y += line_h;
+            }
+
+            let approach = match &s.approach {
+                Some(a) => format!("Hướng làm: {a}"),
+                None => "Hướng làm: (chưa có)".to_string(),
+            };
+            let keys = match (s.kind, s.approach.is_some()) {
+                (SessionKind::Sd, _) => "[x] kết thúc  [i] interviewer",
+                (_, false) => "[Enter] nhập  [x] bỏ phiên  [i] interviewer",
+                (_, true) => "[Enter] test runner  [x] bỏ phiên  [i] interviewer",
+            };
+            let keys_w = estimate_monospace_width(keys, font);
+            let approach_max = (((x1 - x0) - keys_w - char_w) / char_w).max(4.0) as usize;
+            text!(&clip_chars(&approach, approach_max), x0, footer_y, fg);
+            text_right!(keys, footer_y, fg_ghost);
+            return (chrome, glyphs);
+        }
+
+        // ── Rows ──────────────────────────────────────────────────────────────
+        let visible = (((footer_y - y) / line_h).floor() as usize).max(1);
+        let start = if model.selected >= model.scroll + visible {
+            model.selected + 1 - visible
+        } else if model.selected < model.scroll {
+            model.selected
+        } else {
+            model.scroll
+        };
+        if model.rows.is_empty() {
+            text!("Không có bài trên trang này.", x0, y, fg_ghost);
+        }
+        for (i, row) in model.rows.iter().enumerate().skip(start) {
+            if y + line_h > footer_y {
+                break;
+            }
+            let selected = i == model.selected;
+            if selected {
+                chrome.push(RegionDrawInstance::new(
+                    [bounds[0], y - 1.0, bounds[2], line_h],
+                    selection_bg,
+                ));
+            }
+            let (glyph, glyph_color) = match row.glyph {
+                RowGlyph::RedoDue => ("↻", warning),
+                RowGlyph::RedoLater => ("·", fg_ghost),
+                RowGlyph::Todo => ("○", fg_dim),
+                RowGlyph::Done => ("●", success),
+            };
+            text!(glyph, x0, y, glyph_color);
+            let id = if row.id > 0 {
+                format!("{:>4}", row.id)
+            } else {
+                "    ".to_string()
+            };
+            text!(&id, x0 + char_w * 2.0, y, fg_ghost);
+            let title_x = x0 + char_w * 7.0;
+            let trailing_w = if row.trailing.is_empty() {
+                0.0
+            } else {
+                estimate_monospace_width(&row.trailing, font) + char_w
+            };
+            let avail = (x1 - title_x - trailing_w).max(char_w * 4.0);
+            let title = clip_chars(&row.title, (avail / char_w) as usize);
+            text!(&title, title_x, y, if selected { fg } else { fg_dim });
+            if !row.trailing.is_empty() {
+                let trail_max = (((x1 - title_x) * 0.5) / char_w).max(6.0) as usize;
+                let trailing = clip_chars(&row.trailing, trail_max);
+                text_right!(&trailing, y, fg_ghost);
+            }
+            y += line_h;
+        }
+
+        // ── Footer ────────────────────────────────────────────────────────────
+        let footer = if model.redo_only {
+            "CHỈ REDO · [r] tất cả  [Enter] bắt đầu  [Esc] editor"
+        } else {
+            "[Enter] bắt đầu  [r] chỉ redo  [ ] ] nhóm  [i] interviewer  [Esc] editor"
+        };
+        text!(&clip_chars(footer, width_chars), x0, footer_y, fg_ghost);
+        (chrome, glyphs)
     }
 
     /// Hit-test a point against the Outline list. Returns the symbol index under

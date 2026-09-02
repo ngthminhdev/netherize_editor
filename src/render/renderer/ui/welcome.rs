@@ -99,6 +99,7 @@ impl Renderer {
         bounds: [f32; 4],
         recent_projects: &[PathBuf],
         selected_recent_index: usize,
+        dojo_card: Option<(&str, &str)>,
     ) {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.clear_welcome_logo();
@@ -467,7 +468,7 @@ impl Renderer {
         let card_sub_size = sx(10.5);
         let section_size = sx(10.5);
         let mut card_y = meta_y + sx(58.0);
-        let action_cards = [
+        let mut action_cards = vec![
             (
                 "START",
                 "built_in:file",
@@ -496,6 +497,18 @@ impl Renderer {
                 false,
             ),
         ];
+        // Dojo suggestion card (never assigns; `g o` opens the panel).
+        if let Some((title, sub)) = dojo_card {
+            action_cards.push((
+                "DOJO",
+                "built_in:flask",
+                self.theme.ui.magenta.as_f32(),
+                title,
+                sub,
+                &["g", "o"][..],
+                false,
+            ));
+        }
         for (section, icon, color, title, sub, keys, active) in action_cards {
             if !section.is_empty() {
                 line(

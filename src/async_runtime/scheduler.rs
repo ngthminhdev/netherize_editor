@@ -28,6 +28,7 @@ mod runtime;
 mod syntax_jobs;
 #[cfg(test)]
 mod tests;
+mod text_files;
 
 pub use runtime::AsyncScheduler;
 pub(crate) use syntax_jobs::resolve_system_path;

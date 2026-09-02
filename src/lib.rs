@@ -4,6 +4,7 @@ pub mod canvas;
 pub mod codegraph;
 pub mod config;
 pub mod core;
+pub mod dojo;
 pub mod editor_core;
 pub mod lsp;
 pub mod render;

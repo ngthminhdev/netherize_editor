@@ -56,6 +56,8 @@ pub enum InputFocusContext {
     CodeGraph,
     /// NetherCanvas spatial canvas (gc) — full-screen modal owning hjkl/Tab/Enter/Esc.
     Canvas,
+    /// Right sidebar Dojo tab — j/k/Enter/[ ]/r/i/x, Esc.
+    Dojo,
 }
 
 impl InputFocusContext {
@@ -80,6 +82,7 @@ impl InputFocusContext {
             Self::Outline => "outline",
             Self::CodeGraph => "code_graph",
             Self::Canvas => "canvas",
+            Self::Dojo => "dojo",
         }
     }
 
@@ -101,6 +104,7 @@ impl InputFocusContext {
                 | Self::SettingsTab
                 | Self::Outline
                 | Self::BottomPanel
+                | Self::Dojo
         )
     }
 }
@@ -717,6 +721,7 @@ impl InputMap {
             InputFocusContext::Outline => "normal",
             InputFocusContext::CodeGraph => "code_graph",
             InputFocusContext::Canvas => "canvas",
+            InputFocusContext::Dojo => "normal",
         }
     }
 

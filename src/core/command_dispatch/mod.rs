@@ -410,6 +410,18 @@ fn dispatch_command_with_clipboard_once(
         | Command::TestRunnerNextCase
         | Command::TestRunnerPrevCase
         | Command::TestRunnerToggleField
+        | Command::DojoOpen
+        | Command::DojoSelectNext
+        | Command::DojoSelectPrev
+        | Command::DojoStart
+        | Command::DojoToggleRedo
+        | Command::DojoPageNext
+        | Command::DojoPagePrev
+        | Command::DojoInterviewer
+        | Command::DojoGiveUp
+        | Command::DojoScrollDown
+        | Command::DojoScrollUp
+        | Command::DojoUnfocus
         | Command::TestRunnerEditField
         | Command::TestRunnerSelectCase(_)
         | Command::TestRunnerOpenField { .. }

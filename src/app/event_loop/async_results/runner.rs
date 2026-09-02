@@ -30,6 +30,7 @@ pub(super) fn handle_test_cases_completed(app: &mut AppShell, payload: WorkerRes
         ToastKind::Error
     };
     app.show_transient_toast_kind(format!("Test Runner\n{passed}/{total} passed"), kind);
+    app.dojo_on_run_completed(total > 0 && passed == total);
     app.editor_needs_layout = true;
     app.request_redraw();
 }

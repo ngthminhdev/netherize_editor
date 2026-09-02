@@ -2767,3 +2767,47 @@ fn canvas_navigate_keys_press_and_hold_repeat() {
         Command::CanvasContextShrink,
     );
 }
+
+#[test]
+fn dojo_open_is_g_o() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let mut handler = InputHandler::new();
+    let now = Instant::now();
+    let _ = handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now);
+    match handler.route_normalized_input(
+        char_input('o', KeyCode::KeyO),
+        &map,
+        context,
+        now + Duration::from_millis(1),
+    ) {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, Command::DojoOpen),
+        other => panic!("expected g o -> DojoOpen, got {other:?}"),
+    }
+}
+
+#[test]
+fn dojo_panel_keys_route_to_dojo_commands() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Dojo);
+    let mut handler = InputHandler::new();
+    let now = Instant::now();
+    let mut expect = |input: NormalizedInput, want: Command| match handler
+        .route_normalized_input(input, &map, context, now)
+    {
+        Some(InputRouteOutcome::Dispatch(t)) => assert_eq!(t.command, want),
+        other => panic!("expected {want:?}, got {other:?}"),
+    };
+    expect(char_input('j', KeyCode::KeyJ), Command::DojoSelectNext);
+    expect(char_input('k', KeyCode::KeyK), Command::DojoSelectPrev);
+    expect(char_input('r', KeyCode::KeyR), Command::DojoToggleRedo);
+    expect(
+        char_input(']', KeyCode::BracketRight),
+        Command::DojoPageNext,
+    );
+    expect(char_input('[', KeyCode::BracketLeft), Command::DojoPagePrev);
+    expect(char_input('i', KeyCode::KeyI), Command::DojoInterviewer);
+    expect(char_input('x', KeyCode::KeyX), Command::DojoGiveUp);
+    expect(named_input(NamedKey::Enter, None), Command::DojoStart);
+    expect(named_input(NamedKey::Escape, None), Command::DojoUnfocus);
+}

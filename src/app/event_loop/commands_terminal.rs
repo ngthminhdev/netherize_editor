@@ -527,7 +527,7 @@ impl AppShell {
     }
 
     /// Open the right dock, switch to the Test Runner tab, and move focus to it.
-    fn handle_test_runner_focus(&mut self) -> bool {
+    pub(in crate::app::event_loop) fn handle_test_runner_focus(&mut self) -> bool {
         self.panel_state.right.visible = true;
         self.panel_state
             .right
@@ -942,7 +942,11 @@ impl AppShell {
         true
     }
 
-    fn submit_leetcode_fetch(&mut self, input: String, language_key: String) {
+    pub(in crate::app::event_loop) fn submit_leetcode_fetch(
+        &mut self,
+        input: String,
+        language_key: String,
+    ) {
         let destination_dir = self
             .app_state
             .workspace_root_path()

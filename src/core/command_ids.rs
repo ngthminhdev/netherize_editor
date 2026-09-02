@@ -91,6 +91,7 @@ pub const TOGGLE_BOTTOM_DOCK: &str = "app.toggle_bottom_dock";
 pub const RUN_TEST_CASES: &str = "runner.run";
 pub const NEW_LEETCODE_FILE: &str = "runner.new_leetcode_file";
 pub const FETCH_LEETCODE_PROBLEM: &str = "runner.fetch_leetcode_problem";
+pub const DOJO_OPEN: &str = "dojo.open";
 pub const TOGGLE_LEFT_DOCK: &str = "app.toggle_left_dock";
 pub const OPEN_FILE_PICKER: &str = "app.open_file_picker";
 pub const OPEN_FILE_FINDER: &str = "app.open_file_finder";
@@ -327,6 +328,7 @@ pub const PALETTE_MOVE_CURSOR_TO_END: &str = "palette.move_cursor_to_end";
 pub const PALETTE_DELETE_CHAR_FORWARD: &str = "palette.delete_char_forward";
 
 pub const ALL_IDS: &[&str] = &[
+    DOJO_OPEN,
     OPEN_FOLDER,
     OPEN_RECENT_PROJECTS,
     OPEN_WORKTREES,
@@ -801,6 +803,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_RESTART => Some(Command::LspRestart),
         CODEGRAPH_OPEN_GRAPH_HUD => Some(Command::CodeGraphOpenGraphHud),
         CANVAS_OPEN => Some(Command::CanvasOpen),
+        DOJO_OPEN => Some(Command::DojoOpen),
         CANVAS_AUTO_ARRANGE => Some(Command::CanvasAutoArrange),
         RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
         RESIZE_DECREASE_WIDTH => Some(Command::ResizeDecreaseWidth),
@@ -941,6 +944,13 @@ mod tests {
             parse(NEW_LEETCODE_FILE, None),
             Some(Command::NewLeetCodeFile)
         ));
+    }
+
+    #[test]
+    fn dojo_open_id_round_trips() {
+        assert_eq!(DOJO_OPEN, "dojo.open");
+        assert!(ALL_IDS.contains(&DOJO_OPEN));
+        assert!(matches!(parse(DOJO_OPEN, None), Some(Command::DojoOpen)));
     }
 
     #[test]

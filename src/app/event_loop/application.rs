@@ -2388,6 +2388,10 @@ impl ApplicationHandler<AppEvent> for AppShell {
             ));
             self.request_redraw();
         }
+        // Dojo session clock: phase toasts, timeout auto-stop, 1 Hz chip redraw.
+        if self.dojo_tick() {
+            self.request_redraw();
+        }
         if self.exit_requested {
             self.capture_window_geometry();
             self.persist_window_geometry_if_due(true);
@@ -2522,6 +2526,15 @@ impl ApplicationHandler<AppEvent> for AppShell {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(whichkey_deadline),
                 None => whichkey_deadline,
+            });
+        }
+        if self.dojo.armed && self.dojo.state.active_session.is_some() {
+            // Wake on the next whole second so the clock chip ticks evenly.
+            let to_next_second = 1000 - (crate::dojo::state::now_millis() % 1000);
+            let dojo_deadline = Instant::now() + Duration::from_millis(to_next_second.max(1));
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(dojo_deadline),
+                None => dojo_deadline,
             });
         }
 
@@ -3158,12 +3171,14 @@ impl AppShell {
                         let (text, styled) = welcome_screen_content(&self.theme);
                         renderer.clear_editor_content();
                         renderer.clear_buffer_terminal();
+                        let dojo_card = self.dojo.welcome_card();
                         renderer.update_welcome_screen_content(
                             &text,
                             &styled,
                             center_bounds,
                             &self.persistent_state.recent_projects,
                             self.app_state.command_palette_selected_index(),
+                            Some((dojo_card.0.as_str(), dojo_card.1.as_str())),
                         );
                     } else if let Some(session_id) = active_terminal_session {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
@@ -3651,8 +3666,7 @@ impl AppShell {
                     let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
                     // Guard against a stale hover index from a tab that just
                     // closed (same guard as the topbar render path).
-                    let hovered_tab_index =
-                        left_dock_hover.filter(|&index| index < labels.len());
+                    let hovered_tab_index = left_dock_hover.filter(|&index| index < labels.len());
 
                     let explorer_rows_opt = if left_is_explorer {
                         Some(sidebar_rows.as_slice())
@@ -3727,6 +3741,14 @@ impl AppShell {
             if is_outline {
                 self.ensure_outline_symbols();
             }
+            // Dojo tab: rows + optional session view, built from pure state.
+            // Computed first because it needs `&mut self` (statement cache).
+            let dojo_model = if active_tab_id == Some(PanelTabId::Dojo) {
+                let focused = self.focus_manager.current() == FocusTarget::RightSidebar;
+                Some(self.dojo_panel_model(focused))
+            } else {
+                None
+            };
             let labels: Vec<&str> = self
                 .panel_state
                 .right
@@ -3801,6 +3823,7 @@ impl AppShell {
                     strip_focused,
                 ))
             };
+            let dojo = dojo_model.as_ref().map(|model| (model, inner_padding));
             // Hover-highlight input: resolve which right-dock tab (if any)
             // sits under the pointer so this frame draws its wash. Guarded
             // against a stale index left over from a tab that just closed.
@@ -3820,6 +3843,7 @@ impl AppShell {
                     content,
                     outline,
                     agent_picker,
+                    dojo,
                     mode,
                 );
             }
@@ -4076,6 +4100,7 @@ impl AppShell {
                     Some(crate::canvas::CanvasInteraction::EditCard { .. }) => Some("CANVAS·EDIT"),
                     _ => None,
                 };
+                let dojo_chip = self.dojo.statusbar_chip();
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     canvas_label,
@@ -4096,6 +4121,9 @@ impl AppShell {
                     self.runtime_versions.python_version.as_deref(),
                     self.runtime_versions.node_version.as_deref(),
                     self.runtime_versions.go_version.as_deref(),
+                    dojo_chip
+                        .as_ref()
+                        .map(|(label, code)| (label.as_str(), *code)),
                     status_bounds,
                 );
                 region_instances.extend(pill_quads);

@@ -269,6 +269,10 @@ impl InputHandler {
             return self.route_outline_input(normalized, input_debug, context, Instant::now());
         }
 
+        if context.focus == InputFocusContext::Dojo {
+            return self.route_dojo_input(normalized, input_debug, context);
+        }
+
         if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
             self.clear_pending_counts();
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
@@ -389,6 +393,7 @@ impl InputHandler {
         // leader chords reach the keymap instead of being swallowed by j/k routing.
         let outline_allows_leader =
             context.focus == InputFocusContext::Outline && leader_sequence_input;
+        let dojo_allows_leader = context.focus == InputFocusContext::Dojo && leader_sequence_input;
 
         // Cmd/Super shortcuts are GUI-global: a chord carrying the command
         // modifier (Cmd on macOS) must trigger its bound command regardless of
@@ -431,6 +436,14 @@ impl InputHandler {
             && !outline_allows_leader
         {
             return self.route_outline_input(normalized, input_debug, context, now);
+        }
+
+        // Dojo panel: list navigation + session keys.
+        if context.focus == InputFocusContext::Dojo
+            && !zen_mode_allows_leader
+            && !dojo_allows_leader
+        {
+            return self.route_dojo_input(normalized, input_debug, context);
         }
 
         if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
@@ -1847,6 +1860,61 @@ impl InputHandler {
                 }
                 "G" => return make(Command::OutlineLast, "last symbol (G)"),
                 "q" => return make(Command::FocusEditor, "exit outline (q)"),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Dojo panel: list navigation + session keys. Text never reaches the
+    /// editor from here (Esc/q leave).
+    fn route_dojo_input(
+        &mut self,
+        normalized: NormalizedInput,
+        input_debug: String,
+        context: KeybindingContext,
+    ) -> Option<InputRouteOutcome> {
+        let focus = context.focus.as_str();
+        let make = |command: Command, reason: &str| {
+            Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug.clone(),
+                format!("focus={focus} -> dojo: {reason}"),
+                command,
+                1,
+                false,
+            )))
+        };
+        if normalized.named_key == Some(NamedKey::Escape) {
+            return make(Command::DojoUnfocus, "leave (Esc)");
+        }
+        if normalized.named_key == Some(NamedKey::Enter) && !normalized.has_command_modifier() {
+            return make(Command::DojoStart, "start (Enter)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowDown) {
+            return make(Command::DojoSelectNext, "next (Down)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowUp) {
+            return make(Command::DojoSelectPrev, "prev (Up)");
+        }
+        if normalized.modifiers.control_key() && !normalized.has_command_modifier() {
+            match normalized.physical_key {
+                Some(KeyCode::KeyD) => return make(Command::DojoScrollDown, "scroll (C-d)"),
+                Some(KeyCode::KeyU) => return make(Command::DojoScrollUp, "scroll (C-u)"),
+                _ => {}
+            }
+        }
+        if let Some(text) = normalized.text.as_deref()
+            && !normalized.has_command_modifier()
+        {
+            match text {
+                "j" => return make(Command::DojoSelectNext, "next (j)"),
+                "k" => return make(Command::DojoSelectPrev, "prev (k)"),
+                "r" => return make(Command::DojoToggleRedo, "redo filter (r)"),
+                "]" => return make(Command::DojoPageNext, "next page (])"),
+                "[" => return make(Command::DojoPagePrev, "prev page ([)"),
+                "i" => return make(Command::DojoInterviewer, "interviewer (i)"),
+                "x" => return make(Command::DojoGiveUp, "give up (x)"),
+                "q" => return make(Command::DojoUnfocus, "leave (q)"),
                 _ => {}
             }
         }

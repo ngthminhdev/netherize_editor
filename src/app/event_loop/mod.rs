@@ -165,6 +165,8 @@ pub struct AppShell {
     outline_fetch_path: Option<PathBuf>,
     /// Selected index in the Outline list when navigating via keyboard.
     outline_selected: Option<usize>,
+    /// Interview-prep Dojo: plan, problem list, state, panel cursor, session.
+    dojo: commands::commands_dojo::DojoRuntime,
     syntax_engine: Option<SyntaxEngine>,
     syntax_engine_file: Option<PathBuf>,
     /// Bottom-panel terminal tabs. Always non-empty when the panel is open.

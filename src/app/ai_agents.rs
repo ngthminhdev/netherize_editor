@@ -60,6 +60,14 @@ pub fn default_ai_agents() -> &'static [AiAgent] {
             label: "Claude Kimi",
             command: "kimicode",
         },
+        // Dojo mock interviewer: Claude Code with the prompt the Dojo ships to
+        // ~/.config/netherize/dojo/interviewer.md (user-editable). `$(cat …)`
+        // expands in the login shell that hosts the agent.
+        AiAgent {
+            id: "interviewer",
+            label: "Interviewer (claude)",
+            command: "claude --append-system-prompt \"$(cat ~/.config/netherize/dojo/interviewer.md)\"",
+        },
     ]
 }
 
@@ -88,5 +96,12 @@ mod tests {
     #[test]
     fn unknown_agent_is_none() {
         assert!(ai_agent("nope").is_none());
+    }
+
+    #[test]
+    fn interviewer_agent_reads_the_dojo_prompt_file() {
+        let a = ai_agent("interviewer").expect("interviewer");
+        assert!(a.command.starts_with("claude --append-system-prompt"));
+        assert!(a.command.contains("dojo/interviewer.md"));
     }
 }

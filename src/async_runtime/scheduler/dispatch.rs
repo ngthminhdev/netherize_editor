@@ -618,6 +618,25 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
+        if let WorkerRequestPayload::WriteTextFiles { ops } = request.payload.clone() {
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let failures = super::text_files::apply_text_ops(ops).await;
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::TextFilesWritten { failures },
+                    }),
+                );
+            });
+            continue;
+        }
+
         if matches!(request.payload, WorkerRequestPayload::CopyFile { .. }) {
             let (source_path, target_path) = match request.payload {
                 WorkerRequestPayload::CopyFile {

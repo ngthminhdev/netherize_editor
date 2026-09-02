@@ -4,6 +4,8 @@ mod commands_ai_agent;
 mod commands_canvas;
 #[path = "commands_completion.rs"]
 mod commands_completion;
+#[path = "commands_dojo.rs"]
+pub(super) mod commands_dojo;
 #[path = "commands_editor.rs"]
 mod commands_editor;
 #[path = "commands_explorer.rs"]
@@ -518,6 +520,13 @@ impl AppShell {
             );
         }
         if let Some(changed) = self.handle_ai_agent_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
+        if let Some(changed) = self.handle_dojo_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
                 should_persist_history_after,
