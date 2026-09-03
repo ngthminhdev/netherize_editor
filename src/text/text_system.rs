@@ -1,13 +1,57 @@
 use std::sync::Arc;
 
 use cosmic_text::{
-    Attrs, AttrsList, Buffer, BufferLine, CacheKey, Color, Family, FontSystem, LineEnding,
-    LineIter, Metrics, Scroll, Shaping, SwashCache, SwashImage, Wrap, fontdb,
+    Attrs, AttrsList, Buffer, BufferLine, CacheKey, Color, Fallback, Family, FontSystem,
+    LineEnding, LineIter, Metrics, PlatformFallback, Scroll, Shaping, SwashCache, SwashImage, Wrap,
+    fontdb,
 };
 
 const BUNDLED_GOOGLE_SANS_CODE_FONT: &[u8] =
     include_bytes!("../../config/fonts/GoogleSansCode.ttf");
 const BUNDLED_HACK_NERD_FONT: &[u8] = include_bytes!("../../config/fonts/HackNerdFont-Regular.ttf");
+/// Family name of the bundled Nerd Font. It is the first fallback for any glyph the
+/// configured text font lacks (PUA icons, powerline), so icons never resolve to a
+/// random system font. It must not be the *primary* font for text: its cmap maps
+/// many precomposed Vietnamese letters (ạ, ố, ề, …) to the bare base glyph, so
+/// cosmic-text sees a hit and never falls back — the diacritics silently vanish.
+pub const BUNDLED_NERD_FAMILY: &str = "Hack Nerd Font";
+
+/// cosmic-text fallback chain: bundled Nerd Font first, then the platform list.
+struct IconFirstFallback {
+    common: Vec<&'static str>,
+}
+
+impl IconFirstFallback {
+    fn new() -> Self {
+        let mut common = vec![BUNDLED_NERD_FAMILY];
+        common.extend_from_slice(PlatformFallback.common_fallback());
+        Self { common }
+    }
+}
+
+impl Fallback for IconFirstFallback {
+    fn common_fallback(&self) -> &[&'static str] {
+        &self.common
+    }
+
+    fn forbidden_fallback(&self) -> &[&'static str] {
+        PlatformFallback.forbidden_fallback()
+    }
+
+    fn script_fallback(&self, script: unicode_script::Script, locale: &str) -> &[&'static str] {
+        PlatformFallback.script_fallback(script, locale)
+    }
+}
+
+fn new_font_system() -> FontSystem {
+    // Mirrors `FontSystem::new()`, which is not parameterised over the fallback list.
+    let locale = sys_locale::get_locale().unwrap_or_else(|| String::from("en-US"));
+    let mut db = fontdb::Database::new();
+    db.set_monospace_family("Noto Sans Mono");
+    db.set_sans_serif_family("Open Sans");
+    db.set_serif_family("DejaVu Serif");
+    FontSystem::new_with_locale_and_db_and_fallback(locale, db, IconFirstFallback::new())
+}
 
 use crate::config::theme_config::srgb_rgba_to_linear_f32;
 
@@ -123,7 +167,7 @@ pub struct TextSystem {
 
 impl TextSystem {
     pub fn new(metrics: Metrics, width: Option<f32>, height: Option<f32>) -> Self {
-        let mut font_system = FontSystem::new();
+        let mut font_system = new_font_system();
         register_bundled_fonts(&mut font_system);
         let swash_cache = SwashCache::new();
         let mut buffer = Buffer::new(&mut font_system, metrics);
@@ -625,9 +669,9 @@ fn register_bundled_fonts(font_system: &mut FontSystem) {
 
 #[cfg(test)]
 mod tests {
-    use cosmic_text::Metrics;
+    use cosmic_text::{CacheKey, Metrics};
 
-    use super::{StyledTextSpan, TextSystem};
+    use super::{BUNDLED_NERD_FAMILY, StyledTextSpan, TextSystem};
 
     #[test]
     fn unbounded_height_shapes_deep_lines() {
@@ -804,5 +848,60 @@ mod tests {
         assert_eq!(runs.len(), 2);
         assert!(!runs[0].glyphs.is_empty());
         assert!(runs[1].glyphs.is_empty());
+    }
+    fn single_glyph(ts: &mut TextSystem, ch: char) -> CacheKey {
+        ts.set_text(&ch.to_string());
+        let glyphs = ts.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0], None);
+        assert_eq!(
+            glyphs.len(),
+            1,
+            "expected one glyph for U+{:04X}",
+            ch as u32
+        );
+        glyphs[0].cache_key
+    }
+
+    /// Regression: the terminal used the Nerd Font as its text font, whose cmap maps
+    /// ạ/ố/ề/ớ/ụ to the bare base glyph — diacritics vanished. Text must shape with
+    /// the editor font, where every Vietnamese letter has its own glyph.
+    #[test]
+    fn vietnamese_letters_keep_their_diacritics_in_the_editor_font() {
+        let mut ts = TextSystem::new(Metrics::new(14.0, 20.0), Some(200.0), Some(40.0));
+        ts.set_font_family(Some("Google Sans Code"));
+        let base = single_glyph(&mut ts, 'a');
+        for ch in [
+            '\u{1ea1}', '\u{1ed1}', '\u{1ed5}', '\u{1ec1}', '\u{1edb}', '\u{1ee5}',
+        ] {
+            let key = single_glyph(&mut ts, ch);
+            assert_eq!(
+                key.font_id, base.font_id,
+                "U+{:04X} left the primary font",
+                ch as u32
+            );
+            assert_ne!(
+                key.glyph_id, base.glyph_id,
+                "U+{:04X} collapsed to the base glyph",
+                ch as u32
+            );
+        }
+    }
+
+    /// PUA icons missing from the editor font must resolve to the bundled Nerd Font,
+    /// never to whatever system font happens to carry that code point.
+    #[test]
+    fn pua_icons_fall_back_to_the_bundled_nerd_font() {
+        let mut nerd = TextSystem::new(Metrics::new(14.0, 20.0), Some(200.0), Some(40.0));
+        nerd.set_font_family(Some(BUNDLED_NERD_FAMILY));
+        let mut ts = TextSystem::new(Metrics::new(14.0, 20.0), Some(200.0), Some(40.0));
+        ts.set_font_family(Some("Google Sans Code"));
+        for icon in ['\u{e0a0}', '\u{f0e7}', '\u{f15c}', '\u{e5ff}', '\u{f0001}'] {
+            let expected = single_glyph(&mut nerd, icon);
+            let got = single_glyph(&mut ts, icon);
+            assert_eq!(
+                got.glyph_id, expected.glyph_id,
+                "U+{:04X} glyph",
+                icon as u32
+            );
+        }
     }
 }

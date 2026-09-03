@@ -88,6 +88,8 @@ pub enum AnsiEvent {
     CursorMove { row_delta: i32, col_delta: i32 },
     /// Di chuyển cursor tuyệt đối (1-based từ terminal, đã convert 0-based).
     CursorGoto { row: usize, col: usize },
+    /// Di chuyển cursor tới cột tuyệt đối trên hàng hiện tại (CHA, 1-based từ terminal).
+    CursorHorizontalAbsolute { col: usize },
     /// Xoá màn hình / dòng — grid layer sẽ quyết định có xử lý không.
     EraseDisplay(u8),
     /// Xoá tới cuối / đầu dòng.
@@ -418,6 +420,12 @@ fn parse_csi(buf: &[u8], final_char: char) -> Vec<AnsiEvent> {
             vec![AnsiEvent::CursorGoto { row, col }]
         }
 
+        // Cursor Horizontal Absolute (CHA): move to a 1-based column on the
+        // current row. Terminal UIs use this to place independently styled runs.
+        'G' => vec![AnsiEvent::CursorHorizontalAbsolute {
+            col: parse_first_param(param_str, 1).saturating_sub(1),
+        }],
+
         // Erase Display
         'J' => vec![AnsiEvent::EraseDisplay(
             parse_first_param(param_str, 0) as u8
@@ -738,6 +746,22 @@ mod tests {
     fn cursor_goto() {
         let events = collect_events("\x1b[5;10H");
         assert_eq!(events, vec![AnsiEvent::CursorGoto { row: 4, col: 9 }]);
+    }
+
+    #[test]
+    fn cursor_horizontal_absolute_uses_one_based_columns() {
+        assert_eq!(
+            collect_events("\x1b[7G"),
+            vec![AnsiEvent::CursorHorizontalAbsolute { col: 6 }]
+        );
+        assert_eq!(
+            collect_events("\x1b[G"),
+            vec![AnsiEvent::CursorHorizontalAbsolute { col: 0 }]
+        );
+        assert_eq!(
+            collect_events("\x1b[0G"),
+            vec![AnsiEvent::CursorHorizontalAbsolute { col: 0 }]
+        );
     }
 
     #[test]

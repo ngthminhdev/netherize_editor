@@ -316,6 +316,11 @@ impl TerminalGrid {
                 0
             }
 
+            AnsiEvent::CursorHorizontalAbsolute { col } => {
+                self.cursor_col = col.min(self.cols - 1);
+                0
+            }
+
             AnsiEvent::EraseDisplay(mode) => {
                 match mode {
                     // 0: from cursor to end of screen
@@ -1711,6 +1716,17 @@ mod tests {
         assert_eq!(grid.cell_at(0, 0).ch, 'X');
         assert_eq!(grid.cell_at(0, 1).ch, 'Y');
         assert_eq!(grid.cell_at(0, 2).ch, 'c'); // 'c' không bị ghi đè
+    }
+
+    #[test]
+    fn cursor_horizontal_absolute_preserves_fragment_spacing() {
+        let mut grid = TerminalGrid::new(16, 2);
+        grid.feed_chunk("Fable\x1b[8G5.1");
+
+        let rendered: String = (0..10).map(|col| grid.cell_at(0, col).ch).collect();
+        assert_eq!(rendered, "Fable  5.1");
+        assert_eq!(grid.cursor_row, 0);
+        assert_eq!(grid.cursor_col, 10);
     }
 
     #[test]

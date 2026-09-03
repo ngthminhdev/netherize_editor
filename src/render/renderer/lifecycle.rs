@@ -459,10 +459,11 @@ impl Renderer {
         // different font than the editor after the real theme config was applied).
         self.canvas_text_system.set_font_family(family);
         self.sidebar_text_system.set_font_family(nerd_family);
-        self.terminal_text_system.set_font_family(nerd_family);
-        self.right_terminal_text_system.set_font_family(nerd_family);
-        self.buffer_terminal_text_system
-            .set_font_family(nerd_family);
+        // Terminals render text in the editor font; PUA icons come from the bundled
+        // Nerd Font via the cosmic-text fallback chain (see `BUNDLED_NERD_FAMILY`).
+        self.terminal_text_system.set_font_family(family);
+        self.right_terminal_text_system.set_font_family(family);
+        self.buffer_terminal_text_system.set_font_family(family);
         self.welcome_logo_text_system.set_font_family(family);
         self.topbar_text_system.set_font_family(family);
         self.statusbar_text_system.set_font_family(family);
