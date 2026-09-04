@@ -5644,7 +5644,7 @@ fn fs_events_for_parked_session_are_queued_and_drained_on_restore() {
 }
 
 #[test]
-fn switcher_lists_live_sessions_before_recents_and_hides_current() {
+fn next_and_prev_cycle_parked_sessions_by_mru() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let origin = shell
         .app_state
@@ -5659,20 +5659,6 @@ fn switcher_lists_live_sessions_before_recents_and_hides_current() {
     let b = b.canonicalize().expect("canonicalize b");
     assert!(shell.switch_workspace_to(a.clone()));
     assert!(shell.switch_workspace_to(b.clone()));
-    let extra = std::env::temp_dir().canonicalize().expect("temp dir");
-    shell.persistent_state.push_recent(extra.clone());
-
-    let (live, recent) = shell.switcher_items();
-    assert_eq!(
-        live.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
-        vec![a.clone(), origin.clone()],
-        "MRU order, current (b) excluded"
-    );
-    assert!(recent.contains(&extra));
-    assert!(
-        !recent.contains(&a) && !recent.contains(&b) && !recent.contains(&origin),
-        "live roots are not repeated under recents"
-    );
 
     assert!(shell.handle_command(Command::NextWorkspaceSession));
     assert_eq!(shell.app_state.workspace_root_path(), Some(a.as_path()));
@@ -5686,6 +5672,174 @@ fn switcher_lists_live_sessions_before_recents_and_hides_current() {
 
     let _ = std::fs::remove_dir_all(a);
     let _ = std::fs::remove_dir_all(b);
+}
+
+fn session_layout_fixture(tag: &str) -> (AppShell, std::path::PathBuf, std::path::PathBuf) {
+    let shell = AppShell::new_for_tests().expect("create app shell");
+    let dir = std::env::temp_dir().join(format!("netherize_layout_{tag}_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let a = dir.join("a.txt");
+    let b = dir.join("b.txt");
+    std::fs::write(&a, "one\ntwo\nthree\n").expect("write a");
+    std::fs::write(&b, "alpha\nbeta\n").expect("write b");
+    (
+        shell,
+        a.canonicalize().expect("canonicalize a"),
+        b.canonicalize().expect("canonicalize b"),
+    )
+}
+
+#[test]
+fn session_layout_snapshot_and_apply_round_trip() {
+    let (mut shell, a, b) = session_layout_fixture("roundtrip");
+    shell.app_state.open_file(a.clone()).expect("open a");
+    assert!(shell.app_state.jump_to_line_col(2, 1));
+    shell.app_state.open_file(b.clone()).expect("open b");
+    assert!(shell.app_state.jump_to_line_col(1, 3));
+    let a_idx = shell
+        .app_state
+        .buffers()
+        .iter()
+        .position(|e| e.label() == "a.txt")
+        .expect("a tab");
+    shell.app_state.activate_buffer_index(a_idx).expect("activate a");
+    shell.panel_state.bottom.visible = true;
+
+    let layout = shell.current_session_layout();
+
+    assert_eq!(layout.files.len(), 2);
+    assert_eq!(layout.files[0].path, a);
+    assert_eq!((layout.files[0].line, layout.files[0].col), (2, 1));
+    assert_eq!(layout.files[1].path, b);
+    assert_eq!((layout.files[1].line, layout.files[1].col), (1, 3));
+    assert_eq!(layout.active.as_deref(), Some(a.as_path()));
+    assert!(layout.bottom_terminal);
+
+    let mut fresh = shell.fresh_app_state();
+    assert_eq!(fresh.apply_session_layout(&layout), 2);
+    assert_eq!(fresh.active_file(), Some(a.as_path()));
+    assert_eq!(fresh.cursor_line_col(), (2, 1));
+    let b_idx = fresh
+        .buffers()
+        .iter()
+        .position(|e| e.label() == "b.txt")
+        .expect("b tab");
+    fresh.activate_buffer_index(b_idx).expect("activate b");
+    assert_eq!(fresh.cursor_line_col(), (1, 3));
+
+    let _ = std::fs::remove_dir_all(a.parent().unwrap());
+}
+
+#[test]
+fn opening_a_root_with_a_persisted_layout_restores_its_tabs() {
+    let (mut shell, a, b) = session_layout_fixture("restore");
+    let target = a.parent().expect("dir").to_path_buf();
+    use crate::app::persistence::{SessionFile, SessionLayout};
+    shell.persistent_state.session_layouts.insert(
+        target.clone(),
+        SessionLayout {
+            files: vec![
+                SessionFile {
+                    path: a.clone(),
+                    line: 1,
+                    col: 2,
+                },
+                SessionFile {
+                    path: b.clone(),
+                    line: 0,
+                    col: 0,
+                },
+            ],
+            active: Some(b.clone()),
+            bottom_terminal: true,
+        },
+    );
+
+    assert!(shell.switch_workspace_to(target.clone()));
+
+    assert_eq!(shell.app_state.workspace_root_path(), Some(target.as_path()));
+    assert_eq!(shell.app_state.buffers().len(), 2);
+    assert_eq!(shell.app_state.active_file(), Some(b.as_path()));
+    assert!(shell.panel_state.bottom.visible, "terminal dock restored");
+
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn persist_session_layouts_keeps_every_live_root_and_survives_close() {
+    let (mut shell, a, _b) = session_layout_fixture("persist");
+    let target = a.parent().expect("dir").to_path_buf();
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
+    shell.persistent_state.push_recent(origin.clone());
+    shell.app_state.open_file(a.clone()).expect("open a");
+    assert!(shell.switch_workspace_to(target.clone()));
+
+    shell.persist_session_layouts(true);
+
+    let origin_layout = shell
+        .persistent_state
+        .session_layouts
+        .get(&origin)
+        .expect("origin layout");
+    assert_eq!(origin_layout.files[0].path, a);
+    assert_eq!(origin_layout.active.as_deref(), Some(a.as_path()));
+    assert!(shell.persistent_state.session_layouts.contains_key(&target));
+
+    assert!(shell.close_session(origin.clone()));
+    assert!(
+        shell.persistent_state.session_layouts.contains_key(&origin),
+        "closing keeps the folder memory (VS Code-style): reopening restores tabs"
+    );
+
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn window_switcher_lists_other_windows_and_enter_requests_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let other_root =
+        std::env::temp_dir().join(format!("netherize_win_other_{}", std::process::id()));
+    std::fs::create_dir_all(&other_root).expect("dir");
+    let other_root = other_root.canonicalize().expect("canonicalize");
+    let other_id = winit::window::WindowId::from(7u64);
+    shell.other_windows = vec![
+        WindowSummary {
+            id: other_id,
+            root: Some(other_root.clone()),
+            dirty: 1,
+            branch: Some("main".into()),
+        },
+        WindowSummary {
+            id: winit::window::WindowId::from(8u64),
+            root: None,
+            dirty: 0,
+            branch: None,
+        },
+    ];
+
+    let rows = shell.window_switcher_items();
+    assert_eq!(rows.len(), 1, "welcome windows (no root) are not listed");
+    assert_eq!(rows[0].0, other_root);
+    assert_eq!(rows[0].1.dirty, 1);
+
+    assert!(shell.open_workspace_switcher_palette());
+    assert_eq!(
+        shell.app_state.command_palette_title_override(),
+        Some(crate::app::app_state::WINDOW_SWITCHER_TITLE)
+    );
+    assert!(shell.confirm_recent_project_selection());
+    assert_eq!(shell.pending_focus_window, Some(other_id), "Enter focuses the other window");
+    assert_ne!(
+        shell.app_state.workspace_root_path(),
+        Some(other_root.as_path()),
+        "this window does not load the repo"
+    );
+
+    let _ = std::fs::remove_dir_all(other_root);
 }
 
 #[test]

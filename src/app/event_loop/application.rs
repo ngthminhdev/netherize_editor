@@ -2007,7 +2007,7 @@ impl AppShell {
         false
     }
 
-    fn capture_window_geometry(&mut self) {
+    pub(super) fn capture_window_geometry(&mut self) {
         let Some(window) = self.window.as_ref() else {
             return;
         };
@@ -2045,7 +2045,7 @@ impl AppShell {
         }
     }
 
-    fn persist_window_geometry_if_due(&mut self, force: bool) {
+    pub(super) fn persist_window_geometry_if_due(&mut self, force: bool) {
         if !self.window_geometry_dirty {
             return;
         }
@@ -2075,10 +2075,12 @@ impl AppShell {
     }
 }
 
-impl ApplicationHandler<AppEvent> for AppShell {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+impl AppShell {
+    /// Create this shell's window + renderer. `Err` = the window could not
+    /// be created; the caller decides whether that ends the app.
+    pub(super) fn on_resumed(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
         if self.window.is_some() {
-            return;
+            return Ok(());
         }
 
         let restored_geometry = (self.ui_config.window.startup_mode == WindowStartupMode::Windowed)
@@ -2128,9 +2130,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         let window = match event_loop.create_window(attrs) {
             Ok(window) => Arc::new(window),
             Err(err) => {
-                eprintln!("[AppShell] create_window failed: {err}");
-                event_loop.exit();
-                return;
+                return Err(format!("create_window failed: {err}"));
             }
         };
 
@@ -2145,9 +2145,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         let renderer = match pollster::block_on(Renderer::new(window.clone())) {
             Ok(renderer) => renderer,
             Err(err) => {
-                eprintln!("[AppShell] renderer init failed: {err}");
-                event_loop.exit();
-                return;
+                return Err(format!("renderer init failed: {err}"));
             }
         };
 
@@ -2163,6 +2161,16 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.last_buffer_terminal_bounds = None;
 
         self.window_size = window.inner_size();
+        // Later windows cascade so they do not stack exactly on the saved frame.
+        if self.window_cascade > 0
+            && let Ok(position) = window.outer_position()
+        {
+            let step = 40 * self.window_cascade as i32;
+            window.set_outer_position(PhysicalPosition::new(
+                position.x + step,
+                position.y + step,
+            ));
+        }
         self.window = Some(window);
         self.renderer = Some(renderer);
         let scale_factor = self
@@ -2176,14 +2184,10 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.update_window_title();
         self.show_first_run_tour_if_needed();
         self.request_redraw();
+        Ok(())
     }
 
-    fn window_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        window_id: WindowId,
-        event: WindowEvent,
-    ) {
+    pub(super) fn on_window_event(&mut self, window_id: WindowId, event: WindowEvent) {
         if self
             .window
             .as_ref()
@@ -2298,7 +2302,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     && matches!(key_event.physical_key, PhysicalKey::Code(KeyCode::KeyN))
                     && self.input_handler.current_modifiers().super_key()
                     && self.input_handler.current_modifiers().shift_key()
-                    && self.handle_command(Command::NewInstance)
+                    && self.handle_command(Command::NewWindow)
                 {
                     self.request_redraw();
                     return;
@@ -2530,7 +2534,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    /// One idle tick. Returns when the loop should wake this shell again
+    /// (`None` = wait for input); the multi-window driver takes the minimum
+    /// over all windows.
+    pub(super) fn on_about_to_wait(&mut self) -> Option<Instant> {
+        let mut probe_deadline: Option<Instant> = None;
         // Panic-recovery snapshots only need seconds-level freshness. Cloning
         // the full active text on EVERY loop tick made typing into a ~10 MB
         // buffer churn gigabytes of allocations and balloon RSS past 3 GB.
@@ -2539,13 +2547,18 @@ impl ApplicationHandler<AppEvent> for AppShell {
             self.last_recovery_snapshot_at = Instant::now();
             replace_panic_recovery_snapshot(self.app_state.dirty_recovery_buffers());
         }
+        // Session layouts (tabs/cursors per repo) — cheap compare, writes only
+        // on change, so a restart lands back where every session was left.
+        const SESSION_LAYOUT_PERSIST_INTERVAL: Duration = Duration::from_secs(5);
+        if self.last_session_layout_persist_at.elapsed() >= SESSION_LAYOUT_PERSIST_INTERVAL {
+            self.last_session_layout_persist_at = Instant::now();
+            self.persist_session_layouts(false);
+        }
         // Perf probe drives a continuous frame loop while active. WaitUntil is
         // essential: macOS throttles redraws of unfocused/occluded windows, so
         // a pure request_redraw chain can starve the probe of frames.
         if self.perf_probe_request_continuous_frames() {
-            event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(
-                Instant::now() + Duration::from_millis(8),
-            ));
+            probe_deadline = Some(Instant::now() + Duration::from_millis(8));
             self.request_redraw();
         }
         // Dojo session clock: phase toasts, timeout auto-stop, 1 Hz chip redraw.
@@ -2553,10 +2566,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
             self.request_redraw();
         }
         if self.exit_requested {
+            // The driver reaps this shell (teardown, then removal).
+            self.persist_session_layouts(true);
             self.capture_window_geometry();
             self.persist_window_geometry_if_due(true);
-            event_loop.exit();
-            return;
+            return None;
         }
         self.persist_window_geometry_if_due(false);
         self.flush_pending_parse_after_debounce();
@@ -2748,14 +2762,13 @@ impl ApplicationHandler<AppEvent> for AppShell {
             });
         }
 
-        if let Some(deadline) = next_deadline {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
-        } else {
-            event_loop.set_control_flow(ControlFlow::Wait);
+        match (next_deadline, probe_deadline) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
+    pub(super) fn on_user_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::TerminalOutputReady => {
                 if self.pump_bridge() {

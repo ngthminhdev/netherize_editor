@@ -1012,3 +1012,74 @@ fn compact_edit_delta(before: &Rope, after: &Rope) -> EditTransaction {
 
     EditTransaction::new(start_char_idx, deleted_text, inserted_text)
 }
+
+// ── Session layout (persisted tabs + cursors) ────────────────────────────────
+
+impl AppState {
+    /// Text tabs in order with their cursors, plus which one is active. Non-text
+    /// tabs (terminals, previews, pickers) are transient and skipped.
+    pub fn session_layout_snapshot(&self) -> crate::app::persistence::SessionLayout {
+        use crate::app::persistence::{SessionFile, SessionLayout};
+        let mut files = Vec::new();
+        let mut active = None;
+        for (idx, entry) in self.buffers.iter().enumerate() {
+            let BufferContent::Text(buf) = &entry.content else {
+                continue;
+            };
+            let is_active = self.active_buffer_index == Some(idx);
+            let (line, col) = if is_active {
+                self.cursor_line_col()
+            } else if let Some(rope) = buf.in_memory_text.as_ref() {
+                let char_idx = buf.view_state.cursor.char_idx.min(rope.len_chars());
+                let line = rope.char_to_line(char_idx);
+                (line, char_idx - rope.line_to_char(line))
+            } else {
+                (0, 0)
+            };
+            if is_active {
+                active = Some(buf.path.clone());
+            }
+            files.push(SessionFile {
+                path: buf.path.clone(),
+                line,
+                col,
+            });
+        }
+        SessionLayout {
+            files,
+            active,
+            bottom_terminal: false,
+        }
+    }
+
+    /// Reopen the tabs of `layout` (files that still exist), restore each
+    /// cursor and make the recorded tab active. Returns how many opened.
+    pub fn apply_session_layout(
+        &mut self,
+        layout: &crate::app::persistence::SessionLayout,
+    ) -> usize {
+        let mut opened = 0;
+        for file in &layout.files {
+            if !file.path.is_file() {
+                continue;
+            }
+            if let Err(err) = self.open_file(file.path.clone()) {
+                eprintln!(
+                    "[AppState] session restore skipped ({}): {err}",
+                    file.path.display()
+                );
+                continue;
+            }
+            opened += 1;
+            let _ = self.jump_to_line_col(file.line, file.col);
+        }
+        if let Some(active) = layout.active.as_ref()
+            && let Some(idx) = self.buffers.iter().position(|entry| {
+                matches!(&entry.content, BufferContent::Text(buf) if &buf.path == active)
+            })
+        {
+            let _ = self.activate_buffer_index(idx);
+        }
+        opened
+    }
+}

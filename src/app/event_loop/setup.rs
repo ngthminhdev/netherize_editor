@@ -5,21 +5,42 @@ fn is_ai_inline_word_char(ch: char) -> bool {
 }
 
 impl AppShell {
-    pub fn new(event_proxy: EventLoopProxy<AppEvent>) -> Result<Self, String> {
+    /// One shell = one window. `request` says what it opens; `persistent_state`
+    /// is handed in by the multi-window driver, which owns the single copy.
+    pub fn new(
+        event_proxy: EventLoopProxy<AppEvent>,
+        request: NewWindowRequest,
+        persistent_state: AppPersistentState,
+    ) -> Result<Self, String> {
         let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
-        Self::new_with_scheduler(scheduler, rx)
+        Self::new_with_scheduler(scheduler, rx, request, persistent_state)
     }
 
     #[cfg(test)]
     pub fn new_for_tests() -> Result<Self, String> {
         let (scheduler, rx) = AsyncScheduler::new_for_tests()?;
-        Self::new_with_scheduler(scheduler, rx)
+        let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+        // Never the developer's real state.toml: its recents / open sessions
+        // would leak into exact-list assertions and pick a workspace at random.
+        Self::new_with_scheduler(
+            scheduler,
+            rx,
+            NewWindowRequest::Paths(cli_args),
+            AppPersistentState::default(),
+        )
     }
 
-    fn new_with_scheduler(
+    pub(super) fn new_with_scheduler(
         scheduler: AsyncScheduler,
         rx: std::sync::mpsc::Receiver<crate::async_runtime::message::WorkerMessage>,
+        request: NewWindowRequest,
+        mut persistent_state: AppPersistentState,
     ) -> Result<Self, String> {
+        // A Welcome window attaches nothing: no CLI dir, no recent, no cwd.
+        let (cli_args, attach_fallback_workspace) = match request {
+            NewWindowRequest::Welcome => (Vec::new(), false),
+            NewWindowRequest::Paths(paths) => (paths, true),
+        };
         #[cfg(target_os = "macos")]
         super::application::warm_macos_titlebar_preferences();
         let save_path = PathBuf::new();
@@ -28,8 +49,6 @@ impl AppShell {
         let bridge = AppAsyncBridge::new(rx);
 
         // ── Parse CLI args ────────────────────────────────────────────────
-        let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-
         // First directory arg becomes workspace root (like `zed .` / `code .`).
         // If only files are passed, use the first file's parent as the workspace
         // so a new process opens an isolated project instead of restoring the
@@ -52,9 +71,7 @@ impl AppShell {
             .filter_map(|p| p.canonicalize().ok().filter(|cp| cp.is_file()))
             .collect();
 
-        // Load persisted state and restore most recent project if it still exists.
-        let mut persistent_state = AppPersistentState::load();
-
+        // Restore the most recent project if it still exists.
         let mut app_state = AppState::new(save_path.clone());
         let _ = app_state.apply_mode_event(ModeEvent::EnterNormal);
 
@@ -69,7 +86,7 @@ impl AppShell {
                 ),
             }
         }
-        if !restored_workspace {
+        if !restored_workspace && attach_fallback_workspace {
             if let Some(recent_dir) = persistent_state.most_recent_existing() {
                 match app_state.attach_workspace(recent_dir.clone()) {
                     Ok(()) => {
@@ -84,7 +101,10 @@ impl AppShell {
                 }
             }
         }
-        if !restored_workspace && let Err(err) = app_state.attach_workspace(cwd) {
+        if !restored_workspace
+            && attach_fallback_workspace
+            && let Err(err) = app_state.attach_workspace(cwd)
+        {
             eprintln!("[AppShell] cwd workspace attach skipped: {err}");
         }
 
@@ -95,6 +115,18 @@ impl AppShell {
                     cli_path.display()
                 );
             }
+        }
+        // Tabs + cursors persisted for this root. Skipped when the CLI named
+        // files (an explicit "open these") and under test (real state file).
+        let startup_layout = if cli_files.is_empty() && !cfg!(test) {
+            app_state
+                .workspace_root_path()
+                .and_then(|root| persistent_state.session_layouts.get(root).cloned())
+        } else {
+            None
+        };
+        if let Some(layout) = startup_layout.as_ref() {
+            app_state.apply_session_layout(layout);
         }
         // Welcome visibility is controlled by AppState's one-shot initial launch
         // flag, not by workspace attachment or later buffer-list emptiness.
@@ -136,6 +168,9 @@ impl AppShell {
             false
         };
         panel_state.bottom.visible = ui_config.docks.bottom.visible;
+        if let Some(layout) = startup_layout.as_ref() {
+            panel_state.bottom.visible = layout.bottom_terminal;
+        }
         panel_state.overlay_visible = ui_config.docks.overlay_visible;
         let _ = app_state.set_terminal_panel_open(panel_state.bottom.visible);
         let window_width = ui_config.window.width;
@@ -150,6 +185,12 @@ impl AppShell {
             persistent_state,
             background_sessions: Vec::new(),
             pending_fs_events_to_drain: Vec::new(),
+            last_session_layout_persist_at: now,
+            pending_new_windows: Vec::new(),
+            other_windows: Vec::new(),
+            pending_focus_window: None,
+            window_cascade: 0,
+            closing_since: None,
             input_handler: InputHandler::new(),
             input_map: InputMap::new(save_path),
             scheduler,

@@ -71,8 +71,12 @@ mod commands;
 mod helpers;
 pub mod perf_probe;
 mod setup;
+mod multi_window;
 mod welcome;
+mod window_lifecycle;
 mod workspace_session;
+
+pub use multi_window::MultiWindowApp;
 
 use helpers::{
     build_preview_render_data, build_sidebar_rows, collect_explorer_entries,
@@ -98,6 +102,19 @@ pub struct AppShell {
     background_sessions: Vec<workspace_session::WorkspaceSession>,
     /// File-system events restored with a session, replayed on activation.
     pending_fs_events_to_drain: Vec<crate::async_runtime::message::FileSystemEvent>,
+    /// Throttle for writing session layouts (tabs/cursors) to state.toml.
+    last_session_layout_persist_at: Instant,
+    /// Windows this shell asked the driver to open.
+    pending_new_windows: Vec<NewWindowRequest>,
+    /// The OTHER open windows (driver refreshes this every idle tick).
+    other_windows: Vec<WindowSummary>,
+    /// `<leader>p p` picked another window: the driver focuses it.
+    pending_focus_window: Option<WindowId>,
+    /// 0 for the first window; later windows offset their frame by 40 px × n.
+    window_cascade: u32,
+    /// Set when this window is closing: worker shutdown requests were sent,
+    /// the driver removes the shell after a short grace period.
+    closing_since: Option<Instant>,
     input_handler: InputHandler,
     input_map: InputMap,
     scheduler: AsyncScheduler,
@@ -603,6 +620,25 @@ pub enum AppEvent {
     RemoteOpen(Vec<PathBuf>),
 }
 
+/// One open window as seen by the others (window switcher rows).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowSummary {
+    pub id: WindowId,
+    /// Active workspace root; `None` for a Welcome window.
+    pub root: Option<PathBuf>,
+    pub dirty: usize,
+    pub branch: Option<String>,
+}
+
+/// What a new window should open with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NewWindowRequest {
+    /// Empty window: no workspace, the Welcome screen with recents.
+    Welcome,
+    /// CLI-style paths: first directory = workspace, files are opened.
+    Paths(Vec<PathBuf>),
+}
+
 /// Trạng thái của một terminal tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TerminalTabStatus {
@@ -703,21 +739,11 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
         }
     }
 
-    let mut app = match AppShell::new(event_proxy) {
-        Ok(mut app) => {
-            if stale_instance_running {
-                app.show_transient_toast_kind(
-                    "Older Netherize build still running\nThis window is the new build. Quit the old one (Cmd+Q) when you are done there.",
-                    crate::app::event_loop::ToastKind::Warning,
-                );
-            }
-            app
-        }
-        Err(err) => {
-            eprintln!("[fatal] AppShell::new failed: {err}");
-            return Ok(());
-        }
-    };
+    // One process, N windows: the driver owns the persisted state and opens
+    // the first window from the CLI paths once the loop is running.
+    let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    let persistent = AppPersistentState::load();
+    let mut app = MultiWindowApp::new(event_proxy, cli_args, persistent, stale_instance_running);
 
     event_loop.run_app(&mut app)
 }

@@ -352,6 +352,9 @@ impl AppShell {
         if matches!(command, Command::NewInstance) {
             return self.spawn_new_instance();
         }
+        if matches!(command, Command::NewWindow) {
+            return self.request_new_window();
+        }
 
         // NetherCanvas in-card editing (v2): ONLY while actively editing a card
         // (interaction == EditCard) do we route editor text/cursor/mode commands

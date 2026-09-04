@@ -553,13 +553,12 @@ impl AppShell {
         true
     }
 
-    /// `<leader>p p`: live sessions first (MRU, current excluded), then recent
-    /// projects that are not already open. Enter activates / opens.
+    /// `<leader>p p`: the other open windows; Enter focuses one.
     pub(super) fn open_workspace_switcher_palette(&mut self) -> bool {
-        let (live, recent) = self.switcher_items();
-        if live.is_empty() && recent.is_empty() {
+        let windows = self.window_switcher_items();
+        if windows.is_empty() {
             self.show_transient_toast(
-                "No other workspaces. Use Ctrl+O to open a folder.".to_string(),
+                "No other windows. Cmd+Shift+N opens one, `netherize <dir>` too.".to_string(),
             );
             return false;
         }
@@ -571,17 +570,13 @@ impl AppShell {
             return false;
         }
 
-        self.app_state.open_workspace_switcher_palette(
-            &live,
-            &recent,
-            &self.persistent_state.recent_project_meta,
-        );
+        self.app_state.open_window_switcher_palette(&windows);
 
         if current_mode != EditorMode::PaletteFocus
             && let Err(err) = self.app_state.apply_mode_event(ModeEvent::OpenPalette)
         {
             let _ = self.app_state.close_command_palette();
-            eprintln!("[AppShell] workspace switcher mode change failed: {err:?}");
+            eprintln!("[AppShell] window switcher mode change failed: {err:?}");
             return false;
         }
 
@@ -637,6 +632,12 @@ impl AppShell {
         else {
             return false;
         };
+        // Window switcher rows name another window's root: focus that window
+        // instead of loading the repo here.
+        let focus_other = (self.app_state.command_palette_title_override()
+            == Some(crate::app::app_state::WINDOW_SWITCHER_TITLE))
+            .then(|| self.other_window_for_root(&path))
+            .flatten();
 
         let mut changed = self.app_state.close_command_palette();
         if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
@@ -648,6 +649,10 @@ impl AppShell {
             self.input_handler.clear_pending_prefix();
         }
 
+        if let Some(window_id) = focus_other {
+            self.pending_focus_window = Some(window_id);
+            return true;
+        }
         changed | self.switch_workspace_to(path)
     }
 

@@ -191,6 +191,9 @@ pub enum Command {
     OpenFile(PathBuf),
     /// Launch a separate editor process with its own AppState/window.
     NewInstance,
+    /// Open an empty window (same process) showing the Welcome screen, like
+    /// VS Code's New Window. Pick a recent there to load a repo.
+    NewWindow,
     /// Open native OS folder picker and set the workspace root.
     OpenFolder,
     /// Open command palette showing recent projects list.
@@ -198,7 +201,7 @@ pub enum Command {
     /// Open command palette listing this repo's other git worktrees; Enter
     /// switches the workspace to the selected worktree in place.
     OpenWorktreePalette,
-    /// Palette of live workspace sessions (MRU) followed by recent projects.
+    /// Palette of the other open windows; Enter focuses one.
     SwitchWorkspaceSession,
     /// Activate the most recently used parked workspace session.
     NextWorkspaceSession,

@@ -50,6 +50,16 @@ pub(super) struct FileWatchRegistry {
     flags: HashMap<PathBuf, Arc<AtomicBool>>,
 }
 
+impl Drop for FileWatchRegistry {
+    /// The dispatch loop owning this registry is being torn down (window
+    /// closed): tell every watcher thread to exit so none leaks.
+    fn drop(&mut self) {
+        for flag in self.flags.values() {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 impl FileWatchRegistry {
     /// `Some(flag)` when a new watcher must be spawned; `None` when this root
     /// is already watched.
@@ -393,5 +403,15 @@ mod tests {
         assert!(flag.load(Ordering::Relaxed), "stop raises the flag");
         assert!(!reg.stop(&root), "stopping twice is harmless");
         assert!(reg.start(&root).is_some(), "root can be watched again");
+    }
+
+    #[test]
+    fn dropping_registry_raises_every_flag() {
+        let mut reg = FileWatchRegistry::default();
+        let a = reg.start(Path::new("/tmp/ws-a")).expect("a");
+        let b = reg.start(Path::new("/tmp/ws-b")).expect("b");
+        drop(reg);
+        assert!(a.load(Ordering::Relaxed));
+        assert!(b.load(Ordering::Relaxed));
     }
 }

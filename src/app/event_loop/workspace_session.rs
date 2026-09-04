@@ -458,6 +458,13 @@ impl AppShell {
         panel_state.left.visible = false;
         panel_state.right.visible = false;
         panel_state.bottom.visible = false;
+        // Lazy restore: a root that was open in an earlier run comes back
+        // with its tabs, cursors and terminal dock.
+        if let Some(layout) = self.persistent_state.session_layouts.get(&root).cloned() {
+            app_state.apply_session_layout(&layout);
+            panel_state.bottom.visible = layout.bottom_terminal;
+            let _ = app_state.set_terminal_panel_open(layout.bottom_terminal);
+        }
         let icon = crate::app::persistence::AppPersistentState::infer_project_icon_source(&root);
         self.persistent_state
             .push_recent_with_icon(root.clone(), Some(icon));
@@ -630,40 +637,64 @@ impl AppShell {
         self.activate_session(root, Vec::new())
     }
 
-    /// Switcher rows: parked sessions in MRU order, then recents that are not
-    /// already live (the active root is hidden from both).
-    pub(super) fn switcher_items(
+    /// `<leader>p p` rows: every OTHER open window with a workspace, in
+    /// window order. Welcome windows (no root) are skipped.
+    pub(super) fn window_switcher_items(
         &self,
-    ) -> (
-        Vec<(PathBuf, crate::app::command_palette::LiveSessionMeta)>,
-        Vec<PathBuf>,
-    ) {
-        let mut parked: Vec<&WorkspaceSession> = self.background_sessions.iter().collect();
-        parked.sort_by_key(|s| std::cmp::Reverse(s.last_active));
-        let live: Vec<(PathBuf, crate::app::command_palette::LiveSessionMeta)> = parked
-            .into_iter()
-            .map(|s| {
-                (
-                    s.root.clone(),
-                    crate::app::command_palette::LiveSessionMeta {
-                        dirty: s.app_state.dirty_buffer_count(),
-                        branch: s.shell.workspace_git_branch.clone(),
-                    },
-                )
-            })
-            .collect();
-        let mut hidden: Vec<&Path> = live.iter().map(|(p, _)| p.as_path()).collect();
-        if let Some(active) = self.app_state.workspace_root_path() {
-            hidden.push(active);
-        }
-        let recent = self
-            .persistent_state
-            .recent_projects
+    ) -> Vec<(PathBuf, crate::app::command_palette::LiveSessionMeta)> {
+        self.other_windows
             .iter()
-            .filter(|p| !hidden.iter().any(|h| path_matches(h, p)))
-            .cloned()
-            .collect();
-        (live, recent)
+            .filter_map(|w| {
+                let root = w.root.clone()?;
+                Some((
+                    root,
+                    crate::app::command_palette::LiveSessionMeta {
+                        dirty: w.dirty,
+                        branch: w.branch.clone(),
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    /// The other window showing `root`, if any (first match).
+    pub(super) fn other_window_for_root(&self, root: &Path) -> Option<WindowId> {
+        self.other_windows
+            .iter()
+            .find(|w| w.root.as_deref().is_some_and(|r| path_matches(r, root)))
+            .map(|w| w.id)
+    }
+
+    pub(super) fn current_session_layout(&self) -> crate::app::persistence::SessionLayout {
+        let mut layout = self.app_state.session_layout_snapshot();
+        layout.bottom_terminal = self.panel_state.bottom.visible;
+        layout
+    }
+
+    /// Write every live session's tabs/cursors to state.toml when something
+    /// changed (or `force`). A root's layout is what brings its tabs back the
+    /// next time that root is opened anywhere (startup, CLI, recents).
+    pub(super) fn persist_session_layouts(&mut self, force: bool) {
+        let mut layouts: Vec<(PathBuf, crate::app::persistence::SessionLayout)> = Vec::new();
+        if let Some(root) = self.app_state.workspace_root_path() {
+            layouts.push((root.to_path_buf(), self.current_session_layout()));
+        }
+        for s in &self.background_sessions {
+            let mut layout = s.app_state.session_layout_snapshot();
+            layout.bottom_terminal = s.panel_state.bottom.visible;
+            layouts.push((s.root.clone(), layout));
+        }
+        let changed = layouts
+            .iter()
+            .any(|(root, layout)| self.persistent_state.session_layouts.get(root) != Some(layout));
+        if !changed && !force {
+            return;
+        }
+        for (root, layout) in layouts {
+            self.persistent_state.session_layouts.insert(root, layout);
+        }
+        self.persistent_state.prune_session_layouts();
+        self.persistent_state.save();
     }
 
     /// Replay file-system events that arrived while the session was parked.

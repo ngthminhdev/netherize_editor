@@ -155,12 +155,40 @@ a `●` for `live`, a dirty count and the branch. `x` on a live row is ignored
   (`get_handle_by_binary_and_root`), so a `.md` buffer in repo B cannot stop
   repo A's rust-analyzer.
 
-## 5. Persistence
+## 5. Persistence (phase 2, shipped same day)
 
-Phase 1 (this spec): sessions live in memory only; startup restores the
-most recent project exactly as today. Phase 2 (separate spec): persist the
-list of open sessions and each session's open tabs / active file / cursor, and
-restore parked sessions lazily on first activation.
+`state.toml` gains two keys (both `#[serde(default)]`, old files still parse):
+
+```toml
+open_sessions = ["/repo/a", "/repo/b"]          # active first, then MRU; then cold roots
+[session_layouts."/repo/a"]
+active = "/repo/a/src/main.rs"
+bottom_terminal = true
+[[session_layouts."/repo/a".files]]              # text tabs in order, cursor per tab
+path = "/repo/a/src/main.rs"
+line = 12
+col = 4
+```
+
+- **Snapshot** = `AppState::session_layout_snapshot()` (text tabs only; the
+  active tab's cursor from the live state, parked tabs' cursors from their
+  saved view state) + `panel_state.bottom.visible`.
+- **When written**: `persist_session_layouts(force)` on a 5 s tick in
+  `about_to_wait` (compare, write only on change), on `exit_requested`
+  (force), and `forget_session` + save when a session is closed or its recent
+  entry is removed. Layouts are pruned to roots still in recents/open list.
+- **Restore**: eagerly at startup for the launch workspace when the CLI named
+  no files (`apply_session_layout`: reopen existing files, `jump_to_line_col`,
+  activate the recorded tab, terminal dock visibility); lazily in
+  `new_session` for any root that has a layout — so `netherize repoB` and the
+  switcher both bring a repo back as it was left.
+- ~~Cold roots~~ (removed 2026-09-05 on user feedback): no `open_sessions`
+  list and no `○ restore` rows; a root simply restores its tabs whenever it is
+  opened again, and `<leader>p p` became the window switcher (see the
+  multi-window spec).
+- `AppPersistentState::save()` is a no-op under `cfg!(test)`: shells built in
+  tests load the real state file, and switching tests used to push temp dirs
+  into the user's recents.
 
 ## 6. Testing
 

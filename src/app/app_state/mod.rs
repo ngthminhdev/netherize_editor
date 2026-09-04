@@ -44,6 +44,7 @@ mod multi_cursor;
 mod overlays;
 pub(crate) use overlays::path_matches;
 mod palette;
+pub use palette::WINDOW_SWITCHER_TITLE;
 mod settings;
 mod state;
 mod workspace;

@@ -207,10 +207,38 @@ impl WindowGeometry {
     }
 }
 
+/// One open tab of a workspace session and where its cursor was.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionFile {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub line: usize,
+    #[serde(default)]
+    pub col: usize,
+}
+
+/// What a workspace session looked like the last time it was persisted:
+/// text tabs in order, the active one, and whether the terminal dock was
+/// open. Restored eagerly at startup for the launch workspace and lazily
+/// when a previously open root is activated again.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionLayout {
+    #[serde(default)]
+    pub files: Vec<SessionFile>,
+    #[serde(default)]
+    pub active: Option<PathBuf>,
+    #[serde(default)]
+    pub bottom_terminal: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppPersistentState {
     #[serde(default)]
     pub recent_projects: Vec<PathBuf>,
+    /// Per-root tabs/cursors, restored whenever that root is opened again
+    /// (startup, CLI, recents, Welcome) — VS Code-style folder memory.
+    #[serde(default)]
+    pub session_layouts: HashMap<PathBuf, SessionLayout>,
     #[serde(default)]
     pub recent_project_meta: HashMap<PathBuf, RecentProjectMeta>,
     #[serde(default)]
@@ -281,6 +309,11 @@ impl AppPersistentState {
     }
 
     pub fn save(&self) {
+        // Tests build real shells from the real state file; never let them
+        // write it back (temp-dir recents used to leak into the user's list).
+        if cfg!(test) {
+            return;
+        }
         let path = Self::state_path();
         if let Some(parent) = path.parent()
             && let Err(err) = std::fs::create_dir_all(parent)
@@ -327,7 +360,20 @@ impl AppPersistentState {
         let before_len = self.recent_projects.len();
         self.recent_projects.retain(|recent| recent != path);
         self.recent_project_meta.remove(path);
+        self.forget_session(path);
         before_len != self.recent_projects.len()
+    }
+
+    /// Drop a root's persisted layout (its recent entry was removed).
+    pub fn forget_session(&mut self, root: &Path) {
+        self.session_layouts.remove(root);
+    }
+
+    /// Layouts only make sense for roots the user can still reach from
+    /// recents; drop the rest.
+    pub fn prune_session_layouts(&mut self) {
+        let keep: std::collections::HashSet<&PathBuf> = self.recent_projects.iter().collect();
+        self.session_layouts.retain(|root, _| keep.contains(root));
     }
 
     /// Record `language_key` as the most-recently-used LeetCode language,
@@ -645,5 +691,49 @@ mod tests {
         assert!(!state.recent_project_meta.contains_key(&project_a));
         assert!(state.recent_project_meta.contains_key(&project_b));
         assert!(!state.remove_recent(&project_a));
+    }
+
+    #[test]
+    fn session_layouts_round_trip_through_toml() {
+        let mut state = AppPersistentState::default();
+        let root = PathBuf::from("/tmp/repo-a");
+        state.recent_projects = vec![root.clone()];
+        state.session_layouts.insert(
+            root.clone(),
+            SessionLayout {
+                files: vec![
+                    SessionFile {
+                        path: root.join("src/main.rs"),
+                        line: 12,
+                        col: 4,
+                    },
+                    SessionFile {
+                        path: root.join("README.md"),
+                        line: 0,
+                        col: 0,
+                    },
+                ],
+                active: Some(root.join("src/main.rs")),
+                bottom_terminal: true,
+            },
+        );
+        state
+            .session_layouts
+            .insert(PathBuf::from("/tmp/forgotten"), SessionLayout::default());
+
+        let text = toml::to_string_pretty(&state).expect("serialize");
+        let back: AppPersistentState = toml::from_str(&text).expect("deserialize");
+        assert_eq!(back.session_layouts, state.session_layouts);
+
+        // Older state files have no layouts (and may carry keys we dropped).
+        let legacy: AppPersistentState =
+            toml::from_str("recent_projects = []\nopen_sessions = [\"/x\"]\n")
+                .expect("legacy parses");
+        assert!(legacy.session_layouts.is_empty());
+
+        state.prune_session_layouts();
+        assert_eq!(state.session_layouts.len(), 1, "layouts outside recents are dropped");
+        state.forget_session(&root);
+        assert!(state.session_layouts.is_empty());
     }
 }

@@ -703,6 +703,10 @@ impl CommandPalette {
         self.title_override = title;
     }
 
+    pub fn title_override(&self) -> Option<&str> {
+        self.title_override.as_deref()
+    }
+
     /// Feed the persisted most-recently-run command ids into the palette and
     /// rebuild results so the RECENT group shows up on open.
     pub fn set_recent_commands(&mut self, ids: Vec<String>) {
@@ -1540,11 +1544,12 @@ pub(crate) const COMMAND_PALETTE_ACTIONS: &[(&str, &str)] = &[
     ("editor.open_folder", "Open Folder…"),
     ("projects.recent", "Open Recent Project"),
     ("projects.worktrees", "Switch Git Worktree"),
-    ("projects.switch", "Switch Workspace Session"),
+    ("projects.switch", "Switch Window"),
     ("projects.next", "Next Workspace Session"),
     ("projects.prev", "Previous Workspace Session"),
     ("projects.close", "Close Workspace Session"),
     ("workspace.reload", "Reload Workspace"),
+    ("app.new_window", "New Window"),
     ("app.new_instance", "New Instance"),
     ("cli.install", "Shell Command: Install 'netherize' in PATH"),
     (

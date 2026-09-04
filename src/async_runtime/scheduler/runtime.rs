@@ -60,6 +60,13 @@ impl AsyncScheduler {
         Ok((scheduler, result_rx))
     }
 
+    /// Stop the worker runtime (window closed). Cancels the dispatch loop —
+    /// dropping its registries kills PTY children and raises every watcher's
+    /// stop flag — and waits up to `timeout` for blocking threads to exit.
+    pub fn shutdown(self, timeout: std::time::Duration) {
+        self._runtime.shutdown_timeout(timeout);
+    }
+
     pub fn submit(&self, spec: RequestSpec) -> Result<WorkerRequest, String> {
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
         let request = WorkerRequest {

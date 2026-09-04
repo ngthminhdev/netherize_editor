@@ -61,6 +61,7 @@ pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
 pub const OPEN_FILE: &str = "editor.open_file";
 pub const NEW_INSTANCE: &str = "app.new_instance";
+pub const NEW_WINDOW: &str = "app.new_window";
 
 // ── Leap / EasyMotion navigation ─────────────────────────────────────────────
 pub const LEAP_START: &str = "editor.leap_start";
@@ -602,6 +603,7 @@ pub const ALL_IDS: &[&str] = &[
     TOGGLE_FOLD,
     TOGGLE_FOLD_ALL,
     NEW_INSTANCE,
+    NEW_WINDOW,
     ENTER_VISUAL_BLOCK,
     CHANGE_TO_LINE_END,
     DELETE_TO_LINE_END,
@@ -857,6 +859,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         NEXT_PANEL_TAB => Some(Command::NextPanelTab),
         PREV_PANEL_TAB => Some(Command::PrevPanelTab),
         NEW_INSTANCE => Some(Command::NewInstance),
+        NEW_WINDOW => Some(Command::NewWindow),
         BUFFER_NEW => Some(Command::BufferNew),
         BUFFER_NEXT => Some(Command::BufferNext),
         BUFFER_PREV => Some(Command::BufferPrev),
