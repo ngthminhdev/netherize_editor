@@ -5447,20 +5447,23 @@ fn switch_guard_fixture(tag: &str) -> (AppShell, std::path::PathBuf, std::path::
 }
 
 #[test]
-fn switch_workspace_with_dirty_buffer_prompts_instead_of_discarding() {
-    let (mut shell, file_path, target) = switch_guard_fixture("prompt");
+fn switch_workspace_with_dirty_buffer_parks_it_instead_of_prompting() {
+    let (mut shell, file_path, target) = switch_guard_fixture("park");
 
     assert!(shell.switch_workspace_to(target.clone()));
 
     assert!(
-        shell.pending_confirmation.is_some(),
-        "dirty switch must ask before dropping buffers"
+        shell.pending_confirmation.is_none(),
+        "switching never destroys, so it never asks"
     );
-    assert!(shell.app_state.is_dirty(), "unsaved edit must survive");
-    assert_ne!(
+    assert_eq!(
         shell.app_state.workspace_root_path(),
-        Some(target.as_path()),
-        "workspace must not switch before the user answers"
+        Some(target.as_path())
+    );
+    assert_eq!(shell.background_sessions.len(), 1);
+    assert!(
+        shell.background_sessions[0].app_state.is_dirty(),
+        "edit survives in the parked session"
     );
 
     let _ = std::fs::remove_file(file_path);
@@ -5468,16 +5471,81 @@ fn switch_workspace_with_dirty_buffer_prompts_instead_of_discarding() {
 }
 
 #[test]
-fn switch_workspace_confirmation_yes_saves_then_switches() {
-    let (mut shell, file_path, target) = switch_guard_fixture("yes");
+fn switching_back_restores_the_parked_session() {
+    let (mut shell, file_path, target) = switch_guard_fixture("back");
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
 
     assert!(shell.switch_workspace_to(target.clone()));
+    assert!(shell.switch_workspace_to(origin.clone()));
+
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(origin.as_path())
+    );
+    assert_eq!(shell.app_state.active_file(), Some(file_path.as_path()));
+    assert!(shell.app_state.is_dirty());
+    assert_eq!(shell.background_sessions.len(), 1);
+    assert_eq!(shell.background_sessions[0].root, target);
+
+    let _ = std::fs::remove_file(file_path);
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn close_session_with_dirty_buffer_prompts_and_yes_saves() {
+    let (mut shell, file_path, target) = switch_guard_fixture("close_yes");
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
+    assert!(shell.switch_workspace_to(target.clone()));
+    assert!(shell.switch_workspace_to(origin.clone()));
+
+    assert!(shell.close_session(origin.clone()));
+    assert!(shell.pending_confirmation.is_some());
     assert!(shell.respond_to_pending_confirmation(true));
 
     assert_eq!(
         std::fs::read_to_string(&file_path).expect("read file"),
-        "!hello\n",
-        "y must save the dirty buffer before switching"
+        "!hello\n"
+    );
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(target.as_path()),
+        "falls back to the MRU session"
+    );
+    assert!(shell.background_sessions.is_empty());
+
+    let _ = std::fs::remove_file(file_path);
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn close_session_no_discards_and_closes() {
+    let (mut shell, file_path, target) = switch_guard_fixture("close_no");
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
+    assert!(shell.switch_workspace_to(target.clone()));
+
+    // Parked + dirty: close activates it first, then asks.
+    assert!(shell.close_session(origin.clone()));
+    assert_eq!(
+        shell.app_state.workspace_root_path(),
+        Some(origin.as_path())
+    );
+    assert!(shell.respond_to_pending_confirmation(false));
+
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "hello\n"
     );
     assert_eq!(
         shell.app_state.workspace_root_path(),
@@ -5489,24 +5557,151 @@ fn switch_workspace_confirmation_yes_saves_then_switches() {
 }
 
 #[test]
-fn switch_workspace_confirmation_no_discards_and_switches() {
-    let (mut shell, file_path, target) = switch_guard_fixture("no");
+fn pty_output_for_parked_session_feeds_its_grid_without_redraw() {
+    use crate::app::async_bridge::AsyncResultRouter;
+    use crate::async_runtime::message::{RequestTopic, WorkerResult, WorkerResultPayload};
 
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
+    shell.right_pty_session_id = Some(9);
+    let target =
+        std::env::temp_dir().join(format!("netherize_parked_pty_{}", std::process::id()));
+    std::fs::create_dir_all(&target).expect("create target dir");
+    let target = target.canonicalize().expect("canonicalize target");
     assert!(shell.switch_workspace_to(target.clone()));
-    assert!(shell.respond_to_pending_confirmation(false));
+    shell.terminal_needs_layout = false;
+    shell.right_terminal_needs_layout = false;
 
-    assert_eq!(
-        std::fs::read_to_string(&file_path).expect("read file"),
-        "hello\n",
-        "n must leave the file on disk untouched"
+    shell.on_worker_result(WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: RequestTopic::TerminalPty,
+        payload: WorkerResultPayload::PtyOutput {
+            session_id: 9,
+            chunk: b"parked\r\n".to_vec(),
+        },
+    });
+
+    assert!(
+        !shell.right_terminal_needs_layout,
+        "parked output must not dirty the active layout"
     );
+    assert_eq!(shell.right_terminal_grid.cursor_row, 0, "active grid untouched");
+    let parked = &shell.background_sessions[0];
+    assert_eq!(parked.root, origin);
+    assert_eq!(parked.shell.right_terminal_grid.cursor_row, 1, "parked grid got the line");
+
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn fs_events_for_parked_session_are_queued_and_drained_on_restore() {
+    use crate::app::async_bridge::AsyncResultRouter;
+    use crate::async_runtime::message::{
+        FileSystemChangeKind, FileSystemEvent, RequestTopic, WorkerResult, WorkerResultPayload,
+    };
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
+    let target =
+        std::env::temp_dir().join(format!("netherize_parked_fs_{}", std::process::id()));
+    std::fs::create_dir_all(&target).expect("create target dir");
+    let target = target.canonicalize().expect("canonicalize target");
+    assert!(shell.switch_workspace_to(target.clone()));
+
+    shell.on_worker_result(WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: RequestTopic::WorkspaceWatch,
+        payload: WorkerResultPayload::FileSystemEvents {
+            root_path: origin.clone(),
+            events: vec![FileSystemEvent {
+                kind: FileSystemChangeKind::Create,
+                path: origin.join("new.txt"),
+                new_path: None,
+            }],
+        },
+    });
+
+    assert_eq!(shell.background_sessions[0].pending_fs_events.len(), 1);
+    assert!(shell.switch_workspace_to(origin));
+    assert!(shell
+        .background_sessions
+        .iter()
+        .all(|s| s.pending_fs_events.is_empty()));
+    assert!(shell.pending_fs_events_to_drain.is_empty(), "drained on activation");
+    assert!(shell.explorer_snapshot_dirty);
+
+    let _ = std::fs::remove_dir_all(target);
+}
+
+#[test]
+fn switcher_lists_live_sessions_before_recents_and_hides_current() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let origin = shell
+        .app_state
+        .workspace_root_path()
+        .expect("origin")
+        .to_path_buf();
+    let a = std::env::temp_dir().join(format!("netherize_sw_a_{}", std::process::id()));
+    let b = std::env::temp_dir().join(format!("netherize_sw_b_{}", std::process::id()));
+    std::fs::create_dir_all(&a).expect("create a");
+    std::fs::create_dir_all(&b).expect("create b");
+    let a = a.canonicalize().expect("canonicalize a");
+    let b = b.canonicalize().expect("canonicalize b");
+    assert!(shell.switch_workspace_to(a.clone()));
+    assert!(shell.switch_workspace_to(b.clone()));
+    let extra = std::env::temp_dir().canonicalize().expect("temp dir");
+    shell.persistent_state.push_recent(extra.clone());
+
+    let (live, recent) = shell.switcher_items();
+    assert_eq!(
+        live.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
+        vec![a.clone(), origin.clone()],
+        "MRU order, current (b) excluded"
+    );
+    assert!(recent.contains(&extra));
+    assert!(
+        !recent.contains(&a) && !recent.contains(&b) && !recent.contains(&origin),
+        "live roots are not repeated under recents"
+    );
+
+    assert!(shell.handle_command(Command::NextWorkspaceSession));
+    assert_eq!(shell.app_state.workspace_root_path(), Some(a.as_path()));
+    assert!(shell.handle_command(Command::PrevWorkspaceSession));
     assert_eq!(
         shell.app_state.workspace_root_path(),
-        Some(target.as_path())
+        Some(origin.as_path()),
+        "prev picks the least recently used"
     );
+    assert_eq!(shell.session_count(), 3);
 
-    let _ = std::fs::remove_file(file_path);
-    let _ = std::fs::remove_dir_all(target);
+    let _ = std::fs::remove_dir_all(a);
+    let _ = std::fs::remove_dir_all(b);
+}
+
+#[test]
+fn close_last_session_shows_welcome() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = shell
+        .app_state
+        .workspace_root_path()
+        .expect("root")
+        .to_path_buf();
+
+    assert!(shell.close_session(root));
+
+    assert!(shell.app_state.workspace_root_path().is_none());
+    assert!(shell.app_state.is_initial_launch_welcome());
+    assert_eq!(shell.session_count(), 0);
 }
 
 #[test]

@@ -176,6 +176,10 @@ pub enum WorkerRequestPayload {
         /// (chỉ watch thư mục cha — tránh dựng recursive watcher nặng trên /tmp, /etc…).
         recursive: bool,
     },
+    /// Drop the watcher for `root_path` (workspace session closed).
+    StopFileWatch {
+        root_path: PathBuf,
+    },
     SpawnPtyShell {
         shell: Option<String>,
         working_dir: Option<PathBuf>,
@@ -404,8 +408,18 @@ pub enum WorkerRequestPayload {
         uninstall: bool,
         working_dir: Option<PathBuf>,
     },
-    StopLspServer,
+    /// Stop exactly one server (by binary + root). Never `take_any`: with
+    /// several workspace sessions live, an arbitrary pick would kill another
+    /// session's server.
+    StopLspServer {
+        server_name: String,
+        root_path: PathBuf,
+    },
     ShutdownAllLspServers,
+    /// Shut down every server rooted at `root_path` (workspace session closed).
+    ShutdownLspServersForRoot {
+        root_path: PathBuf,
+    },
     ScanPythonEnvironments {
         workspace_root: PathBuf,
     },

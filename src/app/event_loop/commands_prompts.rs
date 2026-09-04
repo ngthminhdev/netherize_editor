@@ -90,19 +90,15 @@ impl AppShell {
                     "{label} changed on disk. y = save mine, n = load disk version (Esc = later)"
                 ))
             }
-            PendingConfirmationAction::WorkspaceSwitch {
-                target,
-                dirty_count,
-                ..
-            } => {
-                let name = target
+            PendingConfirmationAction::WorkspaceClose { root, dirty_count } => {
+                let name = root
                     .file_name()
                     .and_then(|name| name.to_str())
                     .map(str::to_string)
-                    .unwrap_or_else(|| target.to_string_lossy().into_owned());
+                    .unwrap_or_else(|| root.to_string_lossy().into_owned());
                 let noun = if *dirty_count == 1 { "file" } else { "files" };
                 Some(format!(
-                    "Save {dirty_count} unsaved {noun} before switching to {name}? (y = save all, n = discard)"
+                    "{name} has {dirty_count} unsaved {noun}. y = save & close, n = discard & close (Esc = keep open)"
                 ))
             }
         }
@@ -193,18 +189,13 @@ impl AppShell {
         true
     }
 
-    pub(in crate::app::event_loop) fn begin_workspace_switch_confirmation(
+    pub(in crate::app::event_loop) fn begin_workspace_close_confirmation(
         &mut self,
-        target: PathBuf,
-        follow_files: Vec<PathBuf>,
+        root: PathBuf,
         dirty_count: usize,
     ) -> bool {
         self.pending_confirmation = Some(PendingConfirmation {
-            action: PendingConfirmationAction::WorkspaceSwitch {
-                target,
-                follow_files,
-                dirty_count,
-            },
+            action: PendingConfirmationAction::WorkspaceClose { root, dirty_count },
             return_focus: self.focus_manager.current(),
         });
         let prompt = self.pending_confirmation_prompt().unwrap_or_default();
@@ -213,7 +204,7 @@ impl AppShell {
             return false;
         }
         if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
-            eprintln!("[AppShell] workspace switch confirmation prompt failed: {err}");
+            eprintln!("[AppShell] workspace close confirmation prompt failed: {err}");
             self.pending_confirmation = None;
             let _ = self.app_state.close_command_palette();
             let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
@@ -562,6 +553,44 @@ impl AppShell {
         true
     }
 
+    /// `<leader>p p`: live sessions first (MRU, current excluded), then recent
+    /// projects that are not already open. Enter activates / opens.
+    pub(super) fn open_workspace_switcher_palette(&mut self) -> bool {
+        let (live, recent) = self.switcher_items();
+        if live.is_empty() && recent.is_empty() {
+            self.show_transient_toast(
+                "No other workspaces. Use Ctrl+O to open a folder.".to_string(),
+            );
+            return false;
+        }
+
+        let current_mode = self.app_state.current_mode();
+        if current_mode != EditorMode::PaletteFocus
+            && !self.app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+        {
+            return false;
+        }
+
+        self.app_state.open_workspace_switcher_palette(
+            &live,
+            &recent,
+            &self.persistent_state.recent_project_meta,
+        );
+
+        if current_mode != EditorMode::PaletteFocus
+            && let Err(err) = self.app_state.apply_mode_event(ModeEvent::OpenPalette)
+        {
+            let _ = self.app_state.close_command_palette();
+            eprintln!("[AppShell] workspace switcher mode change failed: {err:?}");
+            return false;
+        }
+
+        if self.focus_manager.set(FocusTarget::OverlayLayer) {
+            self.input_handler.clear_pending_prefix();
+        }
+        true
+    }
+
     pub(super) fn open_worktree_palette(&mut self) -> bool {
         let Some(root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             self.show_transient_toast("Worktrees: no workspace open".to_string());
@@ -634,6 +663,15 @@ impl AppShell {
             .and_then(|name| name.to_str())
             .map(str::to_string)
             .unwrap_or_else(|| path.to_string_lossy().into_owned());
+
+        // A live session row in the WORKSPACES switcher is not a recent entry
+        // to forget; closing it is `<leader>p x`.
+        if self.root_is_active(&path) || self.session_index_for_root(&path).is_some() {
+            self.show_transient_toast(format!(
+                "{label} is open — close it with <leader>p x"
+            ));
+            return false;
+        }
 
         let query = self.app_state.command_palette_query_text().to_string();
         let vim_mode = self.app_state.command_palette_vim_mode();
@@ -892,24 +930,20 @@ impl AppShell {
                 }
                 changed
             }
-            PendingConfirmationAction::WorkspaceSwitch {
-                target,
-                follow_files,
-                ..
-            } => {
+            PendingConfirmationAction::WorkspaceClose { root, .. } => {
                 if confirmed {
                     match self.save_all_dirty_buffers_for_quit() {
                         Ok(_) => {}
                         Err(err) => {
                             self.show_transient_toast_kind(
-                                format!("Workspace switch cancelled\nCould not save: {err}"),
+                                format!("Close workspace cancelled\nCould not save: {err}"),
                                 ToastKind::Error,
                             );
                             return true;
                         }
                     }
                 }
-                changed | self.perform_workspace_switch(target, follow_files)
+                changed | self.perform_session_close(root)
             }
         }
     }

@@ -5,7 +5,7 @@ mod ai;
 pub(crate) mod canvas_scope;
 mod dojo;
 mod failure;
-mod filesystem;
+pub(super) mod filesystem;
 mod fzf;
 mod git;
 pub(super) mod leetcode_fetch;

@@ -345,7 +345,7 @@ pub(super) async fn execute_virtual_job(
             .await
             .map_err(|err| format!("workspace export index join error: {err}"))
         }
-        WorkerRequestPayload::StartFileWatch { .. } => {
+        WorkerRequestPayload::StartFileWatch { .. } | WorkerRequestPayload::StopFileWatch { .. } => {
             Err("StartFileWatch request should be handled by dedicated watch loop".to_string())
         }
         WorkerRequestPayload::SpawnPtyShell { .. }
@@ -371,8 +371,9 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::LspCompletionResolveRequest { .. }
         | WorkerRequestPayload::LspCodeActionRequest { .. }
         | WorkerRequestPayload::WorkspaceSymbolRequest { .. }
-        | WorkerRequestPayload::StopLspServer
-        | WorkerRequestPayload::ShutdownAllLspServers => {
+        | WorkerRequestPayload::StopLspServer { .. }
+        | WorkerRequestPayload::ShutdownAllLspServers
+        | WorkerRequestPayload::ShutdownLspServersForRoot { .. } => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
         }
         WorkerRequestPayload::FzfSearch { .. } => {

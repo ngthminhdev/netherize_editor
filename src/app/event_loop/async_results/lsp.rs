@@ -31,6 +31,22 @@ pub(super) fn handle_lsp_result(
                 server_name: server_name.clone(),
                 root_path: root_path.clone(),
             };
+            let for_active = app
+                .app_state
+                .workspace_root_path()
+                .is_some_and(|root| crate::app::app_state::path_matches(root, &root_path));
+            if !for_active {
+                // Started for a parked workspace: record it there so the
+                // session does not wait forever on `pending_lsp_server`.
+                if let Some(parked) = app.parked_session_for_root(&root_path) {
+                    parked.shell.active_lsp_server = Some(started.clone());
+                    parked.shell.lsp_completion_trigger_chars = completion_trigger_chars.clone();
+                    if parked.shell.pending_lsp_server.as_ref() == Some(&started) {
+                        parked.shell.pending_lsp_server = None;
+                    }
+                }
+                return;
+            }
             app.active_lsp_server = Some(started.clone());
             app.lsp_completion_trigger_chars = completion_trigger_chars.clone();
             if app.pending_lsp_server.as_ref() == Some(&started) {

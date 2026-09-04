@@ -308,9 +308,16 @@ fn execute_lsp_request(
                 version: None,
             })
         }
-        WorkerRequestPayload::StopLspServer => {
-            let Some(session) = lsp_sessions.take_any()? else {
-                return Err("stop lsp rejected: no active server".to_string());
+        WorkerRequestPayload::StopLspServer {
+            server_name,
+            root_path,
+        } => {
+            let Some(session) = lsp_sessions.remove_by_binary_and_root(server_name, root_path)?
+            else {
+                return Err(format!(
+                    "stop lsp rejected: no server '{server_name}' for {}",
+                    root_path.display()
+                ));
             };
             session
                 .process
@@ -319,6 +326,23 @@ fn execute_lsp_request(
             Ok(WorkerResultPayload::LspServerStopped {
                 exit_status,
                 reason: "shutdown requested by app".to_string(),
+            })
+        }
+        WorkerRequestPayload::ShutdownLspServersForRoot { root_path } => {
+            let sessions = lsp_sessions.drain_for_root(root_path)?;
+            let mut last_exit_status = None;
+            for session in sessions {
+                session
+                    .process
+                    .update_request_meta(request.request_id, request.revision_id);
+                last_exit_status = session.process.shutdown_and_exit()?;
+            }
+            Ok(WorkerResultPayload::LspServerStopped {
+                exit_status: last_exit_status,
+                reason: format!(
+                    "lsp servers shutdown for closed workspace {}",
+                    root_path.display()
+                ),
             })
         }
         WorkerRequestPayload::ShutdownAllLspServers => {

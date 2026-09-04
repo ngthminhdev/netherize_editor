@@ -1181,6 +1181,26 @@ command = "projects.worktrees"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>p p"
+command = "projects.switch"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>p n"
+command = "projects.next"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>p b"
+command = "projects.prev"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>p x"
+command = "projects.close"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>f f"
 command = "app.open_file_picker"
 

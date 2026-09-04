@@ -72,6 +72,7 @@ mod helpers;
 pub mod perf_probe;
 mod setup;
 mod welcome;
+mod workspace_session;
 
 use helpers::{
     build_preview_render_data, build_sidebar_rows, collect_explorer_entries,
@@ -93,6 +94,10 @@ use welcome::welcome_screen_content;
 pub struct AppShell {
     app_state: AppState,
     persistent_state: AppPersistentState,
+    /// Parked workspace sessions (the active one lives in the fields below).
+    background_sessions: Vec<workspace_session::WorkspaceSession>,
+    /// File-system events restored with a session, replayed on activation.
+    pending_fs_events_to_drain: Vec<crate::async_runtime::message::FileSystemEvent>,
     input_handler: InputHandler,
     input_map: InputMap,
     scheduler: AsyncScheduler,
@@ -487,11 +492,10 @@ enum PendingConfirmationAction {
     ExternalOverwrite {
         path: PathBuf,
     },
-    /// Workspace switch requested while unsaved edits exist: y = save all
-    /// first, n = discard and switch, Esc = stay.
-    WorkspaceSwitch {
-        target: PathBuf,
-        follow_files: Vec<PathBuf>,
+    /// Session close requested while it has unsaved edits: y = save all
+    /// first, n = discard and close, Esc = keep it open.
+    WorkspaceClose {
+        root: PathBuf,
         dirty_count: usize,
     },
 }

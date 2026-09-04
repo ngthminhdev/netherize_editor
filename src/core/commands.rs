@@ -198,6 +198,14 @@ pub enum Command {
     /// Open command palette listing this repo's other git worktrees; Enter
     /// switches the workspace to the selected worktree in place.
     OpenWorktreePalette,
+    /// Palette of live workspace sessions (MRU) followed by recent projects.
+    SwitchWorkspaceSession,
+    /// Activate the most recently used parked workspace session.
+    NextWorkspaceSession,
+    /// Activate the least recently used parked session (cycle backwards).
+    PrevWorkspaceSession,
+    /// Close the active workspace session (dirty guard), fall back to the MRU one.
+    CloseWorkspaceSession,
     /// Symlink the running executable into PATH as `netherize` (VS Code's
     /// "Shell Command: Install 'code' command in PATH").
     InstallCliPath,

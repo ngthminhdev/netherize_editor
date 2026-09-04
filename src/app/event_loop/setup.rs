@@ -148,6 +148,8 @@ impl AppShell {
         Ok(Self {
             app_state,
             persistent_state,
+            background_sessions: Vec::new(),
+            pending_fs_events_to_drain: Vec::new(),
             input_handler: InputHandler::new(),
             input_map: InputMap::new(save_path),
             scheduler,
@@ -1839,16 +1841,25 @@ impl AppShell {
         match self.desired_lsp_server_for_active_file() {
             Some(desired) => self.queue_lsp_server_start(desired),
             None => {
-                let had_lsp = self.active_lsp_server.take().is_some()
-                    || self.pending_lsp_server.take().is_some();
-                if had_lsp {
-                    self.submit(RequestSpec {
-                        revision_id: 0,
-                        topic: RequestTopic::LspClient,
-                        payload: WorkerRequestPayload::StopLspServer,
-                    });
+                let dropped = self
+                    .active_lsp_server
+                    .take()
+                    .or_else(|| self.pending_lsp_server.take());
+                self.pending_lsp_server = None;
+                match dropped {
+                    Some(server) => {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::LspClient,
+                            payload: WorkerRequestPayload::StopLspServer {
+                                server_name: server.server_name,
+                                root_path: server.root_path,
+                            },
+                        });
+                        true
+                    }
+                    None => false,
                 }
-                had_lsp
             }
         }
     }

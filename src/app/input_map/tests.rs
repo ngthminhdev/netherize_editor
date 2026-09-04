@@ -1257,6 +1257,40 @@ fn welcome_recent_projects_jk_are_not_taken_by_sidebar_focus() {
 }
 
 #[test]
+fn leader_p_p_dispatches_workspace_switcher() {
+    let map = make_default_profile_map();
+    let input_space = input_from_named(NamedKey::Space);
+    let input_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_start(&input_space, context)
+        .expect("leader starts a sequence")
+    else {
+        panic!("leader should be pending");
+    };
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_next(&sequence, &input_p, context)
+        .expect("leader p stays pending")
+    else {
+        panic!("leader p should be pending");
+    };
+    let SequenceMatch::Dispatch(matched) = map
+        .resolve_sequence_next(&sequence, &input_p, context)
+        .expect("leader p p dispatches")
+    else {
+        panic!("leader p p should dispatch");
+    };
+
+    assert_eq!(matched.command, Command::SwitchWorkspaceSession);
+}
+
+#[test]
 fn welcome_context_can_open_recent_projects_with_leader_sequence() {
     let map = make_default_profile_map();
     let input_space = input_from_named(NamedKey::Space);

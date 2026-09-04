@@ -80,6 +80,10 @@ pub const ESCAPE_MODE: &str = "mode.escape";
 pub const OPEN_FOLDER: &str = "editor.open_folder";
 pub const OPEN_RECENT_PROJECTS: &str = "projects.recent";
 pub const OPEN_WORKTREES: &str = "projects.worktrees";
+pub const SWITCH_WORKSPACE_SESSION: &str = "projects.switch";
+pub const NEXT_WORKSPACE_SESSION: &str = "projects.next";
+pub const PREV_WORKSPACE_SESSION: &str = "projects.prev";
+pub const CLOSE_WORKSPACE_SESSION: &str = "projects.close";
 
 // ── Shell command (CLI in PATH) ──────────────────────────────────────────────
 pub const INSTALL_CLI_PATH: &str = "cli.install";
@@ -336,6 +340,10 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_FOLDER,
     OPEN_RECENT_PROJECTS,
     OPEN_WORKTREES,
+    SWITCH_WORKSPACE_SESSION,
+    NEXT_WORKSPACE_SESSION,
+    PREV_WORKSPACE_SESSION,
+    CLOSE_WORKSPACE_SESSION,
     INSTALL_CLI_PATH,
     UNINSTALL_CLI_PATH,
     MOVE_LEFT,
@@ -682,6 +690,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_FOLDER => Some(Command::OpenFolder),
         OPEN_RECENT_PROJECTS => Some(Command::OpenRecentProjects),
         OPEN_WORKTREES => Some(Command::OpenWorktreePalette),
+        SWITCH_WORKSPACE_SESSION => Some(Command::SwitchWorkspaceSession),
+        NEXT_WORKSPACE_SESSION => Some(Command::NextWorkspaceSession),
+        PREV_WORKSPACE_SESSION => Some(Command::PrevWorkspaceSession),
+        CLOSE_WORKSPACE_SESSION => Some(Command::CloseWorkspaceSession),
         INSTALL_CLI_PATH => Some(Command::InstallCliPath),
         UNINSTALL_CLI_PATH => Some(Command::UninstallCliPath),
         ENTER_NORMAL => Some(Command::SwitchMode(ModeEvent::EnterNormal)),

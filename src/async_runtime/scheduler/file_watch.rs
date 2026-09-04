@@ -1,7 +1,11 @@
 use std::{
-    collections::HashSet,
-    path::PathBuf,
-    sync::mpsc as std_mpsc,
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc as std_mpsc,
+    },
     time::{Duration, Instant},
 };
 
@@ -34,11 +38,46 @@ pub(super) fn file_watch_restart_backoff(restarts: u32) -> Duration {
 /// Watcher chạy ổn định ít nhất chừng này thì coi như lần chết kế tiếp là sự cố
 /// mới, reset backoff về đầu thay vì leo tiếp lên cap.
 const FILE_WATCH_STABLE_RUN: Duration = Duration::from_secs(60);
+/// How often an idle watcher wakes to check its stop flag.
+const FILE_WATCH_STOP_POLL: Duration = Duration::from_secs(1);
+
+/// Live watchers keyed by root. One watcher per root, ever — before this the
+/// dispatch loop spawned a fresh watcher on every workspace switch and never
+/// stopped the old one (four `notify-rs fsevents loop` threads after four
+/// switches).
+#[derive(Default)]
+pub(super) struct FileWatchRegistry {
+    flags: HashMap<PathBuf, Arc<AtomicBool>>,
+}
+
+impl FileWatchRegistry {
+    /// `Some(flag)` when a new watcher must be spawned; `None` when this root
+    /// is already watched.
+    pub(super) fn start(&mut self, root: &Path) -> Option<Arc<AtomicBool>> {
+        if self.flags.contains_key(root) {
+            return None;
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        self.flags.insert(root.to_path_buf(), flag.clone());
+        Some(flag)
+    }
+
+    pub(super) fn stop(&mut self, root: &Path) -> bool {
+        match self.flags.remove(root) {
+            Some(flag) => {
+                flag.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+}
 
 pub(super) async fn run_file_watch_request(
     request: WorkerRequest,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
     event_proxy: EventLoopProxy<AppEvent>,
+    stop: Arc<AtomicBool>,
 ) {
     emit_message(
         &worker_tx,
@@ -61,12 +100,21 @@ pub(super) async fn run_file_watch_request(
     let mut restarts = 0u32;
     let mut degraded_notified = false;
     loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
         let watcher_request = request.clone();
         let watcher_tx = worker_tx.clone();
         let watcher_proxy = event_proxy.clone();
+        let stop_for_loop = stop.clone();
         let run_started = Instant::now();
         let worker_handle = tokio::task::spawn_blocking(move || {
-            execute_file_watch_loop(&watcher_request, &watcher_tx, &watcher_proxy)
+            execute_file_watch_loop(
+                &watcher_request,
+                &watcher_tx,
+                &watcher_proxy,
+                &stop_for_loop,
+            )
         });
 
         let failure = match worker_handle.await {
@@ -136,6 +184,7 @@ fn execute_file_watch_loop(
     request: &WorkerRequest,
     worker_tx: &std_mpsc::Sender<WorkerMessage>,
     event_proxy: &EventLoopProxy<AppEvent>,
+    stop: &AtomicBool,
 ) -> Result<(), String> {
     let WorkerRequestPayload::StartFileWatch {
         root_path,
@@ -170,8 +219,18 @@ fn execute_file_watch_loop(
     );
 
     loop {
-        match notify_rx.recv() {
-            Ok(Ok(event)) => {
+        let first = match notify_rx.recv_timeout(FILE_WATCH_STOP_POLL) {
+            Ok(event) => event,
+            Err(std_mpsc::RecvTimeoutError::Timeout) => {
+                if stop.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                continue;
+            }
+            Err(err) => return Err(format!("file watcher channel disconnected: {err}")),
+        };
+        match first {
+            Ok(event) => {
                 let mut events = Vec::new();
                 // HashSet dedup: một đợt git checkout/agent sửa hàng loạt có thể
                 // dồn hàng nghìn event vào một batch — Vec::contains là O(n²).
@@ -224,8 +283,7 @@ fn execute_file_watch_loop(
                     return Err("file watcher channel disconnected".to_string());
                 }
             }
-            Ok(Err(err)) => return Err(format!("file watcher error: {err}")),
-            Err(err) => return Err(format!("file watcher channel disconnected: {err}")),
+            Err(err) => return Err(format!("file watcher error: {err}")),
         }
     }
 }
@@ -318,4 +376,22 @@ fn normalize_rename_event(paths: Vec<PathBuf>) -> Vec<FileSystemEvent> {
             new_path: None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_twice_creates_one_watcher_and_stop_sets_flag() {
+        let mut reg = FileWatchRegistry::default();
+        let root = PathBuf::from("/tmp/ws-a");
+        let flag = reg.start(&root).expect("first start registers");
+        assert!(reg.start(&root).is_none(), "second start is a no-op");
+        assert!(!flag.load(Ordering::Relaxed));
+        assert!(reg.stop(&root));
+        assert!(flag.load(Ordering::Relaxed), "stop raises the flag");
+        assert!(!reg.stop(&root), "stopping twice is harmless");
+        assert!(reg.start(&root).is_some(), "root can be watched again");
+    }
 }

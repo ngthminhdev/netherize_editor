@@ -11,9 +11,26 @@ use crate::async_runtime::{
         fzf::{build_file_preview_lines, build_fzf_find_file_script, build_fzf_live_grep_script},
         git::parse_git_blame_summary,
         runtime::build_worker_runtime,
-        session_name_matches_binary,
+        select_keys_for_root, session_name_matches_binary,
     },
 };
+
+#[test]
+fn select_keys_for_root_leaves_other_roots() {
+    use std::path::Path;
+    let entries = [
+        ("rust-analyzer@/a".to_string(), PathBuf::from("/a")),
+        ("gopls@/a".to_string(), PathBuf::from("/a")),
+        ("rust-analyzer@/b".to_string(), PathBuf::from("/b")),
+    ];
+    let mut keys = select_keys_for_root(
+        entries.iter().map(|(k, r)| (k, r.as_path())),
+        Path::new("/a"),
+    );
+    keys.sort();
+    assert_eq!(keys, vec!["gopls@/a".to_string(), "rust-analyzer@/a".to_string()]);
+    assert!(select_keys_for_root(entries.iter().map(|(k, r)| (k, r.as_path())), Path::new("/c")).is_empty());
+}
 
 #[test]
 fn normalize_create_event_maps_to_internal_create() {

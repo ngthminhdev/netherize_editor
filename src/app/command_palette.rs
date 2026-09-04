@@ -285,6 +285,14 @@ pub enum CommandPaletteItemTone {
     Module,
 }
 
+/// A workspace session that is open right now, shown at the top of the
+/// workspace switcher.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LiveSessionMeta {
+    pub dirty: usize,
+    pub branch: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommandPaletteItem {
     pub label: String,
@@ -319,16 +327,40 @@ impl CommandPaletteItem {
         icon_source: Option<&str>,
         last_opened_unix_secs: Option<u64>,
     ) -> Self {
+        Self::recent_project_with_meta_and_live(path, icon_source, last_opened_unix_secs, None)
+    }
+
+    /// `live` marks a workspace session that is open right now (switcher
+    /// palette); the renderer reads the `live=`/`dirty=`/`branch=` keys.
+    pub fn recent_project_with_meta_and_live(
+        path: &std::path::Path,
+        icon_source: Option<&str>,
+        last_opened_unix_secs: Option<u64>,
+        live: Option<&LiveSessionMeta>,
+    ) -> Self {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
-        let secondary_label = match (icon_source, last_opened_unix_secs) {
-            (Some(icon), Some(secs)) => Some(format!("icon={icon};last={secs}")),
-            (Some(icon), None) => Some(format!("icon={icon}")),
-            (None, Some(secs)) => Some(format!("last={secs}")),
-            (None, None) => None,
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(icon) = icon_source {
+            parts.push(format!("icon={icon}"));
+        }
+        if let Some(secs) = last_opened_unix_secs {
+            parts.push(format!("last={secs}"));
+        }
+        if let Some(live) = live {
+            parts.push("live=1".to_string());
+            parts.push(format!("dirty={}", live.dirty));
+            if let Some(branch) = live.branch.as_deref().filter(|b| !b.is_empty()) {
+                parts.push(format!("branch={branch}"));
+            }
+        }
+        let secondary_label = if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(";"))
         };
         Self {
             label: name,
@@ -1508,6 +1540,10 @@ pub(crate) const COMMAND_PALETTE_ACTIONS: &[(&str, &str)] = &[
     ("editor.open_folder", "Open Folder…"),
     ("projects.recent", "Open Recent Project"),
     ("projects.worktrees", "Switch Git Worktree"),
+    ("projects.switch", "Switch Workspace Session"),
+    ("projects.next", "Next Workspace Session"),
+    ("projects.prev", "Previous Workspace Session"),
+    ("projects.close", "Close Workspace Session"),
     ("workspace.reload", "Reload Workspace"),
     ("app.new_instance", "New Instance"),
     ("cli.install", "Shell Command: Install 'netherize' in PATH"),

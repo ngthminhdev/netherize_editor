@@ -17,7 +17,7 @@ use super::{
     async_trace,
     codegraph::run_codegraph_request,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
-    file_watch::run_file_watch_request,
+    file_watch::{FileWatchRegistry, run_file_watch_request},
     fzf::run_fzf_request,
     leetcode_fetch::{
         LeetCodeFetchJob, LeetCodeGenerateJob, LeetCodeStatementJob, run_leetcode_fetch,
@@ -65,6 +65,7 @@ pub(super) async fn dispatch_loop(
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
+    let mut file_watches = FileWatchRegistry::default();
     let syntax_engine_cache: Arc<SyntaxEngineCacheHandle> =
         Arc::new(Mutex::new(SyntaxEngineCache::default()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
@@ -141,12 +142,23 @@ pub(super) async fn dispatch_loop(
             request.topic
         );
 
-        if matches!(request.payload, WorkerRequestPayload::StartFileWatch { .. }) {
+        if let WorkerRequestPayload::StartFileWatch { root_path, .. } = &request.payload {
+            let Some(stop) = file_watches.start(root_path) else {
+                async_trace!(
+                    "[Scheduler] watcher already live for {}",
+                    root_path.display()
+                );
+                continue;
+            };
             let worker_tx = result_tx.clone();
             let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_file_watch_request(request, worker_tx, event_proxy).await;
+                run_file_watch_request(request, worker_tx, event_proxy, stop).await;
             });
+            continue;
+        }
+        if let WorkerRequestPayload::StopFileWatch { root_path } = &request.payload {
+            file_watches.stop(root_path);
             continue;
         }
 
@@ -209,8 +221,9 @@ pub(super) async fn dispatch_loop(
                 | WorkerRequestPayload::LspCompletionVirtualHoverRequest { .. }
                 | WorkerRequestPayload::LspCodeActionRequest { .. }
                 | WorkerRequestPayload::WorkspaceSymbolRequest { .. }
-                | WorkerRequestPayload::StopLspServer
+                | WorkerRequestPayload::StopLspServer { .. }
                 | WorkerRequestPayload::ShutdownAllLspServers
+                | WorkerRequestPayload::ShutdownLspServersForRoot { .. }
         ) {
             let worker_tx = result_tx.clone();
             let lsp_sessions = lsp_sessions.clone();

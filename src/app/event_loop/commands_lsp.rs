@@ -1259,10 +1259,17 @@ impl AppShell {
         self.lsp_completion_trigger_chars.clear();
         self.pending_lsp_restart = true;
 
+        // Only this workspace's servers: other live sessions keep theirs.
+        let payload = match self.app_state.workspace_root_path() {
+            Some(root) => WorkerRequestPayload::ShutdownLspServersForRoot {
+                root_path: root.to_path_buf(),
+            },
+            None => WorkerRequestPayload::ShutdownAllLspServers,
+        };
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspClient,
-            payload: WorkerRequestPayload::ShutdownAllLspServers,
+            payload,
         });
 
         self.show_transient_toast(format!(

@@ -337,10 +337,22 @@ impl Renderer {
                 );
 
                 let secondary_y = primary_y + line_h + 2.0;
-                let last_opened = recent_meta
-                    .last_opened_unix_secs
-                    .map(relative_last_opened_label)
-                    .unwrap_or_else(|| "recently".to_string());
+                let (last_opened, last_opened_color) = if recent_meta.live {
+                    let color = if recent_meta.dirty > 0 {
+                        model.warning_color
+                    } else {
+                        model.success_color
+                    };
+                    (live_session_label(&recent_meta), color)
+                } else {
+                    (
+                        recent_meta
+                            .last_opened_unix_secs
+                            .map(relative_last_opened_label)
+                            .unwrap_or_else(|| "recently".to_string()),
+                        model.hint_color,
+                    )
+                };
                 let last_opened_w = estimate_monospace_width(&last_opened, font_size);
                 let last_opened_x = panel_x + panel_w - model.panel_padding - last_opened_w;
                 let path_available = (last_opened_x - name_x - char_w * 2.0).max(0.0);
@@ -362,7 +374,7 @@ impl Renderer {
                     &self.queue,
                     last_opened_x,
                     primary_y,
-                    model.hint_color,
+                    last_opened_color,
                 ));
             }
 
@@ -460,24 +472,49 @@ struct RecentProjectRenderMeta {
     path: String,
     icon_source: Option<String>,
     last_opened_unix_secs: Option<u64>,
+    /// Open workspace session (switcher palette).
+    live: bool,
+    dirty: usize,
+    branch: Option<String>,
 }
 
 fn parse_recent_secondary(raw: &str) -> RecentProjectRenderMeta {
     let (path, meta) = raw.split_once('\u{1f}').unwrap_or((raw, ""));
     let mut icon_source = None;
     let mut last_opened_unix_secs = None;
+    let mut live = false;
+    let mut dirty = 0;
+    let mut branch = None;
     for part in meta.split(';') {
         if let Some(value) = part.strip_prefix("icon=").filter(|value| !value.is_empty()) {
             icon_source = Some(value.to_string());
         } else if let Some(value) = part.strip_prefix("last=") {
             last_opened_unix_secs = value.parse::<u64>().ok();
+        } else if part == "live=1" {
+            live = true;
+        } else if let Some(value) = part.strip_prefix("dirty=") {
+            dirty = value.parse::<usize>().unwrap_or(0);
+        } else if let Some(value) = part.strip_prefix("branch=").filter(|value| !value.is_empty()) {
+            branch = Some(value.to_string());
         }
     }
     RecentProjectRenderMeta {
         path: path.to_string(),
         icon_source,
         last_opened_unix_secs,
+        live,
+        dirty,
+        branch,
     }
+}
+
+/// Right-hand status for a live session row: "● main", "● main  2 unsaved".
+fn live_session_label(meta: &RecentProjectRenderMeta) -> String {
+    let mut label = format!("● {}", meta.branch.as_deref().unwrap_or("live"));
+    if meta.dirty > 0 {
+        label.push_str(&format!("  {} unsaved", meta.dirty));
+    }
+    label
 }
 
 fn recent_projects_vim_mode_status(label: Option<&'static str>) -> Option<&'static str> {
@@ -487,6 +524,20 @@ fn recent_projects_vim_mode_status(label: Option<&'static str>) -> Option<&'stat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_recent_secondary_reads_live_session_markers() {
+        let meta = parse_recent_secondary("/x\u{1f}icon=rust;live=1;dirty=2;branch=main");
+        assert!(meta.live);
+        assert_eq!(meta.dirty, 2);
+        assert_eq!(meta.branch.as_deref(), Some("main"));
+        assert_eq!(meta.icon_source.as_deref(), Some("rust"));
+        assert_eq!(live_session_label(&meta), "● main  2 unsaved");
+
+        let plain = parse_recent_secondary("/y\u{1f}icon=rust;last=5");
+        assert!(!plain.live);
+        assert_eq!(plain.last_opened_unix_secs, Some(5));
+    }
 
     #[test]
     fn recent_projects_passes_vim_mode_label_through() {

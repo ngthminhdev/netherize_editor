@@ -224,6 +224,48 @@ impl AppState {
             .restore_picker_interaction(query, vim_mode, selected_index);
     }
 
+    /// Workspace switcher: live sessions (marked in the row) above recent
+    /// projects. Reuses the RecentProjects picker plumbing — Enter activates
+    /// or opens the session.
+    pub fn open_workspace_switcher_palette(
+        &mut self,
+        live: &[(std::path::PathBuf, crate::app::command_palette::LiveSessionMeta)],
+        recent: &[std::path::PathBuf],
+        meta: &std::collections::HashMap<
+            std::path::PathBuf,
+            crate::app::persistence::RecentProjectMeta,
+        >,
+    ) {
+        use crate::app::command_palette::CommandPaletteItem;
+        let icon_for = |path: &std::path::Path| {
+            crate::app::persistence::AppPersistentState::infer_project_icon_source(path)
+        };
+        let mut items: Vec<CommandPaletteItem> = live
+            .iter()
+            .map(|(path, live_meta)| {
+                let icon = icon_for(path);
+                CommandPaletteItem::recent_project_with_meta_and_live(
+                    path,
+                    Some(icon.as_str()),
+                    None,
+                    Some(live_meta),
+                )
+            })
+            .collect();
+        items.extend(recent.iter().map(|path| {
+            let icon = icon_for(path);
+            CommandPaletteItem::recent_project_with_meta(
+                path,
+                Some(icon.as_str()),
+                meta.get(path).and_then(|m| m.last_opened_unix_secs),
+            )
+        }));
+        self.command_palette
+            .open_with_items(CommandPaletteMode::RecentProjects, items);
+        self.command_palette
+            .set_title_override(Some("WORKSPACES".to_string()));
+    }
+
     /// Git-worktree switcher: reuses the RecentProjects picker plumbing (same
     /// confirm path — Enter switches workspace in place).
     pub fn open_worktree_switch_palette(&mut self, worktrees: &[std::path::PathBuf]) {

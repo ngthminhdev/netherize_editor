@@ -248,17 +248,6 @@ impl LspSessionRegistry {
             .cloned())
     }
 
-    pub(super) fn take_any(&self) -> Result<Option<LspSessionHandle>, String> {
-        let mut guard = self
-            .sessions
-            .lock()
-            .map_err(|_| "lsp session lock poisoned".to_string())?;
-        let Some(key) = guard.keys().next().cloned() else {
-            return Ok(None);
-        };
-        Ok(guard.remove(&key))
-    }
-
     pub(super) fn clear_if_process(
         &self,
         process: &Arc<LspClientProcess>,
@@ -283,6 +272,50 @@ impl LspSessionRegistry {
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(std::mem::take(&mut *guard).into_values().collect())
     }
+
+    /// Remove and return every session rooted at `root` (workspace session
+    /// closed); sessions for other roots keep running.
+    pub(super) fn drain_for_root(&self, root: &Path) -> Result<Vec<LspSessionHandle>, String> {
+        let mut guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        let keys = select_keys_for_root(
+            guard.iter().map(|(k, s)| (k, s.root_path.as_path())),
+            root,
+        );
+        Ok(keys.into_iter().filter_map(|k| guard.remove(&k)).collect())
+    }
+
+    pub(super) fn remove_by_binary_and_root(
+        &self,
+        binary: &str,
+        root: &Path,
+    ) -> Result<Option<LspSessionHandle>, String> {
+        let mut guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        let key = guard
+            .iter()
+            .find(|(_, s)| {
+                s.root_path == root && session_name_matches_binary(&s.server_name, binary)
+            })
+            .map(|(k, _)| k.clone());
+        Ok(key.and_then(|k| guard.remove(&k)))
+    }
+}
+
+/// Keys of the sessions rooted at `root`. Pure so the per-root shutdown is
+/// testable without spawning a language server.
+pub(super) fn select_keys_for_root<'a>(
+    entries: impl Iterator<Item = (&'a String, &'a Path)>,
+    root: &Path,
+) -> Vec<String> {
+    entries
+        .filter(|(_, session_root)| *session_root == root)
+        .map(|(k, _)| k.clone())
+        .collect()
 }
 
 fn session_name_matches_binary(session_name: &str, binary: &str) -> bool {

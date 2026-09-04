@@ -29,82 +29,6 @@ fn next_available_paste_path(target_dir: &Path, file_name: &str) -> PathBuf {
 }
 
 impl AppShell {
-    fn reset_terminals_for_workspace_switch(&mut self) {
-        let bottom_sessions: Vec<u64> = self
-            .terminal_tabs
-            .iter()
-            .filter_map(|tab| tab.session_id)
-            .collect();
-        let right_session = self.right_pty_session_id;
-        let buffer_sessions: Vec<u64> = self.terminal_buffer_grids.keys().copied().collect();
-
-        for session_id in bottom_sessions
-            .into_iter()
-            .chain(right_session)
-            .chain(buffer_sessions)
-        {
-            self.submit(RequestSpec {
-                revision_id: 0,
-                topic: RequestTopic::TerminalPty,
-                payload: WorkerRequestPayload::ClosePtySession { session_id },
-            });
-        }
-
-        self.ignored_terminal_tab_spawns
-            .extend(self.pending_terminal_tab_spawns.keys().copied());
-        self.pending_terminal_tab_spawns.clear();
-        self.terminal_buffer_grids.clear();
-        self.pending_lazygit_buffer_index = None;
-        self.pending_lazydocker_buffer_index = None;
-        self.right_pty_session_id = None;
-        self.pending_right_pty_spawn = false;
-        self.right_pty_startup_command = None;
-        self.right_terminal_grid = TerminalGrid::new(120, 40);
-        self.right_terminal_grid.highlight_colors = HighlightColors::from_theme(&self.theme);
-        self.right_terminal_needs_layout = true;
-        self.last_right_terminal_bounds = None;
-
-        let mut grid = TerminalGrid::new(120, 40);
-        grid.highlight_colors = HighlightColors::from_theme(&self.theme);
-        self.terminal_tabs = vec![TerminalTab::new(grid, "bash".to_string())];
-        self.active_terminal_tab = 0;
-        self.terminal_needs_layout = true;
-        self.buffer_terminal_needs_layout = true;
-        self.last_terminal_bounds = None;
-        self.last_buffer_terminal_bounds = None;
-
-        if let Some(renderer) = self.renderer.as_mut() {
-            renderer.clear_terminal();
-            renderer.clear_buffer_terminal();
-            renderer.clear_right_terminal();
-        }
-    }
-
-    fn prepare_for_workspace_switch(&mut self) {
-        self.reset_terminals_for_workspace_switch();
-
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::LspClient,
-            payload: WorkerRequestPayload::ShutdownAllLspServers,
-        });
-
-        self.app_state.clear_workspace_session_state();
-        // Drop the previous workspace's indexed symbols so completion can't
-        // suggest names — and synthesize imports — pointing at the old project
-        // during the window before the new workspace finishes indexing.
-        self.app_state.workspace_symbol_cache().clear_all();
-        self.active_lsp_server = None;
-        self.pending_lsp_server = None;
-        self.pending_lsp_document_sync = None;
-        self.lsp_completion_trigger_chars.clear();
-        self.active_lsp_guide = None;
-        self.highlight_spans.clear();
-        self.semantic_highlight_spans.clear();
-        self.cached_document_symbols.clear();
-        self.cached_document_symbols_path = None;
-    }
-
     pub(super) fn reload_workspace(&mut self) -> bool {
         let Some(root_path) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             self.show_transient_toast("Reload Workspace: no workspace open".to_string());
@@ -148,18 +72,14 @@ impl AppShell {
         self.switch_workspace_with_files(root_path, Vec::new())
     }
 
-    /// Switch workspace, then open `follow_files` in the new workspace. When
-    /// unsaved edits exist this asks first (save all / discard / stay) instead
-    /// of silently dropping them with the buffer list.
+    /// Bring `root_path` to the front, then open `follow_files` there. The
+    /// previous workspace is parked as a session (nothing is destroyed), so
+    /// there is no dirty-buffer prompt here — only `close_session` asks.
     pub(in crate::app::event_loop) fn switch_workspace_with_files(
         &mut self,
         root_path: PathBuf,
         follow_files: Vec<PathBuf>,
     ) -> bool {
-        let dirty_count = self.app_state.dirty_buffer_count();
-        if dirty_count > 0 && self.pending_confirmation.is_none() {
-            return self.begin_workspace_switch_confirmation(root_path, follow_files, dirty_count);
-        }
         self.perform_workspace_switch(root_path, follow_files)
     }
 
@@ -212,75 +132,7 @@ impl AppShell {
         root_path: PathBuf,
         follow_files: Vec<PathBuf>,
     ) -> bool {
-        self.prepare_for_workspace_switch();
-
-        if let Err(err) = self.app_state.attach_workspace(root_path.clone()) {
-            eprintln!("[AppShell] attach_workspace failed: {err}");
-            return false;
-        }
-
-        // Do NOT re-enter welcome mode here: the explorer Enter key maps to
-        // FilePickerConfirmSelection when welcome_visible=true, which silently
-        // fails when no recent-projects palette is open (shows "[no file]").
-        let _ = self.app_state.set_initial_launch_welcome(false);
-
-        // Hide ALL panels so the new workspace starts clean (like a fresh open).
-        self.panel_state.left.visible = false;
-        self.panel_state.right.visible = false;
-        self.panel_state.bottom.visible = false;
-        self.sidebar_needs_layout = true;
-
-        // Force explorer snapshot refresh (clear stale cached entries from previous workspace).
-        self.explorer_snapshot = ExplorerSnapshot::default();
-        self.explorer_snapshot_dirty = true;
-        self.explorer_cursor = 0;
-
-        let icon_source =
-            crate::app::persistence::AppPersistentState::infer_project_icon_source(&root_path);
-        self.persistent_state
-            .push_recent_with_icon(root_path.clone(), Some(icon_source));
-        self.persistent_state.save();
-
-        self.mark_explorer_dirty();
-        self.workspace_git_branch = self
-            .app_state
-            .workspace_root_path()
-            .and_then(detect_git_branch);
-
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::WorkspaceWatch,
-            payload: WorkerRequestPayload::StartFileWatch {
-                root_path: root_path.clone(),
-                recursive: true,
-            },
-        });
-
-        self.submit_workspace_git_status_refresh();
-        self.submit_active_buffer_git_baseline_refresh();
-
-        self.sync_lsp_server_for_workspace();
-
-        for file in follow_files {
-            if let Err(err) = self.app_state.open_file(file.clone()) {
-                eprintln!(
-                    "[AppShell] follow-file open skipped ({}): {err}",
-                    file.display()
-                );
-            }
-        }
-        if self.app_state.active_file().is_some() {
-            self.invalidate_highlights_and_parse_active_buffer();
-            self.submit_lsp_did_open_for_active_file();
-        }
-
-        self.update_window_title();
-
-        self.editor_needs_layout = true;
-        self.editor_caret_needs_layout = false;
-        // A `g o` that had to switch projects shows its panels now.
-        self.dojo_after_workspace_switch(&root_path);
-        true
+        self.activate_session(root_path, follow_files)
     }
 
     fn explorer_selected_entry(&mut self) -> Option<ExplorerEntry> {
@@ -397,6 +249,22 @@ impl AppShell {
                 Some(changed)
             }
             Command::OpenWorktreePalette => Some(self.open_worktree_palette()),
+            Command::SwitchWorkspaceSession => {
+                let mut changed = self.open_workspace_switcher_palette();
+                if changed {
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
+                }
+                Some(changed)
+            }
+            Command::NextWorkspaceSession => Some(self.cycle_session(true)),
+            Command::PrevWorkspaceSession => Some(self.cycle_session(false)),
+            Command::CloseWorkspaceSession => {
+                let Some(root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+                    self.show_transient_toast("No workspace session to close".to_string());
+                    return Some(false);
+                };
+                Some(self.close_session(root))
+            }
             Command::InstallCliPath => Some(self.install_cli_command()),
             Command::UninstallCliPath => Some(self.uninstall_cli_command()),
             Command::ToggleLeftDock => {

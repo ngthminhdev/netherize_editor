@@ -372,6 +372,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenFolder
         | Command::OpenRecentProjects
         | Command::OpenWorktreePalette
+        | Command::SwitchWorkspaceSession
+        | Command::NextWorkspaceSession
+        | Command::PrevWorkspaceSession
+        | Command::CloseWorkspaceSession
         | Command::InstallCliPath
         | Command::UninstallCliPath
         | Command::RemoveRecentProject

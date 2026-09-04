@@ -203,6 +203,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::OpenFolder
         | Command::OpenRecentProjects
         | Command::OpenWorktreePalette
+        | Command::SwitchWorkspaceSession
+        | Command::NextWorkspaceSession
+        | Command::PrevWorkspaceSession
+        | Command::CloseWorkspaceSession
         | Command::InstallCliPath
         | Command::UninstallCliPath
         | Command::LspHover

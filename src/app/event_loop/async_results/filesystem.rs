@@ -53,8 +53,19 @@ fn show_external_change_toasts(app: &mut AppShell, report: &ExternalChangeReport
     app.show_transient_toast_kind(message, ToastKind::Info);
 }
 
-pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResultPayload) {
-    if let WorkerResultPayload::FileSystemEvents { events, .. } = payload {
+pub(in crate::app::event_loop) fn handle_filesystem_result(
+    app: &mut AppShell,
+    payload: WorkerResultPayload,
+) {
+    if let WorkerResultPayload::FileSystemEvents { root_path, events } = payload {
+        // Only a PARKED workspace's root is diverted. Anything else (the
+        // active root, or the parent-dir watcher of a file opened outside the
+        // workspace) is handled here as before.
+        if let Some(parked) = app.parked_session_for_root(&root_path) {
+            parked.pending_fs_events.extend(events);
+            parked.shell.explorer_snapshot_dirty = true;
+            return;
+        }
         for event in events.iter() {
             if let Ok(metadata) = std::fs::metadata(&event.path) {
                 if let Ok(modified_time) = metadata.modified() {
