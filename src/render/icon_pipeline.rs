@@ -44,7 +44,7 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "codeworkspace" => "built_in:codeworkspace",
         "commitlint" => "built_in:commitlint",
         "composerlock" => "built_in:composerlock",
-        "conf" | "config" => "built_in:conf",
+        "conf" | "config" | "env" => "built_in:conf",
         "cpp" => "built_in:cpp",
         "csharp" => "built_in:csharp",
         "css" => "built_in:css",

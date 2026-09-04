@@ -4,7 +4,15 @@ use tree_sitter::Language;
 
 use crate::{lsp::registry::language_profile_for_path, syntax::syntax_engine::LanguageId};
 
+pub use crate::lsp::registry::is_env_filename;
+
 pub fn language_id_for_path(path: &Path) -> Option<LanguageId> {
+    if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+        if is_env_filename(file_name) {
+            return Some(LanguageId::Dotenv);
+        }
+    }
+
     language_profile_for_path(path)
         .and_then(|profile| profile.syntax_language_id)
         .or_else(|| language_id_for_extension(path.extension()?.to_str()?))
@@ -68,5 +76,60 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Xml => Some(tree_sitter_xml::LANGUAGE_XML.into()),
         LanguageId::Dart => Some(tree_sitter_dart::LANGUAGE.into()),
         LanguageId::Plaintext => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_env_filename() {
+        assert!(is_env_filename(".env"));
+        assert!(is_env_filename("env"));
+        assert!(is_env_filename("env.dis"));
+        assert!(is_env_filename(".env.dis"));
+        assert!(is_env_filename(".env.local"));
+        assert!(is_env_filename(".env.production"));
+        assert!(is_env_filename("docker.env"));
+        assert!(is_env_filename("my-app.env.local"));
+
+        assert!(is_env_filename("env.dist"));
+        assert!(is_env_filename("env.monitor.dist"));
+        assert!(is_env_filename(".env.dist"));
+        assert!(!is_env_filename("notify-provider-config.dist.json"));
+        assert!(!is_env_filename("python_env.rs"));
+        assert!(!is_env_filename("dart_env.rs"));
+        assert!(!is_env_filename("env.json"));
+        assert!(!is_env_filename("environment.ts"));
+        assert!(!is_env_filename("envelope.txt"));
+    }
+
+    #[test]
+    fn test_language_id_for_env_paths() {
+        assert_eq!(
+            language_id_for_path(Path::new(".env")),
+            Some(LanguageId::Dotenv)
+        );
+        assert_eq!(
+            language_id_for_path(Path::new("env")),
+            Some(LanguageId::Dotenv)
+        );
+        assert_eq!(
+            language_id_for_path(Path::new("env.dis")),
+            Some(LanguageId::Dotenv)
+        );
+        assert_eq!(
+            language_id_for_path(Path::new(".env.local")),
+            Some(LanguageId::Dotenv)
+        );
+        assert_eq!(
+            language_id_for_path(Path::new("docker.env")),
+            Some(LanguageId::Dotenv)
+        );
+        assert_eq!(
+            language_id_for_path(Path::new("python_env.rs")),
+            Some(LanguageId::Rust)
+        );
     }
 }

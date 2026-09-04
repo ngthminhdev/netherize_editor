@@ -199,12 +199,19 @@ fn build_minimap_quads(
         strip_y,
         content_h,
         step,
-        ind_h: (visible_lines * step).clamp(6.0, content_h),
+        ind_h: minimap_indicator_height(visible_lines, step, content_h),
         line_count: line_count as f32,
         accent,
     };
 
     (quads, layout)
+}
+
+/// Indicator spans the visible line range, at least 6px tall, never taller than
+/// the strip content. Order matters: a 1-line file has `content_h = 3px`, and
+/// `clamp(6.0, content_h)` panics on min > max.
+fn minimap_indicator_height(visible_lines: f32, step: f32, content_h: f32) -> f32 {
+    (visible_lines * step).max(6.0).min(content_h)
 }
 
 fn append_minimap_git_markers(
@@ -988,6 +995,17 @@ mod tests {
             q.rect.iter().zip(rect).all(|(a, b)| near(*a, b))
                 && q.color.iter().zip(color).all(|(a, b)| near(*a, b))
         })
+    }
+
+    #[test]
+    fn minimap_indicator_height_never_panics_on_tiny_content() {
+        // 1-line file: content_h (3px) < 6px minimum → indicator shrinks to content.
+        assert!(near(minimap_indicator_height(40.0, 3.0, 3.0), 3.0));
+        // Normal file: visible span wins, capped at content.
+        assert!(near(minimap_indicator_height(40.0, 3.0, 300.0), 120.0));
+        assert!(near(minimap_indicator_height(40.0, 3.0, 60.0), 60.0));
+        // Tiny span on a tall file: 6px floor.
+        assert!(near(minimap_indicator_height(1.0, 0.5, 300.0), 6.0));
     }
 
     #[test]

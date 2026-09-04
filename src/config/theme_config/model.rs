@@ -1,5 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
+use crate::lsp::registry::is_env_filename;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeColor {
     rgba_u8: [u8; 4],
@@ -353,6 +355,10 @@ fn normalize_icon_filename(filename: &str) -> String {
 }
 
 fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
+    if is_env_filename(filename) {
+        return Some("built_in:conf");
+    }
+
     if let Some(icon) = nestjs_role_icon_for_filename(filename) {
         return Some(icon);
     }
@@ -703,8 +709,11 @@ impl ThemeConfig {
                 &self.icons.folder_closed
             }
         } else {
-            let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-            self.file_icon_for_extension(extension)
+            let filename = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            self.icon_theme_for_filename(filename, false)
         }
     }
 
@@ -771,6 +780,14 @@ impl ThemeConfig {
     pub fn icon_theme_for_filename(&self, filename: &str, is_dir: bool) -> &FileIconThemeTokens {
         if is_dir {
             return &self.icons.folder_closed;
+        }
+
+        let bare_filename = Path::new(filename)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(filename);
+        if is_env_filename(bare_filename) {
+            return &self.icons.config;
         }
 
         if filename.eq_ignore_ascii_case("cargo.toml") {
@@ -1059,6 +1076,33 @@ mod tests {
         assert_eq!(
             theme.get_icon_for_file("unknown.bin", false),
             "built_in:file"
+        );
+        assert_eq!(theme.get_icon_for_file(".env", false), "built_in:conf");
+        assert_eq!(theme.get_icon_for_file("env", false), "built_in:conf");
+        assert_eq!(theme.get_icon_for_file("env.dis", false), "built_in:conf");
+        assert_eq!(
+            theme.get_icon_for_file(".env.local", false),
+            "built_in:conf"
+        );
+        assert_eq!(
+            theme.get_icon_for_file(".env.production", false),
+            "built_in:conf"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("docker.env", false),
+            "built_in:conf"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("my-app.env.local", false),
+            "built_in:conf"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("python_env.rs", false),
+            "built_in:rust"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("env.json", false),
+            "built_in:json"
         );
     }
 }

@@ -113,58 +113,170 @@ pub fn generate_highlight_spans_with_cache(
     }
 }
 
+static RE_DOTENV_KV: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:(export)\s+)?([A-Za-z0-9_.-]+)(?:\s*(=|:)\s*(.*))?$"#).unwrap()
+});
+static RE_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^-?[0-9]+(?:\.[0-9]+)?$").unwrap());
+static RE_BOOLEAN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?i:true|false|yes|no|on|off)$").unwrap());
+
 pub fn generate_dotenv_highlight_spans(source: &str) -> Vec<HighlightSpan> {
-    let comment_re = Regex::new(r"^\s*#").unwrap();
-    let export_re = Regex::new(r"^\s*(export)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap();
-    let kv_re = Regex::new(r"^\s*([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)").unwrap();
-
     let mut spans = Vec::new();
-    let mut byte_pos = 0usize;
+    let mut line_start = 0usize;
 
-    for line in source.lines() {
-        let line_len = line.len();
-        let line_start = byte_pos;
+    for raw_line in source.split('\n') {
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        let trimmed = line.trim();
 
-        if comment_re.is_match(line) {
+        if trimmed.is_empty() {
+            line_start += raw_line.len() + 1;
+            continue;
+        }
+
+        if trimmed.starts_with('#') || trimmed.starts_with(';') {
+            let leading = line.find(|c: char| !c.is_whitespace()).unwrap_or(0);
             spans.push(HighlightSpan {
-                range: line_start..line_start + line_len,
+                range: (line_start + leading)..(line_start + line.len()),
                 category: HighlightCategory::Comment,
             });
-        } else if let Some(caps) = export_re.captures(line) {
-            let export_match = caps.get(1).unwrap();
-            spans.push(HighlightSpan {
-                range: line_start + export_match.start()..line_start + export_match.end(),
-                category: HighlightCategory::Keyword,
-            });
-            let key_match = caps.get(2).unwrap();
-            spans.push(HighlightSpan {
-                range: line_start + key_match.start()..line_start + key_match.end(),
-                category: HighlightCategory::Variable,
-            });
-        } else if let Some(caps) = kv_re.captures(line) {
-            let key_match = caps.get(1).unwrap();
-            spans.push(HighlightSpan {
-                range: line_start + key_match.start()..line_start + key_match.end(),
-                category: HighlightCategory::Keyword,
-            });
-            let op_match = caps.get(2).unwrap();
-            spans.push(HighlightSpan {
-                range: line_start + op_match.start()..line_start + op_match.end(),
-                category: HighlightCategory::Operator,
-            });
-            let val_match = caps.get(3).unwrap();
-            if val_match.end() > val_match.start() {
+            line_start += raw_line.len() + 1;
+            continue;
+        }
+
+        if let Some(caps) = RE_DOTENV_KV.captures(line) {
+            if let Some(export_match) = caps.get(1) {
                 spans.push(HighlightSpan {
-                    range: line_start + val_match.start()..line_start + val_match.end(),
-                    category: HighlightCategory::String,
+                    range: (line_start + export_match.start())..(line_start + export_match.end()),
+                    category: HighlightCategory::Keyword,
                 });
+            }
+
+            if let Some(key_match) = caps.get(2) {
+                spans.push(HighlightSpan {
+                    range: (line_start + key_match.start())..(line_start + key_match.end()),
+                    category: HighlightCategory::Keyword,
+                });
+            }
+
+            if let Some(op_match) = caps.get(3) {
+                spans.push(HighlightSpan {
+                    range: (line_start + op_match.start())..(line_start + op_match.end()),
+                    category: HighlightCategory::Operator,
+                });
+            }
+
+            if let Some(val_match) = caps.get(4) {
+                let val_str = val_match.as_str();
+                let val_offset = line_start + val_match.start();
+
+                if !val_str.is_empty() {
+                    parse_dotenv_value(val_str, val_offset, &mut spans);
+                }
             }
         }
 
-        byte_pos += line_len + 1; // +1 for newline
+        line_start += raw_line.len() + 1;
     }
 
     spans
+}
+
+fn parse_dotenv_value(val_str: &str, val_offset: usize, spans: &mut Vec<HighlightSpan>) {
+    let trimmed_leading = val_str.len() - val_str.trim_start().len();
+    let val_trimmed_start = &val_str[trimmed_leading..];
+    if val_trimmed_start.is_empty() {
+        return;
+    }
+
+    let start_offset = val_offset + trimmed_leading;
+    let first_char = val_trimmed_start.chars().next().unwrap();
+
+    if first_char == '"' || first_char == '\'' {
+        let quote = first_char;
+        let mut escaped = false;
+        let mut end_quote_idx = None;
+
+        for (idx, ch) in val_trimmed_start[1..].char_indices() {
+            let actual_idx = idx + 1;
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == quote {
+                end_quote_idx = Some(actual_idx);
+                break;
+            }
+        }
+
+        let quote_end = end_quote_idx.unwrap_or(val_trimmed_start.len() - 1);
+        let str_end = quote_end + 1;
+
+        spans.push(HighlightSpan {
+            range: start_offset..(start_offset + str_end),
+            category: HighlightCategory::String,
+        });
+
+        if str_end < val_trimmed_start.len() {
+            let rest = &val_trimmed_start[str_end..];
+            if let Some(comment_pos) = find_inline_comment(rest) {
+                let comment_start = start_offset + str_end + comment_pos;
+                let comment_end = start_offset + val_trimmed_start.len();
+                spans.push(HighlightSpan {
+                    range: comment_start..comment_end,
+                    category: HighlightCategory::Comment,
+                });
+            }
+        }
+    } else {
+        let (val_part, comment_opt) = match find_inline_comment(val_trimmed_start) {
+            Some(comment_pos) => (
+                &val_trimmed_start[..comment_pos],
+                Some((comment_pos, val_trimmed_start.len())),
+            ),
+            None => (val_trimmed_start, None),
+        };
+
+        let trimmed_val = val_part.trim_end();
+        if !trimmed_val.is_empty() {
+            let category = if RE_BOOLEAN.is_match(trimmed_val) {
+                HighlightCategory::Boolean
+            } else if RE_NUMBER.is_match(trimmed_val) {
+                HighlightCategory::Number
+            } else {
+                HighlightCategory::String
+            };
+
+            spans.push(HighlightSpan {
+                range: start_offset..(start_offset + trimmed_val.len()),
+                category,
+            });
+        }
+
+        if let Some((c_start, c_end)) = comment_opt {
+            let comment_leading = val_trimmed_start[c_start..]
+                .find(|c: char| !c.is_whitespace())
+                .unwrap_or(0);
+            spans.push(HighlightSpan {
+                range: (start_offset + c_start + comment_leading)..(start_offset + c_end),
+                category: HighlightCategory::Comment,
+            });
+        }
+    }
+}
+
+fn find_inline_comment(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        if (bytes[i] == b'#' || bytes[i] == b';') && (i == 0 || bytes[i - 1].is_ascii_whitespace())
+        {
+            return Some(i);
+        }
+    }
+    None
 }
 
 static RE_PT_STRING: Lazy<Regex> =
@@ -297,6 +409,13 @@ pub fn generate_highlight_spans_in_byte_window(
     let Some((start, end)) = sanitize_byte_range(source, window) else {
         return Vec::new();
     };
+    if tree_state.language_id() == LanguageId::Dotenv {
+        let all_spans = generate_dotenv_highlight_spans(source);
+        return all_spans
+            .into_iter()
+            .filter(|span| span.range.end > start && span.range.start < end)
+            .collect();
+    }
     let base = generate_query_highlight_spans(
         tree_state.language_id(),
         tree_state.root_node(),
@@ -950,5 +1069,32 @@ WHERE id = 42 AND email = 'hi@example.com';
                 lang.as_str()
             );
         }
+    }
+
+    #[test]
+    fn test_dotenv_highlight_spans() {
+        let dotenv = "# Configuration\nPORT=3000\nDEBUG=true\nAPI_KEY=\"secret\"\nexport DB_HOST=localhost # host\n";
+        let spans = generate_dotenv_highlight_spans(dotenv);
+
+        // Comment
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Comment && &dotenv[s.range.clone()] == "# Configuration"));
+        // Key PORT
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Keyword && &dotenv[s.range.clone()] == "PORT"));
+        // Operator =
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Operator && &dotenv[s.range.clone()] == "="));
+        // Number 3000
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Number && &dotenv[s.range.clone()] == "3000"));
+        // Boolean true
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Boolean && &dotenv[s.range.clone()] == "true"));
+        // String "secret"
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::String && &dotenv[s.range.clone()] == "\"secret\""));
+        // Export keyword
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Keyword && &dotenv[s.range.clone()] == "export"));
+        // Key DB_HOST
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Keyword && &dotenv[s.range.clone()] == "DB_HOST"));
+        // String localhost
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::String && &dotenv[s.range.clone()] == "localhost"));
+        // Inline comment # host
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Comment && &dotenv[s.range.clone()] == "# host"));
     }
 }

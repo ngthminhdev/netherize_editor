@@ -281,7 +281,7 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         install_command: "",
         root_markers: NO_ROOT_MARKERS,
         extensions: &["env"],
-        filenames: &[".env", ".env*", "env.*"],
+        filenames: &[".env", ".env*", "env", "env.*", "*.env*"],
     },
     LanguageProfile {
         key: "xml",
@@ -325,6 +325,46 @@ pub fn all_language_profiles() -> &'static [LanguageProfile] {
     LANGUAGE_REGISTRY
 }
 
+pub fn is_env_filename(filename: &str) -> bool {
+    let lower = filename.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    if lower == "env" || lower == ".env" {
+        return true;
+    }
+
+    const CODE_EXTENSIONS: &[&str] = &[
+        "rs", "go", "py", "pyw", "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts",
+        "java", "kt", "kts", "c", "cpp", "cc", "cxx", "h", "hpp", "hh", "hxx",
+        "cs", "dart", "swift", "php", "rb", "lua", "zig", "scala", "sc",
+        "html", "htm", "css", "scss", "sass", "sql", "json", "jsonc",
+        "yaml", "yml", "toml", "xml", "md", "mdx", "markdown", "proto",
+        "svg", "png", "jpg", "jpeg", "gif", "ico", "webp", "wasm", "lock",
+    ];
+
+    if let Some((_, ext)) = lower.rsplit_once('.') {
+        if CODE_EXTENSIONS.contains(&ext) {
+            return false;
+        }
+    }
+
+    if lower.starts_with(".env") {
+        return true;
+    }
+
+    if lower.starts_with("env.") || lower.starts_with("env-") || lower.starts_with("env_") {
+        return true;
+    }
+
+    if lower.ends_with(".env") {
+        return true;
+    }
+
+    lower.split(['.', '-', '_']).any(|segment| segment == "env")
+}
+
 pub fn language_profile_for_extension(ext: &str) -> Option<&'static LanguageProfile> {
     let needle = ext.trim_start_matches('.').to_ascii_lowercase();
     LANGUAGE_REGISTRY.iter().find(|profile| {
@@ -336,8 +376,14 @@ pub fn language_profile_for_extension(ext: &str) -> Option<&'static LanguageProf
 }
 
 pub fn language_profile_for_path(path: &Path) -> Option<&'static LanguageProfile> {
-    if let Some(file_name) = path.file_name().and_then(|value| value.to_str())
-        && let Some(profile) = LANGUAGE_REGISTRY.iter().find(|profile| {
+    if let Some(file_name) = path.file_name().and_then(|value| value.to_str()) {
+        if is_env_filename(file_name) {
+            if let Some(profile) = LANGUAGE_REGISTRY.iter().find(|p| p.key == "dotenv") {
+                return Some(profile);
+            }
+        }
+
+        if let Some(profile) = LANGUAGE_REGISTRY.iter().find(|profile| {
             profile.filenames.iter().any(|candidate| {
                 if let Some(prefix) = candidate.strip_suffix('*') {
                     file_name.starts_with(prefix)
@@ -345,9 +391,9 @@ pub fn language_profile_for_path(path: &Path) -> Option<&'static LanguageProfile
                     candidate.eq_ignore_ascii_case(file_name)
                 }
             })
-        })
-    {
-        return Some(profile);
+        }) {
+            return Some(profile);
+        }
     }
 
     path.extension()
