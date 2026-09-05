@@ -1,5 +1,7 @@
 #[path = "commands_ai_agent.rs"]
 mod commands_ai_agent;
+#[path = "commands_ai_models.rs"]
+mod commands_ai_models;
 #[path = "commands_canvas.rs"]
 mod commands_canvas;
 #[path = "commands_completion.rs"]

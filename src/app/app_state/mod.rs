@@ -283,6 +283,28 @@ pub struct ReferencesBufferState {
     pub collapsed_paths: std::collections::HashSet<String>,
 }
 
+/// A cleaned inline-completion edit: ghost text to show after the caret plus
+/// how many chars BEFORE the caret it replaces (a rewrite of the line's tail,
+/// e.g. a typo fix) and how many chars AFTER the caret it consumes (auto-pair
+/// closers like `');` the completion already closed). Both 0 = plain insert.
+/// Tab applies all three as one edit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InlineEdit {
+    pub text: String,
+    pub replace_before_caret: usize,
+    pub replace_after_caret: usize,
+}
+
+impl InlineEdit {
+    pub fn insert(text: String) -> Self {
+        Self {
+            text,
+            replace_before_caret: 0,
+            replace_after_caret: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticItem {
     pub file_path: PathBuf,
@@ -2369,6 +2391,10 @@ pub struct AppState {
     completion: Option<CompletionState>,
     completion_loading: bool,
     inline_suggestion: Option<String>,
+    /// Chars before the caret the ghost text replaces (0 = plain insertion).
+    inline_suggestion_replace_chars: usize,
+    /// Chars after the caret the ghost text consumes (auto-pair closers).
+    inline_suggestion_replace_after_chars: usize,
     jump_back_stack: Vec<(PathBuf, usize, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize, usize)>,
     /// Merged, display-ready diagnostics per file (union of all servers).
@@ -2481,6 +2507,8 @@ impl AppState {
             completion: None,
             completion_loading: false,
             inline_suggestion: None,
+            inline_suggestion_replace_chars: 0,
+            inline_suggestion_replace_after_chars: 0,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
@@ -2615,6 +2643,8 @@ impl AppState {
             completion: None,
             completion_loading: false,
             inline_suggestion: None,
+            inline_suggestion_replace_chars: 0,
+            inline_suggestion_replace_after_chars: 0,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),

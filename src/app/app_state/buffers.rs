@@ -918,6 +918,66 @@ impl AppState {
         })
     }
 
+    /// Snippets from the tabs nearest the active one (Copilot's "neighboring
+    /// tabs"): text buffers with the same extension, the head of each file
+    /// (imports + signatures) cut on a line boundary. Cheap extra context that
+    /// keeps the model from inventing APIs the project already has.
+    pub fn inline_neighbor_snippets(
+        &self,
+        max_files: usize,
+        max_chars: usize,
+    ) -> Vec<(String, String)> {
+        if max_files == 0 || max_chars == 0 {
+            return Vec::new();
+        }
+        let Some(active_idx) = self.active_buffer_index() else {
+            return Vec::new();
+        };
+        let Some(active_ext) = self
+            .active_file()
+            .and_then(|path| path.extension())
+            .map(|ext| ext.to_os_string())
+        else {
+            return Vec::new();
+        };
+        let count = self.buffers.len();
+        let mut out = Vec::new();
+        // Nearest tabs first: i-1, i+1, i-2, i+2, …
+        for distance in 1..count.max(1) {
+            let candidates = [
+                active_idx.checked_sub(distance),
+                active_idx.checked_add(distance).filter(|idx| *idx < count),
+            ];
+            for idx in candidates.into_iter().flatten() {
+                let Some(BufferContent::Text(buffer)) =
+                    self.buffers.get(idx).map(|entry| &entry.content)
+                else {
+                    continue;
+                };
+                if buffer.path.extension() != Some(active_ext.as_os_str()) {
+                    continue;
+                }
+                let Some(rope) = buffer.in_memory_text.as_ref() else {
+                    continue;
+                };
+                let snippet = neighbor_head(rope, max_chars);
+                if snippet.trim().is_empty() {
+                    continue;
+                }
+                let name = buffer
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| buffer.path.display().to_string());
+                out.push((name, snippet));
+                if out.len() >= max_files {
+                    return out;
+                }
+            }
+        }
+        out
+    }
+
     /// 3s safety-net poll: stat every clean open buffer and return the paths
     /// whose mtime changed. NO file contents are read here (#4) — the caller
     /// submits a `ReadExternalFiles` worker request and the contents come back
@@ -1082,4 +1142,16 @@ impl AppState {
         }
         opened
     }
+}
+
+/// The first `max_chars` chars of a file, cut back to the last full line.
+fn neighbor_head(rope: &ropey::Rope, max_chars: usize) -> String {
+    if rope.len_chars() <= max_chars {
+        return rope.to_string();
+    }
+    let mut head: String = rope.chars().take(max_chars).collect();
+    if let Some(newline) = head.rfind('\n') {
+        head.truncate(newline + 1);
+    }
+    head
 }

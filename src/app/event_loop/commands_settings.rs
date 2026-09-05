@@ -17,41 +17,20 @@ impl AppShell {
                     .clone()
                     .unwrap_or_default();
                 let ai_cfg = self.ai_config.inline_completion.as_ref();
-                let leetcode_cfg = self.ai_config.leetcode.as_ref();
-                let leetcode_provider = leetcode_cfg.and_then(|c| c.provider.as_ref());
                 let ai = crate::app::app_state::AiInlineSettings {
-                    api_url: ai_cfg
-                        .map(|cfg| cfg.provider.api_url.clone())
-                        .unwrap_or_default(),
-                    model: ai_cfg
-                        .map(|cfg| cfg.provider.model.clone())
-                        .unwrap_or_default(),
-                    api_key: ai_cfg
-                        .and_then(|cfg| cfg.provider.api_key.clone())
-                        .unwrap_or_default(),
-                    endpoint_kind: ai_cfg
-                        .and_then(|cfg| cfg.provider.endpoint_kind.clone())
-                        .unwrap_or_default(),
+                    api_url: self.ai_config.provider_api_url(),
+                    api_key: self.ai_config.provider_api_key(),
+                    model: self
+                        .ai_config
+                        .feature_model(crate::config::ai_config::AiFeature::InlineCompletion),
                     max_tokens: ai_cfg.map(|cfg| cfg.max_tokens()).unwrap_or(96),
                     prefix_chars: ai_cfg.map(|cfg| cfg.prefix_chars()).unwrap_or(1200),
                     suffix_chars: ai_cfg.map(|cfg| cfg.suffix_chars()).unwrap_or(400),
                     debounce_ms: ai_cfg.map(|cfg| cfg.debounce_ms()).unwrap_or(80),
                     leetcode_ai_enabled: self.ai_config.leetcode_ai_enabled(),
-                    leetcode_api_url: leetcode_provider
-                        .map(|p| p.api_url.clone())
-                        .unwrap_or_default(),
-                    leetcode_model: leetcode_provider
-                        .map(|p| p.model.clone())
-                        .unwrap_or_default(),
-                    leetcode_api_key: leetcode_provider
-                        .and_then(|p| p.api_key.clone())
-                        .unwrap_or_default(),
-                    leetcode_endpoint_kind: leetcode_provider
-                        .and_then(|p| p.endpoint_kind.clone())
-                        .unwrap_or_default(),
-                    leetcode_reasoning_effort: leetcode_provider
-                        .and_then(|p| p.reasoning_effort.clone())
-                        .unwrap_or_default(),
+                    leetcode_model: self
+                        .ai_config
+                        .feature_model(crate::config::ai_config::AiFeature::LeetCode),
                 };
                 self.app_state.open_settings_buffer(
                     theme_profile,

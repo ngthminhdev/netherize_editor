@@ -1,7 +1,7 @@
 use super::*;
 use crate::async_runtime::message::{RequestTopic, WorkerEvent, WorkerResult, WorkerResultPayload};
 
-mod ai;
+pub(super) mod ai;
 pub(crate) mod canvas_scope;
 mod dojo;
 mod failure;
@@ -95,7 +95,8 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::AiInlineCompletionChunk { .. }
             | WorkerResultPayload::AiInlineCompletionResult { .. }
-            | WorkerResultPayload::AiCompletionRerankResult { .. } => {
+            | WorkerResultPayload::AiCompletionRerankResult { .. }
+            | WorkerResultPayload::AiModelsListed { .. } => {
                 ai::handle_ai_result(self, result.payload);
             }
             WorkerResultPayload::SystemDepCheckResult { .. }

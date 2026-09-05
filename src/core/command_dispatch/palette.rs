@@ -631,6 +631,11 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             false,
             false,
         ),
+        CommandPaletteAction::SelectAiModel(model) => DispatchReport::success_with_flags(
+            format!("Dispatch: ai model selection deferred -> {}", model),
+            false,
+            false,
+        ),
         CommandPaletteAction::JumpToSymbol(symbol) => {
             let _ = ctx.app_state.close_command_palette();
             if ctx.app_state.current_mode() == EditorMode::PaletteFocus {

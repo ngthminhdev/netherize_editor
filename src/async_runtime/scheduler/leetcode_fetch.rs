@@ -15,7 +15,10 @@ use crate::{
     },
 };
 
-use super::emit::emit_message_and_wake;
+use super::{
+    ai_client::{self, ChatOptions},
+    emit::emit_message_and_wake,
+};
 
 pub(super) struct LeetCodeFetchJob {
     pub request_id: u64,
@@ -284,92 +287,21 @@ async fn generate_stratified_cases(
     cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
     language_key: &str,
 ) -> Result<Vec<crate::runner::leetcode_api::LeetCodeTestCase>, String> {
-    if provider.api_url.trim().is_empty() || provider.model.trim().is_empty() {
-        return Err("AI provider is not configured".to_string());
-    }
     let prompt = build_stratified_prompt(cache, language_key);
-    let endpoint = format!(
-        "{}/chat/completions",
-        provider.api_url.trim_end_matches('/')
-    );
-    let mut body = serde_json::json!({
-        "model": provider.model,
-        "messages": [
-            {"role": "system", "content": "You output LeetCode test cases as a compact JSON array only. No prose, no reasoning, no explanation — just the JSON array."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.1,
-        // Output is a small JSON array, never prose — a tight cap keeps the
-        // model fast and prevents it from streaming a long chain of thought.
-        "max_tokens": 1200
-    });
-    if let Some(effort) = provider
-        .reasoning_effort
-        .as_ref()
-        .filter(|e| !e.trim().is_empty())
-    {
-        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
-    }
-    // 30s ceiling: generation should take a few seconds; fail fast instead of
-    // hanging the user behind a 90s timeout if the provider stalls.
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|err| format!("AI client build failed: {err}"))?;
-    let mut request = client.post(endpoint).json(&body);
-    if let Some(key) = provider
-        .api_key
-        .as_ref()
-        .filter(|key| !key.trim().is_empty())
-    {
-        request = request.bearer_auth(key);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|err| format!("AI request failed: {err}"))?;
-    let status = response.status();
-    let body_text = response
-        .text()
-        .await
-        .map_err(|err| format!("AI response read failed: {err}"))?;
-    let mut cleaned = body_text.trim();
-    if let Some(idx) = cleaned.rfind('}') {
-        cleaned = &cleaned[..=idx];
-    }
-    let value: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|err| format!("AI returned invalid JSON: {err}"))?;
-    if !status.is_success() {
-        if let Some(msg) = value["error"]["message"].as_str() {
-            return Err(format!("AI error (HTTP {status}): {msg}"));
-        }
-        return Err(format!("AI returned HTTP {status}"));
-    }
-    let text = value["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| {
-            let finish = value["choices"][0]["finish_reason"]
-                .as_str()
-                .unwrap_or("unknown");
-            let reasoning_toks =
-                value["usage"]["completion_tokens_details"]["reasoning_tokens"].as_u64();
-            if finish == "length" {
-                if let Some(rt) = reasoning_toks {
-                    format!(
-                        "AI model exhausted token budget on reasoning ({rt} reasoning tokens, \
-                         finish_reason=length). Set reasoning_effort = \"low\" in \
-                         [leetcode.provider] or use a non-reasoning model."
-                    )
-                } else {
-                    "AI response was truncated (finish_reason=length) — \
-                     increase max_tokens or use a non-reasoning model."
-                        .to_string()
-                }
-            } else {
-                format!("AI response contained no content (finish_reason={finish})")
-            }
-        })?;
-    parse_generated_cases(text)
+    // Output is a small JSON array, never prose. The cap still leaves room for
+    // a reasoning model's hidden thinking (OpenAI-style models count it
+    // against max_tokens); the 30s ceiling fails fast instead of hanging
+    // behind a stalled provider.
+    let opts = ChatOptions::new(4096, std::time::Duration::from_secs(30));
+    let json = ai_client::chat(
+        provider,
+        "You output LeetCode test cases as a compact JSON array only. No prose, no reasoning, no explanation — just the JSON array.",
+        &prompt,
+        &opts,
+    )
+    .await?;
+    let text = ai_client::extract_content(&json)?;
+    parse_generated_cases(&text)
 }
 
 async fn verify_generated_cases(
@@ -379,73 +311,23 @@ async fn verify_generated_cases(
     cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
 ) -> (Vec<crate::runner::leetcode_api::LeetCodeTestCase>, bool) {
     let prompt = build_verify_prompt(cache, language_key, &cases);
-    let endpoint = format!(
-        "{}/chat/completions",
-        provider.api_url.trim_end_matches('/')
-    );
-    let mut body = serde_json::json!({
-        "model": provider.model,
-        "messages": [
-            {"role": "system", "content": "You are a LeetCode test-case verifier. Carefully re-trace each test case and correct any wrong expected outputs."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.1,
-        "max_tokens": 4096
-    });
-    if let Some(effort) = provider
-        .reasoning_effort
-        .as_ref()
-        .filter(|e| !e.trim().is_empty())
-    {
-        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
+    let opts = ChatOptions::new(4096, std::time::Duration::from_secs(60));
+    let verified = async {
+        let json = ai_client::chat(
+            provider,
+            "You are a LeetCode test-case verifier. Carefully re-trace each test case and correct any wrong expected outputs.",
+            &prompt,
+            &opts,
+        )
+        .await?;
+        let text = ai_client::extract_content(&json)?;
+        parse_generated_cases(&text)
     }
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return (cases, false),
-    };
-    let mut request = client.post(endpoint).json(&body);
-    if let Some(key) = provider
-        .api_key
-        .as_ref()
-        .filter(|key| !key.trim().is_empty())
-    {
-        request = request.bearer_auth(key);
+    .await;
+    match verified {
+        Ok(verified_cases) if verified_cases.len() == cases.len() => (verified_cases, true),
+        _ => (cases, false),
     }
-    let response = match request.send().await {
-        Ok(r) => r,
-        Err(_) => return (cases, false),
-    };
-    let status = response.status();
-    let body_text = match response.text().await {
-        Ok(t) => t,
-        Err(_) => return (cases, false),
-    };
-    let mut cleaned = body_text.trim();
-    if let Some(idx) = cleaned.rfind('}') {
-        cleaned = &cleaned[..=idx];
-    }
-    let value: serde_json::Value = match serde_json::from_str(cleaned) {
-        Ok(v) => v,
-        Err(_) => return (cases, false),
-    };
-    if !status.is_success() {
-        return (cases, false);
-    }
-    let text = match value["choices"][0]["message"]["content"].as_str() {
-        Some(t) => t,
-        None => return (cases, false),
-    };
-    let verified_cases = match parse_generated_cases(text) {
-        Ok(vc) => vc,
-        Err(_) => return (cases, false),
-    };
-    if verified_cases.len() != cases.len() {
-        return (cases, false);
-    }
-    (verified_cases, true)
 }
 
 async fn write_solution_file(
@@ -664,80 +546,20 @@ async fn adapt_via_ai(
     language_key: &str,
     mechanical: &str,
 ) -> Result<String, String> {
-    if provider.api_url.trim().is_empty() || provider.model.trim().is_empty() {
-        return Err("AI provider is not configured".to_string());
-    }
-    let endpoint = format!(
-        "{}/chat/completions",
-        provider.api_url.trim_end_matches('/')
+    let user = format!(
+        "Adapt this LeetCode {} starter for problem {} ({}) into a stdin JSON -> stdout JSON program with solve(data). Preserve the official function signature and support helper types when present. Do NOT solve the problem — leave the solution body as the starter has it; the user writes it.\n\nMechanical baseline:\n{}",
+        language_key, problem.title, problem.title_slug, mechanical
     );
-    let mut body = serde_json::json!({
-        "model": provider.model,
-        "messages": [
-            {"role": "system", "content": "Return only complete runnable source code. No markdown fences or explanation. This is a practice scaffold: the solution function/method body MUST stay exactly as in the starter (empty or a stub). Never implement the algorithm."},
-            {"role": "user", "content": format!(
-                "Adapt this LeetCode {} starter for problem {} ({}) into a stdin JSON -> stdout JSON program with solve(data). Preserve the official function signature and support helper types when present. Do NOT solve the problem — leave the solution body as the starter has it; the user writes it.\n\nMechanical baseline:\n{}",
-                language_key, problem.title, problem.title_slug, mechanical
-            )}
-        ],
-        "temperature": 0.1,
-        "max_tokens": 4096
-    });
-    if let Some(effort) = provider
-        .reasoning_effort
-        .as_ref()
-        .filter(|e| !e.trim().is_empty())
-    {
-        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
-    }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(45))
-        .build()
-        .map_err(|err| format!("AI client build failed: {err}"))?;
-    let mut request = client.post(endpoint).json(&body);
-    if let Some(key) = provider
-        .api_key
-        .as_ref()
-        .filter(|key| !key.trim().is_empty())
-    {
-        request = request.bearer_auth(key);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|err| format!("AI request failed: {err}"))?;
-    let status = response.status();
-    let body_text = response
-        .text()
-        .await
-        .map_err(|err| format!("AI response read failed: {err}"))?;
-    let mut cleaned = body_text.trim();
-    if let Some(idx) = cleaned.rfind('}') {
-        cleaned = &cleaned[..=idx];
-    }
-    let value: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|err| format!("AI returned invalid JSON: {err}"))?;
-    if !status.is_success() {
-        if let Some(msg) = value["error"]["message"].as_str() {
-            return Err(format!("AI error (HTTP {status}): {msg}"));
-        }
-        return Err(format!("AI returned HTTP {status}"));
-    }
-    let text = value["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| {
-            let finish = value["choices"][0]["finish_reason"]
-                .as_str()
-                .unwrap_or("unknown");
-            if finish == "length" {
-                "AI response truncated (finish_reason=length) — \
-                 set reasoning_effort = \"low\" or use a non-reasoning model."
-                    .to_string()
-            } else {
-                format!("AI response contained no code (finish_reason={finish})")
-            }
-        })?;
-    Ok(strip_code_fence(text))
+    let opts = ChatOptions::new(4096, std::time::Duration::from_secs(45));
+    let json = ai_client::chat(
+        provider,
+        "Return only complete runnable source code. No markdown fences or explanation. This is a practice scaffold: the solution function/method body MUST stay exactly as in the starter (empty or a stub). Never implement the algorithm.",
+        &user,
+        &opts,
+    )
+    .await?;
+    let text = ai_client::extract_content(&json)?;
+    Ok(strip_code_fence(&text))
 }
 
 /// Parse the AI's JSON-array response into test cases. Each element must be an

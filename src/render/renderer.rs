@@ -478,6 +478,9 @@ pub struct Renderer {
     pub(super) last_shaped_spans_fingerprint: u64,
     /// Viewport width lần cuối reshape — phát hiện khi word-wrap boundary thay đổi.
     pub(super) last_shaped_viewport_width: f32,
+    /// Width of the ghost text's first line, by which the caret row's tail is
+    /// pushed right while a suggestion is visible (0 when none).
+    pub(super) inline_ghost_tail_shift: f32,
     pub(super) caret_blink_visible: bool,
     /// Present only when NETH_PERF_PROBE=1 (GPU timestamp instrumentation).
     pub(super) gpu_timing: Option<crate::render::gpu_timing::GpuTiming>,

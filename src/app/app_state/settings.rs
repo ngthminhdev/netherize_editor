@@ -1,21 +1,41 @@
-/// Snapshot of `[inline_completion]` config values used to seed the AI section
-/// of the settings tab. Built from `AiConfig` when the tab opens.
+/// Snapshot of `ai.toml` values used to seed the AI section of the settings
+/// tab. Built from `AiConfig` when the tab opens.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AiInlineSettings {
+    /// Shared `[provider]` endpoint used by every AI feature.
     pub api_url: String,
-    pub model: String,
     pub api_key: String,
-    pub endpoint_kind: String,
+    /// Inline completion model.
+    pub model: String,
     pub max_tokens: u32,
     pub prefix_chars: usize,
     pub suffix_chars: usize,
     pub debounce_ms: u64,
     pub leetcode_ai_enabled: bool,
-    pub leetcode_api_url: String,
     pub leetcode_model: String,
-    pub leetcode_api_key: String,
-    pub leetcode_endpoint_kind: String,
-    pub leetcode_reasoning_effort: String,
+}
+
+/// Which feature's model a Settings model picker is choosing for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiModelTarget {
+    Inline,
+    LeetCode,
+}
+
+impl AiModelTarget {
+    pub fn feature(self) -> crate::config::ai_config::AiFeature {
+        match self {
+            Self::Inline => crate::config::ai_config::AiFeature::InlineCompletion,
+            Self::LeetCode => crate::config::ai_config::AiFeature::LeetCode,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Inline => "Inline model",
+            Self::LeetCode => "LeetCode model",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,19 +68,7 @@ pub enum SettingItem {
     LeetCodeAi {
         enabled: bool,
     },
-    LeetCodeAiApiUrl {
-        current: String,
-    },
     LeetCodeAiModel {
-        current: String,
-    },
-    LeetCodeAiApiKey {
-        current: String,
-    },
-    LeetCodeAiEndpointKind {
-        current: String,
-    },
-    LeetCodeAiReasoningEffort {
         current: String,
     },
     AiApiUrl {
@@ -70,9 +78,6 @@ pub enum SettingItem {
         current: String,
     },
     AiApiKey {
-        current: String,
-    },
-    AiEndpointKind {
         current: String,
     },
     AiMaxTokens {
@@ -121,15 +126,10 @@ impl SettingItem {
             Self::GitUiTarget { .. } => "Git UI",
             Self::InlineSuggestion { .. } => "Inline Completion",
             Self::LeetCodeAi { .. } => "LeetCode AI",
-            Self::LeetCodeAiApiUrl { .. } => "LeetCode AI Endpoint",
-            Self::LeetCodeAiModel { .. } => "LeetCode AI Model",
-            Self::LeetCodeAiApiKey { .. } => "LeetCode AI API Key",
-            Self::LeetCodeAiEndpointKind { .. } => "LeetCode AI Endpoint Kind",
-            Self::LeetCodeAiReasoningEffort { .. } => "LeetCode AI Reasoning Effort",
+            Self::LeetCodeAiModel { .. } => "LeetCode Model",
             Self::AiApiUrl { .. } => "AI Endpoint",
-            Self::AiModel { .. } => "AI Model",
+            Self::AiModel { .. } => "Inline Model",
             Self::AiApiKey { .. } => "AI API Key",
-            Self::AiEndpointKind { .. } => "AI Endpoint Kind",
             Self::AiMaxTokens { .. } => "AI Max Tokens",
             Self::AiPrefixChars { .. } => "AI Prefix Context",
             Self::AiSuffixChars { .. } => "AI Suffix Context",
@@ -158,16 +158,11 @@ pub enum SettingsEditingKind {
     AiApiUrl,
     AiModel,
     AiApiKey,
-    AiEndpointKind,
     AiMaxTokens,
     AiPrefixChars,
     AiSuffixChars,
     AiDebounceMs,
-    LeetCodeAiApiUrl,
     LeetCodeAiModel,
-    LeetCodeAiApiKey,
-    LeetCodeAiEndpointKind,
-    LeetCodeAiReasoningEffort,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -243,33 +238,18 @@ impl SettingsState {
                 SettingItem::InlineSuggestion {
                     enabled: inline_suggestion_enabled,
                 },
+                SettingItem::AiModel { current: ai.model },
                 SettingItem::LeetCodeAi {
                     enabled: ai.leetcode_ai_enabled,
-                },
-                SettingItem::LeetCodeAiApiUrl {
-                    current: ai.leetcode_api_url,
                 },
                 SettingItem::LeetCodeAiModel {
                     current: ai.leetcode_model,
                 },
-                SettingItem::LeetCodeAiApiKey {
-                    current: ai.leetcode_api_key,
-                },
-                SettingItem::LeetCodeAiEndpointKind {
-                    current: ai.leetcode_endpoint_kind,
-                },
-                SettingItem::LeetCodeAiReasoningEffort {
-                    current: ai.leetcode_reasoning_effort,
-                },
                 SettingItem::AiApiUrl {
                     current: ai.api_url,
                 },
-                SettingItem::AiModel { current: ai.model },
                 SettingItem::AiApiKey {
                     current: ai.api_key,
-                },
-                SettingItem::AiEndpointKind {
-                    current: ai.endpoint_kind,
                 },
                 SettingItem::AiMaxTokens {
                     current: ai.max_tokens,
@@ -367,9 +347,6 @@ impl SettingsState {
             SettingItem::AiApiUrl { current } => (SettingsEditingKind::AiApiUrl, current.clone()),
             SettingItem::AiModel { current } => (SettingsEditingKind::AiModel, current.clone()),
             SettingItem::AiApiKey { current } => (SettingsEditingKind::AiApiKey, current.clone()),
-            SettingItem::AiEndpointKind { current } => {
-                (SettingsEditingKind::AiEndpointKind, current.clone())
-            }
             SettingItem::AiMaxTokens { current } => {
                 (SettingsEditingKind::AiMaxTokens, current.to_string())
             }
@@ -382,22 +359,9 @@ impl SettingsState {
             SettingItem::AiDebounceMs { current } => {
                 (SettingsEditingKind::AiDebounceMs, current.to_string())
             }
-            SettingItem::LeetCodeAiApiUrl { current } => {
-                (SettingsEditingKind::LeetCodeAiApiUrl, current.clone())
-            }
             SettingItem::LeetCodeAiModel { current } => {
                 (SettingsEditingKind::LeetCodeAiModel, current.clone())
             }
-            SettingItem::LeetCodeAiApiKey { current } => {
-                (SettingsEditingKind::LeetCodeAiApiKey, current.clone())
-            }
-            SettingItem::LeetCodeAiEndpointKind { current } => {
-                (SettingsEditingKind::LeetCodeAiEndpointKind, current.clone())
-            }
-            SettingItem::LeetCodeAiReasoningEffort { current } => (
-                SettingsEditingKind::LeetCodeAiReasoningEffort,
-                current.clone(),
-            ),
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }

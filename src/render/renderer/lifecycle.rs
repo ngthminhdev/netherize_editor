@@ -389,6 +389,7 @@ impl Renderer {
             last_shaped_revision: u64::MAX,
             last_shaped_spans_fingerprint: u64::MAX,
             last_shaped_viewport_width: 0.0,
+            inline_ghost_tail_shift: 0.0,
             caret_blink_visible: true,
             gpu_timing,
         })

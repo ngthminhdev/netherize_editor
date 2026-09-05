@@ -38,11 +38,18 @@ pub(super) fn handle_worker_failure(app: &mut AppShell, event: WorkerEvent) {
                         std::time::Instant::now()
                             + std::time::Duration::from_secs(AI_INLINE_FAILURE_COOLDOWN_SECS),
                     );
-                    app.show_transient_toast(format!(
-                        "AI completion unavailable — paused for {AI_INLINE_FAILURE_COOLDOWN_SECS}s"
-                    ));
+                    let reason: String = error.message.chars().take(120).collect();
+                    app.show_transient_toast_kind(
+                        format!(
+                            "AI completion paused for {AI_INLINE_FAILURE_COOLDOWN_SECS}s\n{reason}"
+                        ),
+                        ToastKind::Error,
+                    );
                 }
             }
+        }
+        if topic == RequestTopic::AiModels {
+            app.on_ai_model_list_failed(error.message.clone());
         }
         if topic == RequestTopic::WorkspaceWatch {
             app.show_transient_toast(

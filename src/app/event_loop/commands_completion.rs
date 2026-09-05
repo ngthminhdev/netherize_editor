@@ -498,6 +498,66 @@ impl AppShell {
         changed
     }
 
+    /// Enter on the completion menu while ghost text is visible: after the
+    /// item is inserted, keep the ghost's remainder when the insert was its
+    /// head (`push` accepted under ghost `push(item)` leaves `(item)`),
+    /// otherwise drop it and ask for a fresh suggestion at the new caret.
+    pub(super) fn accept_completion_item_keeping_ghost(&mut self) -> bool {
+        // A rewrite ghost (replaces text before the caret) cannot be retained
+        // across a menu insert; treat it as no ghost.
+        let ghost = (self.app_state.inline_suggestion_replace_chars() == 0)
+            .then(|| self.app_state.inline_suggestion().map(str::to_string))
+            .flatten();
+        let cursor_before = self.app_state.cursor_char_idx();
+        let changed = self.accept_completion_item();
+        if !changed || self.app_state.completion().is_some() {
+            // Nothing happened, or the accept is deferred behind a resolve
+            // round-trip (menu still open): leave the ghost alone.
+            return changed;
+        }
+        let Some(ghost) = ghost else {
+            // No ghost text under the menu: the accept is still an edit worth
+            // a suggestion at the new caret (arguments, next statement).
+            self.queue_ai_inline_completion();
+            return changed;
+        };
+        // The document replace behind accept drops the ghost; rebuild the
+        // remainder from the text that appeared after the old caret.
+        let cursor_after = self.app_state.cursor_char_idx();
+        let inserted: String = if cursor_after > cursor_before {
+            self.app_state
+                .text_string()
+                .chars()
+                .skip(cursor_before)
+                .take(cursor_after - cursor_before)
+                .collect()
+        } else {
+            String::new()
+        };
+        let remainder = (!inserted.is_empty() && inserted.len() < ghost.len())
+            .then(|| ghost.strip_prefix(inserted.as_str()))
+            .flatten()
+            .and_then(|rest| {
+                // Snippet inserts may leave text after the caret (`foo(|)`);
+                // drop the part of the remainder that duplicates it.
+                let (_, suffix) = self.app_state.inline_suggestion_context(200);
+                super::async_results::ai::sanitize_inline_suggestion(rest, "", &suffix)
+                    .map(|edit| edit.text)
+            });
+        let retained = remainder.is_some();
+        let _ = self.app_state.set_inline_suggestion(remainder);
+        if retained {
+            self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+            self.cancel_ai_inline_completion();
+            self.reanchor_ai_inline();
+        } else {
+            self.queue_ai_inline_completion();
+        }
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = true;
+        changed
+    }
+
     pub(in crate::app::event_loop) fn accept_completion_item(&mut self) -> bool {
         let Some(completion) = self.app_state.completion().cloned() else {
             return false;

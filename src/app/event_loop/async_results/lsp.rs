@@ -132,6 +132,11 @@ pub(super) fn handle_lsp_result(
                     .app_state
                     .active_file()
                     .is_some_and(|active| active == path.as_path());
+                let caret_line_before = if is_active_file {
+                    app.app_state.caret_line_diagnostic_messages(8)
+                } else {
+                    Vec::new()
+                };
                 if app
                     .app_state
                     .set_file_diagnostics(path, server_name, diagnostics)
@@ -139,6 +144,13 @@ pub(super) fn handle_lsp_result(
                     app.editor_needs_layout |=
                         app.app_state.active_buffer_is_diagnostics() || is_active_file;
                     app.editor_caret_needs_layout |= is_active_file;
+                    if is_active_file {
+                        let caret_line_after = app.app_state.caret_line_diagnostic_messages(8);
+                        app.requeue_ai_inline_for_new_diagnostic(
+                            &caret_line_before,
+                            &caret_line_after,
+                        );
+                    }
                 }
                 app.request_redraw();
             }
@@ -780,13 +792,9 @@ pub(super) fn handle_lsp_result(
             if completion.filtered_items.is_empty() {
                 return;
             }
-            // Ghost text wins: if an AI inline suggestion is already visible, do
-            // not pop the LSP completion menu over it. The next keystroke clears
-            // the ghost text and re-requests completion, so the menu comes back
-            // once the ghost text is gone.
-            if app.app_state.inline_suggestion().is_some() {
-                return;
-            }
+            // Ghost text and the completion menu coexist (Cursor/Windsurf
+            // model): the menu opens over the ghost text; Tab accepts the ghost
+            // text, Enter the menu item.
             let changed = app.app_state.set_completion(completion);
             if changed {
                 app.submit_completion_resolve();

@@ -13,7 +13,7 @@ use crate::{
 
 use super::{
     LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache, SyntaxEngineCacheHandle,
-    ai::{execute_ai_inline_request, execute_ai_rerank_request},
+    ai::{execute_ai_inline_request, execute_ai_list_models, execute_ai_rerank_request},
     async_trace,
     codegraph::run_codegraph_request,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
@@ -380,6 +380,35 @@ pub(super) async fn dispatch_loop(
                         );
                     }
                 }
+            });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::AiListModels { .. }) {
+            let worker_tx = result_tx.clone();
+            let ai_event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let message = match execute_ai_list_models(&request).await {
+                    Ok(payload) => WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload,
+                    }),
+                    Err(message) => WorkerMessage::Event(WorkerEvent {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        kind: WorkerEventKind::Failed {
+                            error: WorkerFailure {
+                                kind: WorkerFailureKind::Execution,
+                                message,
+                            },
+                        },
+                    }),
+                };
+                emit_message(&worker_tx, message);
+                let _ = ai_event_proxy.send_event(AppEvent::WorkerMessageReady);
             });
             continue;
         }

@@ -1,7 +1,11 @@
 use crate::{
     app::app_state::AppState,
     render::glyph_instance::GlyphInstance,
-    text::{atlas::GlyphAtlas, raster::rasterize_glyph_alpha, text_system::TextSystem},
+    text::{
+        atlas::GlyphAtlas,
+        raster::rasterize_glyph_alpha,
+        text_system::{TextSystem, VisibleGlyph},
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -35,6 +39,7 @@ pub fn rebuild_layout_projection(
     viewport_origin: [f32; 2],
     viewport_clip: Option<(f32, f32)>,
     virtual_gap_after_line: Option<(usize, f32)>,
+    caret_tail: CaretTail,
     text_color: [f32; 4],
     cursor_overlay_color: [f32; 4],
 ) -> Result<LayoutProjection, String> {
@@ -60,8 +65,28 @@ pub fn rebuild_layout_projection(
     );
     let mut glyph_instances = Vec::with_capacity(visible_glyphs.len());
     let mut cursor_overlay: Option<GlyphInstance> = None;
+    // Ghost text drawn at the caret pushes the rest of the caret's visual row
+    // to the right (VS Code does the same); wrapped continuation rows of the
+    // same logical line stay put.
+    let caret_row_y = if caret_tail.is_active() {
+        caret_row_physical_y(&visible_glyphs, cursor_line, cursor_byte_in_line)
+    } else {
+        None
+    };
 
     for glyph in visible_glyphs {
+        let Some(tail_shift_x) = caret_tail_placement(
+            glyph.line_i,
+            glyph.byte_start,
+            glyph.physical_y,
+            cursor_line,
+            cursor_byte_in_line,
+            caret_row_y,
+            caret_tail,
+        ) else {
+            // A closer the ghost text consumes: hidden while it shows.
+            continue;
+        };
         let entry = if let Some(entry) = atlas.get(glyph.cache_key) {
             entry
         } else {
@@ -84,7 +109,7 @@ pub fn rebuild_layout_projection(
             .unwrap_or(0.0);
         let top_left_y = (glyph.physical_y - entry.placement_top) as f32 + virtual_gap_y;
 
-        let position = [top_left_x as f32, top_left_y];
+        let position = [top_left_x as f32 + tail_shift_x, top_left_y];
         let size = [entry.region.width as f32, entry.region.height as f32];
 
         glyph_instances.push(GlyphInstance::new(
@@ -122,6 +147,69 @@ pub fn rebuild_layout_projection(
         cursor_overlay,
         caret_layout,
     })
+}
+
+/// Physical y of the caret's visual row: the row holding the glyph under the
+/// caret. None when the caret sits past the row's last glyph (nothing to
+/// shift) or the line is off screen.
+fn caret_row_physical_y(
+    glyphs: &[VisibleGlyph],
+    cursor_line: usize,
+    cursor_byte_in_line: usize,
+) -> Option<i32> {
+    glyphs
+        .iter()
+        .find(|glyph| {
+            glyph.line_i == cursor_line
+                && glyph.byte_start <= cursor_byte_in_line
+                && cursor_byte_in_line < glyph.byte_end
+        })
+        .map(|glyph| glyph.physical_y)
+}
+
+/// What ghost text does to the rest of the caret's visual row.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CaretTail {
+    /// Width of the ghost's first line: glyphs at/after the caret move right
+    /// by this much so the suggestion reads inline.
+    pub shift_x: f32,
+    /// Bytes right after the caret the suggestion consumes (auto-paired
+    /// closers it already closed): not drawn while the ghost shows.
+    pub hidden_bytes: usize,
+}
+
+impl CaretTail {
+    pub const NONE: Self = Self {
+        shift_x: 0.0,
+        hidden_bytes: 0,
+    };
+
+    fn is_active(self) -> bool {
+        self.shift_x > 0.0 || self.hidden_bytes > 0
+    }
+}
+
+/// Where a glyph goes relative to the ghost text: `Some(dx)` draws it
+/// shifted right by `dx` (0 for glyphs the ghost does not touch), `None`
+/// hides it (a consumed closer). Only the caret's own visual row is affected;
+/// wrapped continuation rows of the same logical line keep their place.
+fn caret_tail_placement(
+    line_i: usize,
+    byte_start: usize,
+    physical_y: i32,
+    cursor_line: usize,
+    cursor_byte_in_line: usize,
+    caret_row_y: Option<i32>,
+    tail: CaretTail,
+) -> Option<f32> {
+    let on_caret_row = caret_row_y.is_some_and(|row_y| line_i == cursor_line && physical_y == row_y);
+    if !on_caret_row || byte_start < cursor_byte_in_line {
+        return Some(0.0);
+    }
+    if byte_start < cursor_byte_in_line + tail.hidden_bytes {
+        return None;
+    }
+    Some(tail.shift_x)
 }
 
 /// Compute the overlay glyph (if any) from the already-shaped buffer.

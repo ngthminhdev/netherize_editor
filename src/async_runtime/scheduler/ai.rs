@@ -1,4 +1,4 @@
-use std::sync::mpsc as std_mpsc;
+use std::{sync::mpsc as std_mpsc, time::Duration};
 
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -7,22 +7,95 @@ use crate::async_runtime::message::{
     WorkerMessage, WorkerRequest, WorkerRequestPayload, WorkerResult, WorkerResultPayload,
 };
 
-use super::emit::emit_message;
+use super::{
+    ai_client::{self, ChatOptions},
+    emit::emit_message,
+};
+
+/// Marks the caret inside the file sent to the model.
+pub const INLINE_CURSOR_MARKER: &str = "<|cursor|>";
+
+const INLINE_SYSTEM_PROMPT: &str = "You are an inline code completion engine inside a code editor, like GitHub Copilot. \
+The user's file is shown with <|cursor|> marking the caret. \
+Reply with ONLY the raw text to insert at <|cursor|>: no explanation, no markdown fences, \
+no repetition of the text before the caret, and nothing that already exists after it. \
+Match the file's language, style and indentation exactly, including its quote style and naming conventions. \
+Finish the current statement, expression or block and stop at a natural boundary. \
+Prefer short, obviously-correct code over long speculative code. \
+If diagnostics are listed and the mistake they point at is in the text right before the caret on its line, \
+reply with that line rewritten from its first non-blank character — corrected and continued — instead of a plain insertion. \
+If nothing sensible belongs at the caret, reply with an empty string.";
+
+/// Single-line completions cap the budget: the rest of the line is all that
+/// can be inserted before the text that already follows the caret.
+const INLINE_SINGLE_LINE_MAX_TOKENS: u32 = 64;
+
+/// Copilot-style FIM in a chat message: the whole window with the caret
+/// marker, so the model sees what already follows and does not repeat it.
+/// Neighbouring tabs (if any) go first as reference-only context.
+pub(super) fn build_inline_prompt(
+    prefix: &str,
+    suffix: &str,
+    language_id: Option<&str>,
+    file_name: Option<&str>,
+    neighbors: &[(String, String)],
+    diagnostics: &[String],
+) -> String {
+    let file_name = file_name.unwrap_or("untitled");
+    let mut prompt = format!(
+        "Language: {}\nFile: {file_name}\n\n",
+        language_id.unwrap_or("unknown"),
+    );
+    if !diagnostics.is_empty() {
+        prompt.push_str("Diagnostics on the caret line:\n");
+        for message in diagnostics {
+            prompt.push_str(&format!("- {message}\n"));
+        }
+        prompt.push('\n');
+    }
+    if !neighbors.is_empty() {
+        prompt.push_str(
+            "Other open files in this project (reference only — never repeat them):\n",
+        );
+        for (name, snippet) in neighbors {
+            prompt.push_str(&format!("--- {name} ---\n{}\n", snippet.trim_end()));
+        }
+        prompt.push_str(&format!(
+            "\n--- {file_name} (insert at {INLINE_CURSOR_MARKER}) ---\n"
+        ));
+    }
+    prompt.push_str(prefix);
+    prompt.push_str(INLINE_CURSOR_MARKER);
+    prompt.push_str(suffix);
+    prompt
+}
+
+/// The caret has non-blank text after it on the same line → complete only
+/// the rest of this line (Copilot does the same); otherwise allow one block.
+pub(super) fn inline_is_single_line(suffix: &str) -> bool {
+    !suffix.split('\n').next().unwrap_or("").trim().is_empty()
+}
+
+pub(super) fn inline_stop_sequences(single_line: bool) -> Vec<String> {
+    if single_line {
+        vec!["\n".to_string()]
+    } else {
+        vec!["\n\n".to_string()]
+    }
+}
 
 pub(super) async fn execute_ai_inline_request(
     request: &WorkerRequest,
     worker_tx: Option<&std_mpsc::Sender<WorkerMessage>>,
 ) -> Result<WorkerResultPayload, String> {
     let WorkerRequestPayload::AiInlineCompletionRequest {
-        api_url,
-        api_key,
-        model,
-        endpoint_kind,
-        reasoning_effort,
+        provider,
         prefix,
         suffix,
         language_id,
         file_path,
+        neighbors,
+        diagnostics,
         max_tokens,
         cancel_token,
     } = &request.payload
@@ -34,50 +107,35 @@ pub(super) async fn execute_ai_inline_request(
         return Err(cancelled_message());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|err| format!("ai client build failed: {err}"))?;
-    let endpoint = match endpoint_kind.as_deref() {
-        Some("responses") => format!("{}/responses", api_url.trim_end_matches('/')),
-        Some(path) if path.starts_with('/') => format!("{}{}", api_url.trim_end_matches('/'), path),
-        _ => format!("{}/chat/completions", api_url.trim_end_matches('/')),
-    };
-
-    let system = "You are an inline code completion engine. Return only the continuation text to insert at the cursor. Do not repeat the prefix. Do not add markdown fences or explanations.";
-    let user = format!(
-        "File: {}\nLanguage: {}\n\nPrefix:\n{}\n\nSuffix:\n{}\n\nReturn only the best continuation for the cursor position.",
-        file_path
-            .as_ref()
-            .map(|path| path.display().to_string())
-            .unwrap_or_default(),
-        language_id.clone().unwrap_or_default(),
+    let file_name = file_path
+        .as_ref()
+        .and_then(|path| path.file_name())
+        .map(|name| name.to_string_lossy().to_string());
+    let user = build_inline_prompt(
         prefix,
         suffix,
+        language_id.as_deref(),
+        file_name.as_deref(),
+        neighbors,
+        diagnostics,
     );
+    let single_line = inline_is_single_line(suffix);
+    let mut opts = ChatOptions::new(
+        if single_line {
+            (*max_tokens).min(INLINE_SINGLE_LINE_MAX_TOKENS)
+        } else {
+            *max_tokens
+        },
+        Duration::from_secs(15),
+    );
+    opts.temperature = 0.0;
+    opts.stop = inline_stop_sequences(single_line);
+    opts.stream = worker_tx.is_some();
+    opts.prefer_latency = true;
 
-    let stream_response = worker_tx.is_some() && endpoint_kind.as_deref() != Some("responses");
-    let mut body = serde_json::json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ],
-        "temperature": 0.2,
-        "max_tokens": max_tokens,
-        "stream": stream_response
-    });
-    if let Some(effort) = reasoning_effort
-        .as_ref()
-        .filter(|effort| !effort.is_empty())
-    {
-        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
-    }
-
-    let mut req = client.post(endpoint).json(&body);
-    if let Some(key) = api_key.as_ref().filter(|key| !key.is_empty()) {
-        req = req.bearer_auth(key);
-    }
+    let body = ai_client::build_chat_body(provider, INLINE_SYSTEM_PROMPT, &user, &opts);
+    let client = ai_client::build_client(opts.timeout)?;
+    let req = ai_client::post_json(&client, provider, ai_client::chat_endpoint(provider), &body);
 
     let response = tokio::select! {
         _ = cancel_token.cancelled() => {
@@ -86,7 +144,7 @@ pub(super) async fn execute_ai_inline_request(
         response = req.send() => response.map_err(|err| format!("ai request failed: {err}"))?,
     };
     let status = response.status();
-    if stream_response && status.is_success() {
+    if opts.stream && status.is_success() {
         let Some(worker_tx) = worker_tx else {
             return Err("ai inline stream missing worker channel".to_string());
         };
@@ -102,17 +160,11 @@ pub(super) async fn execute_ai_inline_request(
     if cancel_token.is_cancelled() {
         return Err(cancelled_message());
     }
-    let mut cleaned = body_text.trim();
-    if let Some(idx) = cleaned.rfind('}') {
-        cleaned = &cleaned[..=idx];
-    }
-    let json: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|err| format!("ai response decode failed: {err}"))?;
+    let json = ai_client::decode_json_body(&body_text)?;
     if !status.is_success() {
-        return Err(format!("ai request error {}: {}", status, json));
+        return Err(ai_client::api_error_message(status, &json));
     }
-
-    let suggestion = extract_non_streaming_suggestion(&json);
+    let suggestion = ai_client::extract_content(&json)?;
     Ok(WorkerResultPayload::AiInlineCompletionResult { suggestion })
 }
 
@@ -120,11 +172,7 @@ pub(super) async fn execute_ai_rerank_request(
     request: &WorkerRequest,
 ) -> Result<WorkerResultPayload, String> {
     let WorkerRequestPayload::AiCompletionRerankRequest {
-        api_url,
-        api_key,
-        model,
-        endpoint_kind,
-        reasoning_effort,
+        provider,
         prefix,
         suffix,
         language_id,
@@ -141,16 +189,6 @@ pub(super) async fn execute_ai_rerank_request(
         return Err(cancelled_message());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|err| format!("ai client build failed: {err}"))?;
-    let endpoint = match endpoint_kind.as_deref() {
-        Some("responses") => format!("{}/responses", api_url.trim_end_matches('/')),
-        Some(path) if path.starts_with('/') => format!("{}{}", api_url.trim_end_matches('/'), path),
-        _ => format!("{}/chat/completions", api_url.trim_end_matches('/')),
-    };
-
     let system = "You re-rank code-completion candidates. You are given the code immediately before and after the cursor and a list of candidate identifiers the language server proposed. Return ONLY a JSON array of those SAME identifiers, reordered best-first for this exact cursor context. Never add, remove, rename, translate, or invent identifiers. Output the JSON array and nothing else.";
     let candidate_list = candidates
         .iter()
@@ -164,52 +202,16 @@ pub(super) async fn execute_ai_rerank_request(
         suffix,
         candidate_list,
     );
+    let mut opts = ChatOptions::new(512, Duration::from_secs(10));
+    opts.temperature = 0.0;
 
-    let mut body = serde_json::json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ],
-        "temperature": 0.0,
-        "max_tokens": 512,
-        "stream": false
-    });
-    if let Some(effort) = reasoning_effort
-        .as_ref()
-        .filter(|effort| !effort.is_empty())
-    {
-        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
-    }
-
-    let mut req = client.post(endpoint).json(&body);
-    if let Some(key) = api_key.as_ref().filter(|key| !key.is_empty()) {
-        req = req.bearer_auth(key);
-    }
-
-    let response = tokio::select! {
+    let json = tokio::select! {
         _ = cancel_token.cancelled() => {
             return Err(cancelled_message());
         }
-        response = req.send() => response.map_err(|err| format!("ai rerank request failed: {err}"))?,
+        json = ai_client::chat(provider, system, &user, &opts) => json?,
     };
-    let status = response.status();
-    let body_text = tokio::select! {
-        _ = cancel_token.cancelled() => {
-            return Err(cancelled_message());
-        }
-        text = response.text() => text.map_err(|err| format!("ai rerank read failed: {err}"))?,
-    };
-    if cancel_token.is_cancelled() {
-        return Err(cancelled_message());
-    }
-    let json: serde_json::Value = serde_json::from_str(body_text.trim())
-        .map_err(|err| format!("ai rerank decode failed: {err}"))?;
-    if !status.is_success() {
-        return Err(format!("ai rerank error {}: {}", status, json));
-    }
-
-    let content = extract_non_streaming_suggestion(&json);
+    let content = ai_client::extract_content(&json).unwrap_or_default();
     // Keep only labels the server actually proposed: the model is instructed not
     // to invent, but a defensive filter guarantees membership can never change.
     let allowed: std::collections::HashSet<&str> = candidates.iter().map(String::as_str).collect();
@@ -223,6 +225,16 @@ pub(super) async fn execute_ai_rerank_request(
         prefix_token: prefix_token.clone(),
         completion_revision: *completion_revision,
     })
+}
+
+pub(super) async fn execute_ai_list_models(
+    request: &WorkerRequest,
+) -> Result<WorkerResultPayload, String> {
+    let WorkerRequestPayload::AiListModels { api_url, api_key } = &request.payload else {
+        return Err("ai model list payload mismatch".to_string());
+    };
+    let models = ai_client::list_models(api_url, api_key.as_deref()).await?;
+    Ok(WorkerResultPayload::AiModelsListed { models })
 }
 
 /// Parse a re-rank model response into an ordered list of labels. Accepts a JSON
@@ -320,21 +332,6 @@ fn drain_sse_buffer(buffer: &mut String, mut on_payload: impl FnMut(&str)) {
     }
 }
 
-fn extract_non_streaming_suggestion(json: &serde_json::Value) -> String {
-    json.get("choices")
-        .and_then(|choices| choices.as_array())
-        .and_then(|choices| choices.first())
-        .and_then(|choice| {
-            choice
-                .get("message")
-                .and_then(|message| message.get("content"))
-                .and_then(|content| content.as_str())
-                .or_else(|| choice.get("text").and_then(|content| content.as_str()))
-        })
-        .unwrap_or_default()
-        .to_string()
-}
-
 fn extract_streaming_delta(payload: &str) -> Option<String> {
     let json = serde_json::from_str::<serde_json::Value>(payload).ok()?;
     json.get("choices")
@@ -352,6 +349,63 @@ fn extract_streaming_delta(payload: &str) -> Option<String> {
 
 fn cancelled_message() -> String {
     "ai inline request cancelled".to_string()
+}
+
+#[cfg(test)]
+mod inline_prompt_tests {
+    use super::*;
+
+    #[test]
+    fn prompt_embeds_the_caret_marker_between_prefix_and_suffix() {
+        let prompt = build_inline_prompt("let x = ", ";\n", Some("rust"), Some("main.rs"), &[], &[]);
+        assert_eq!(prompt, "Language: rust\nFile: main.rs\n\nlet x = <|cursor|>;\n");
+        let prompt = build_inline_prompt("a", "b", None, None, &[], &[]);
+        assert!(prompt.contains("Language: unknown\nFile: untitled"));
+        assert!(!prompt.contains("Other open files"));
+    }
+
+    #[test]
+    fn prompt_puts_neighbour_files_before_the_current_file() {
+        let neighbors = vec![("client.ts".to_string(), "export const api = 1;\n".to_string())];
+        let prompt = build_inline_prompt("const x = ", ";", Some("typescript"), Some("app.ts"), &neighbors, &[]);
+        let reference = prompt.find("--- client.ts ---\nexport const api = 1;").expect("neighbour block");
+        let current = prompt.find("--- app.ts (insert at <|cursor|>) ---\nconst x = <|cursor|>;").expect("current block");
+        assert!(reference < current);
+        assert!(prompt.ends_with("const x = <|cursor|>;"));
+    }
+
+    #[test]
+    fn prompt_lists_caret_line_diagnostics_before_the_code() {
+        let diagnostics = vec!["Cannot find name 'Promies'. Did you mean 'Promise'?".to_string()];
+        let prompt = build_inline_prompt(
+            "await new Promies.",
+            "",
+            Some("typescript"),
+            Some("app.ts"),
+            &[],
+            &diagnostics,
+        );
+        let listed = prompt
+            .find("Diagnostics on the caret line:\n- Cannot find name 'Promies'. Did you mean 'Promise'?\n")
+            .expect("diagnostics block");
+        let code = prompt.find("await new Promies.<|cursor|>").expect("code");
+        assert!(listed < code);
+    }
+
+    #[test]
+    fn single_line_when_text_follows_the_caret_on_its_line() {
+        assert!(inline_is_single_line(")\n  next"));
+        assert!(inline_is_single_line("x"));
+        assert!(!inline_is_single_line(""));
+        assert!(!inline_is_single_line("\n  next"));
+        assert!(!inline_is_single_line("   \n}"));
+    }
+
+    #[test]
+    fn stop_sequences_end_a_line_or_a_block() {
+        assert_eq!(inline_stop_sequences(true), vec!["\n".to_string()]);
+        assert_eq!(inline_stop_sequences(false), vec!["\n\n".to_string()]);
+    }
 }
 
 #[cfg(test)]

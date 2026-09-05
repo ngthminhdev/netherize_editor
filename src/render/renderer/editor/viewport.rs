@@ -29,6 +29,7 @@ use super::super::helpers::{
     should_draw_block_cursor,
 };
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
+use crate::text::layout_sync::CaretTail;
 use crate::text::text_system::StyledTextSpan;
 
 /// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
@@ -589,6 +590,7 @@ impl Renderer {
         // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
         let virtual_gap_after_line = inline_suggestion_virtual_gap(app_state, geometry.line_height);
         let virtual_gap_y = virtual_gap_after_line.map(|(_, gap)| gap).unwrap_or(0.0);
+        self.inline_ghost_tail_shift = self.inline_suggestion_first_line_width(app_state);
         let clip_top = geometry.viewport_text_top;
         let clip_bottom = geometry.viewport_text_top
             + geometry.viewport_text_height
@@ -606,6 +608,10 @@ impl Renderer {
             [geometry.origin_x, corrected_origin_y],
             viewport_clip,
             virtual_gap_after_line,
+            CaretTail {
+                shift_x: self.inline_ghost_tail_shift,
+                hidden_bytes: app_state.inline_suggestion_hidden_tail_bytes(),
+            },
             self.theme.editor.fg.as_f32(),
             self.theme.editor.bg.as_f32(),
         );
@@ -883,16 +889,46 @@ impl Renderer {
         );
     }
 
+    /// Width of the ghost text's first line in the editor font — the amount
+    /// the rest of the caret row is pushed right so the suggestion reads
+    /// inline instead of over the existing text. 0 when there is no ghost.
+    fn inline_suggestion_first_line_width(&mut self, app_state: &AppState) -> f32 {
+        let Some(first_line) = app_state
+            .inline_suggestion()
+            .and_then(|suggestion| suggestion.split('\n').next())
+            .filter(|line| !line.is_empty())
+        else {
+            return 0.0;
+        };
+        self.editor_overlay_text_system.set_metrics(Metrics::new(
+            self.theme.editor.font_size,
+            self.theme.editor.line_height,
+        ));
+        // No wrapping: the whole line on one row so `line_w` is its full width.
+        self.editor_overlay_text_system.set_size(None, None);
+        self.editor_overlay_text_system
+            .set_text_with_color(first_line, [0, 0, 0, 0]);
+        self.editor_overlay_text_system
+            .buffer()
+            .layout_runs()
+            .map(|run| run.line_w)
+            .fold(0.0_f32, f32::max)
+            .max(0.0)
+    }
+
     /// Collect ghost text glyph instances for the inline AI suggestion.
     /// Returns an empty Vec if there is no active suggestion or it is empty.
     /// The caller is responsible for uploading the returned glyphs together with
     /// any other overlay content so they share a single pipeline upload.
+    /// A rewrite (ghost replaces text before the caret) also pushes a
+    /// strike-through over the replaced span into `chrome`.
     pub(super) fn collect_inline_suggestion_glyphs(
         &mut self,
         app_state: &AppState,
         origin_x: f32,
         origin_y: f32,
         width: f32,
+        chrome: &mut Vec<RegionDrawInstance>,
     ) -> Vec<GlyphInstance> {
         let Some(suggestion) = app_state.inline_suggestion() else {
             return Vec::new();
@@ -906,6 +942,17 @@ impl Renderer {
             app_state.folded_ranges(),
         );
         let line_height = self.theme.editor.line_height.max(1.0);
+        let replace_chars = app_state.inline_suggestion_replace_chars();
+        if replace_chars > 0 {
+            chrome.extend(self.inline_rewrite_strike_quads(
+                app_state,
+                origin_x,
+                caret.top,
+                caret.x,
+                caret.height.max(1.0),
+                replace_chars,
+            ));
+        }
         let color =
             crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
         let ghost_color = self.theme.ui.fg_ghost.as_f32();
@@ -978,6 +1025,61 @@ impl Renderer {
 
         self.atlas.flush_pending(&self.queue);
         instances
+    }
+}
+
+impl Renderer {
+    /// Quads marking the text a rewrite ghost replaces: a faint error tint
+    /// behind it and a strike-through line, spanning the `replace_chars`
+    /// chars before the caret on its visual row.
+    fn inline_rewrite_strike_quads(
+        &self,
+        app_state: &AppState,
+        origin_x: f32,
+        caret_top: f32,
+        caret_x: f32,
+        caret_height: f32,
+        replace_chars: usize,
+    ) -> Vec<RegionDrawInstance> {
+        let (line_prefix, _) = app_state.inline_suggestion_context(0);
+        let replaced_bytes: usize = line_prefix
+            .chars()
+            .rev()
+            .take(replace_chars)
+            .map(char::len_utf8)
+            .sum();
+        let cursor_byte = app_state.cursor_byte_in_line();
+        let start_byte = cursor_byte.saturating_sub(replaced_bytes);
+        let (cursor_line, _) = app_state.cursor_line_col();
+        let start_x = self
+            .text_system
+            .buffer()
+            .layout_runs()
+            .filter(|run| run.line_i == cursor_line)
+            .find(|run| {
+                run.glyphs
+                    .first()
+                    .zip(run.glyphs.last())
+                    .is_some_and(|(first, last)| first.start <= start_byte && start_byte <= last.end)
+            })
+            .map(|run| run_x_for_byte(origin_x, &run, start_byte))
+            .unwrap_or(caret_x);
+        let width = caret_x - start_x;
+        if width <= 0.5 {
+            return Vec::new();
+        }
+        let mut tint = self.theme.ui.error.as_f32();
+        tint[3] = 0.16;
+        let mut strike = self.theme.ui.error.as_f32();
+        strike[3] = 0.85;
+        let strike_h = 1.5;
+        vec![
+            RegionDrawInstance::new([start_x, caret_top, width, caret_height], tint),
+            RegionDrawInstance::new(
+                [start_x, caret_top + (caret_height - strike_h) * 0.5, width, strike_h],
+                strike,
+            ),
+        ]
     }
 }
 

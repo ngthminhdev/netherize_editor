@@ -494,6 +494,12 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 true
             }
+            crate::app::app_state::SettingItem::AiModel { .. } => {
+                self.open_ai_model_picker(crate::app::app_state::AiModelTarget::Inline)
+            }
+            crate::app::app_state::SettingItem::LeetCodeAiModel { .. } => {
+                self.open_ai_model_picker(crate::app::app_state::AiModelTarget::LeetCode)
+            }
             crate::app::app_state::SettingItem::FontFamily { .. }
             | crate::app::app_state::SettingItem::FontSize { .. }
             | crate::app::app_state::SettingItem::LineHeight { .. }
@@ -503,18 +509,11 @@ impl AppShell {
             | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
             | crate::app::app_state::SettingItem::BottomPanelHeight { .. }
             | crate::app::app_state::SettingItem::AiApiUrl { .. }
-            | crate::app::app_state::SettingItem::AiModel { .. }
             | crate::app::app_state::SettingItem::AiApiKey { .. }
-            | crate::app::app_state::SettingItem::AiEndpointKind { .. }
             | crate::app::app_state::SettingItem::AiMaxTokens { .. }
             | crate::app::app_state::SettingItem::AiPrefixChars { .. }
             | crate::app::app_state::SettingItem::AiSuffixChars { .. }
             | crate::app::app_state::SettingItem::AiDebounceMs { .. }
-            | crate::app::app_state::SettingItem::LeetCodeAiApiUrl { .. }
-            | crate::app::app_state::SettingItem::LeetCodeAiModel { .. }
-            | crate::app::app_state::SettingItem::LeetCodeAiApiKey { .. }
-            | crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { .. }
-            | crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { .. }
             | crate::app::app_state::SettingItem::UiScale { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
@@ -733,7 +732,7 @@ impl AppShell {
             crate::app::app_state::SettingsEditingKind::AiApiUrl => {
                 changed = self.commit_ai_text_edit(
                     trimmed.to_string(),
-                    |ai, value| ai.set_inline_api_url(value),
+                    |ai, value| ai.set_provider_api_url(value),
                     |item, value| {
                         if let crate::app::app_state::SettingItem::AiApiUrl { current } = item {
                             *current = value;
@@ -757,26 +756,13 @@ impl AppShell {
             crate::app::app_state::SettingsEditingKind::AiApiKey => {
                 changed = self.commit_ai_text_edit(
                     trimmed.to_string(),
-                    |ai, value| ai.set_inline_api_key(value),
+                    |ai, value| ai.set_provider_api_key(value),
                     |item, value| {
                         if let crate::app::app_state::SettingItem::AiApiKey { current } = item {
                             *current = value;
                         }
                     },
                     "API key",
-                );
-            }
-            crate::app::app_state::SettingsEditingKind::AiEndpointKind => {
-                changed = self.commit_ai_text_edit(
-                    trimmed.to_string(),
-                    |ai, value| ai.set_inline_endpoint_kind(value),
-                    |item, value| {
-                        if let crate::app::app_state::SettingItem::AiEndpointKind { current } = item
-                        {
-                            *current = value;
-                        }
-                    },
-                    "endpoint kind",
                 );
             }
             crate::app::app_state::SettingsEditingKind::AiMaxTokens => {
@@ -843,20 +829,6 @@ impl AppShell {
                     );
                 }
             }
-            crate::app::app_state::SettingsEditingKind::LeetCodeAiApiUrl => {
-                changed = self.commit_ai_text_edit(
-                    trimmed.to_string(),
-                    |ai, value| ai.set_leetcode_api_url(value),
-                    |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiApiUrl { current } =
-                            item
-                        {
-                            *current = value;
-                        }
-                    },
-                    "LeetCode API URL",
-                );
-            }
             crate::app::app_state::SettingsEditingKind::LeetCodeAiModel => {
                 changed = self.commit_ai_text_edit(
                     trimmed.to_string(),
@@ -869,50 +841,6 @@ impl AppShell {
                         }
                     },
                     "LeetCode Model",
-                );
-            }
-            crate::app::app_state::SettingsEditingKind::LeetCodeAiApiKey => {
-                changed = self.commit_ai_text_edit(
-                    trimmed.to_string(),
-                    |ai, value| ai.set_leetcode_api_key(value),
-                    |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiApiKey { current } =
-                            item
-                        {
-                            *current = value;
-                        }
-                    },
-                    "LeetCode API Key",
-                );
-            }
-            crate::app::app_state::SettingsEditingKind::LeetCodeAiEndpointKind => {
-                changed = self.commit_ai_text_edit(
-                    trimmed.to_string(),
-                    |ai, value| ai.set_leetcode_endpoint_kind(value),
-                    |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiEndpointKind {
-                            current,
-                        } = item
-                        {
-                            *current = value;
-                        }
-                    },
-                    "LeetCode Endpoint Kind",
-                );
-            }
-            crate::app::app_state::SettingsEditingKind::LeetCodeAiReasoningEffort => {
-                changed = self.commit_ai_text_edit(
-                    trimmed.to_string(),
-                    |ai, value| ai.set_leetcode_reasoning_effort(value),
-                    |item, value| {
-                        if let crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort {
-                            current,
-                        } = item
-                        {
-                            *current = value;
-                        }
-                    },
-                    "LeetCode Reasoning Effort",
                 );
             }
         }

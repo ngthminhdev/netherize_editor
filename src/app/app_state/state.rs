@@ -977,20 +977,73 @@ impl AppState {
     }
 
     pub fn set_inline_suggestion(&mut self, suggestion: Option<String>) -> bool {
-        let normalized = suggestion.and_then(|text| {
-            let trimmed = text.replace("\r\n", "\n").replace('\r', "\n");
-            if trimmed.is_empty() {
+        self.set_inline_suggestion_edit(suggestion.map(InlineEdit::insert))
+    }
+
+    /// Show `edit` as ghost text. `replace_before_caret > 0` marks a rewrite
+    /// of the text right before the caret (rendered struck through; Tab
+    /// deletes it and inserts the ghost text in its place).
+    pub fn set_inline_suggestion_edit(&mut self, edit: Option<InlineEdit>) -> bool {
+        let normalized = edit.and_then(|edit| {
+            let text = edit.text.replace("\r\n", "\n").replace('\r', "\n");
+            if text.is_empty() {
                 None
             } else {
-                Some(trimmed)
+                Some((text, edit.replace_before_caret, edit.replace_after_caret))
             }
         });
-        if self.inline_suggestion == normalized {
+        let after_max = self.text.len_chars().saturating_sub(self.cursor_char_idx);
+        let (text, replace, replace_after) = match normalized {
+            Some((text, before, after)) => (
+                Some(text),
+                before.min(self.cursor_char_idx),
+                after.min(after_max),
+            ),
+            None => (None, 0, 0),
+        };
+        if self.inline_suggestion == text
+            && self.inline_suggestion_replace_chars == replace
+            && self.inline_suggestion_replace_after_chars == replace_after
+        {
             return false;
         }
-        self.inline_suggestion = normalized;
+        self.inline_suggestion = text;
+        self.inline_suggestion_replace_chars = replace;
+        self.inline_suggestion_replace_after_chars = replace_after;
         self.bump_revision();
         true
+    }
+
+    /// Chars before the caret the visible ghost text replaces (0 = insertion).
+    pub fn inline_suggestion_replace_chars(&self) -> usize {
+        if self.inline_suggestion.is_some() {
+            self.inline_suggestion_replace_chars
+        } else {
+            0
+        }
+    }
+
+    /// Chars after the caret the visible ghost text consumes (auto-pair
+    /// closers the suggestion already closed); 0 when none or no ghost.
+    pub fn inline_suggestion_replace_after_chars(&self) -> usize {
+        if self.inline_suggestion.is_some() {
+            self.inline_suggestion_replace_after_chars
+        } else {
+            0
+        }
+    }
+
+    /// Byte length (in the caret line's text) of the chars after the caret
+    /// the ghost text consumes — the renderer hides them while it shows.
+    pub fn inline_suggestion_hidden_tail_bytes(&self) -> usize {
+        let count = self.inline_suggestion_replace_after_chars();
+        if count == 0 {
+            return 0;
+        }
+        let total = self.text.len_chars();
+        let start = self.cursor_char_idx.min(total);
+        let end = start.saturating_add(count).min(total);
+        self.text.slice(start..end).len_bytes()
     }
 
     pub fn clear_inline_suggestion(&mut self) -> bool {
@@ -1018,6 +1071,12 @@ impl AppState {
         let Some(suggestion) = self.inline_suggestion.as_ref() else {
             return false;
         };
+        // A rewrite replaces text before the caret; typing past it changes
+        // what it would replace, so it never survives a keystroke. Consumed
+        // closers after the caret are fine to keep: they stay where they are.
+        if self.inline_suggestion_replace_chars > 0 {
+            return false;
+        }
         if typed.is_empty() || typed.len() >= suggestion.len() || !suggestion.starts_with(typed) {
             return false;
         }
@@ -1051,6 +1110,17 @@ impl AppState {
             return false;
         };
         let char_count = suggestion.chars().count();
+        // Closers after the caret the suggestion already closed (`');` left by
+        // auto-pairing) go first, then a rewrite's chars before the caret —
+        // all in the same undo transaction as the insert.
+        let after = self.inline_suggestion_replace_after_chars;
+        if after > 0 {
+            let _ = self.apply_delete(self.cursor_char_idx, after);
+        }
+        let replace = self.inline_suggestion_replace_chars.min(self.cursor_char_idx);
+        if replace > 0 && self.apply_delete(self.cursor_char_idx - replace, replace) {
+            self.cursor_char_idx -= replace;
+        }
         if !self.apply_insert(self.cursor_char_idx, suggestion) {
             return false;
         }
@@ -1058,6 +1128,8 @@ impl AppState {
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
         self.inline_suggestion = None;
+        self.inline_suggestion_replace_chars = 0;
+        self.inline_suggestion_replace_after_chars = 0;
         self.dirty = true;
         self.bump_revision();
         true
@@ -1067,6 +1139,12 @@ impl AppState {
         let Some(suggestion) = self.inline_suggestion.clone() else {
             return false;
         };
+        if self.inline_suggestion_replace_chars > 0 || self.inline_suggestion_replace_after_chars > 0
+        {
+            // A rewrite / closer-consuming edit is one edit: there is no
+            // meaningful "first word" of it to apply on its own.
+            return self.accept_inline_suggestion();
+        }
         let split_byte = inline_suggestion_accept_prefix_byte_len(&suggestion);
         if split_byte == 0 {
             return false;
@@ -1338,6 +1416,64 @@ mod inline_suggestion_tests {
         let mut state = state_with_text("");
         assert!(state.set_inline_suggestion(Some("ok".to_string())));
         assert!(!state.retain_inline_suggestion_for_typed_text("ok"));
+    }
+
+    #[test]
+    fn accepting_a_rewrite_replaces_the_text_before_the_caret() {
+        let mut state = state_with_text("    await new Promies.\n");
+        state.cursor_char_idx = "    await new Promies.".chars().count();
+        assert!(state.set_inline_suggestion_edit(Some(super::InlineEdit {
+            text: "Promise((resolve) => setTimeout(resolve, ms));".to_string(),
+            replace_before_caret: "Promies.".chars().count(),
+            replace_after_caret: 0,
+        })));
+        assert_eq!(state.inline_suggestion_replace_chars(), 8);
+        // Typing never keeps a rewrite alive.
+        assert!(!state.retain_inline_suggestion_for_typed_text("P"));
+        assert!(state.accept_inline_suggestion());
+        assert_eq!(
+            state.text.to_string(),
+            "    await new Promise((resolve) => setTimeout(resolve, ms));\n"
+        );
+        assert_eq!(
+            state.cursor_char_idx,
+            "    await new Promise((resolve) => setTimeout(resolve, ms));"
+                .chars()
+                .count()
+        );
+        assert!(state.inline_suggestion().is_none());
+        assert_eq!(state.inline_suggestion_replace_chars(), 0);
+    }
+
+    #[test]
+    fn accepting_consumes_auto_paired_closers_after_the_caret() {
+        // `console.error('|');` — the closers were auto-paired; the model's
+        // completion closes the call itself.
+        let mut state = state_with_text("console.error('');\nnext();\n");
+        state.cursor_char_idx = "console.error('".chars().count();
+        assert!(state.set_inline_suggestion_edit(Some(super::InlineEdit {
+            text: "Error during shutdown', err);".to_string(),
+            replace_before_caret: 0,
+            replace_after_caret: 3,
+        })));
+        assert_eq!(state.inline_suggestion_replace_after_chars(), 3);
+        assert_eq!(state.inline_suggestion_hidden_tail_bytes(), 3);
+        // Typing the ghost's head keeps it (and the consumed closers).
+        assert!(state.retain_inline_suggestion_for_typed_text("E"));
+        assert!(state.apply_insert(state.cursor_char_idx, "E".to_string()));
+        state.cursor_char_idx += 1;
+        assert_eq!(state.inline_suggestion(), Some("rror during shutdown', err);"));
+        assert_eq!(state.inline_suggestion_replace_after_chars(), 3);
+        assert!(state.accept_inline_suggestion());
+        assert_eq!(
+            state.text.to_string(),
+            "console.error('Error during shutdown', err);\nnext();\n"
+        );
+        assert_eq!(
+            state.cursor_char_idx,
+            "console.error('Error during shutdown', err);".chars().count()
+        );
+        assert_eq!(state.inline_suggestion_replace_after_chars(), 0);
     }
 
     #[test]

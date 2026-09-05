@@ -922,10 +922,6 @@ fn settings_exposes_ai_inline_config_items() {
     )));
     assert!(has(|i| matches!(
         i,
-        crate::app::app_state::SettingItem::AiEndpointKind { .. }
-    )));
-    assert!(has(|i| matches!(
-        i,
         crate::app::app_state::SettingItem::AiMaxTokens { .. }
     )));
     assert!(has(|i| matches!(
@@ -946,23 +942,7 @@ fn settings_exposes_ai_inline_config_items() {
     )));
     assert!(has(|i| matches!(
         i,
-        crate::app::app_state::SettingItem::LeetCodeAiApiUrl { .. }
-    )));
-    assert!(has(|i| matches!(
-        i,
         crate::app::app_state::SettingItem::LeetCodeAiModel { .. }
-    )));
-    assert!(has(|i| matches!(
-        i,
-        crate::app::app_state::SettingItem::LeetCodeAiApiKey { .. }
-    )));
-    assert!(has(|i| matches!(
-        i,
-        crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { .. }
-    )));
-    assert!(has(|i| matches!(
-        i,
-        crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { .. }
     )));
 }
 
@@ -1037,75 +1017,106 @@ fn fetched_leetcode_result_opens_file_and_populates_test_runner() {
     let _ = std::fs::remove_file(path);
 }
 
+fn select_settings_row(shell: &mut AppShell, pick: fn(&crate::app::app_state::SettingItem) -> Option<String>) -> String {
+    let settings = shell
+        .app_state
+        .active_settings_buffer_mut()
+        .expect("settings buffer");
+    let (idx, value) = settings
+        .items
+        .iter()
+        .enumerate()
+        .find_map(|(idx, item)| pick(item).map(|value| (idx, value)))
+        .expect("setting present");
+    settings.selected_index = idx;
+    value
+}
+
 #[test]
-fn settings_activate_begins_text_edit_for_ai_model() {
+fn settings_activate_on_inline_model_opens_the_picker_and_stores_the_choice() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ai_config.provider = Some(crate::config::ai_config::AiEndpointConfig {
+        api_url: "http://127.0.0.1:9/v1".to_string(),
+        api_key: Some("sk-test".to_string()),
+    });
+    shell.ai_config.set_inline_model("old/model".to_string()).unwrap();
     shell.handle_command(Command::OpenSettings);
-    let model_value = {
-        let settings = shell
-            .app_state
-            .active_settings_buffer_mut()
-            .expect("settings buffer");
-        let (idx, value) = settings
-            .items
-            .iter()
-            .enumerate()
-            .find_map(|(idx, item)| match item {
-                crate::app::app_state::SettingItem::AiModel { current } => {
-                    Some((idx, current.clone()))
-                }
-                _ => None,
-            })
-            .expect("ai model setting present");
-        settings.selected_index = idx;
-        value
+    let model_value = select_settings_row(&mut shell, |item| match item {
+        crate::app::app_state::SettingItem::AiModel { current } => Some(current.clone()),
+        _ => None,
+    });
+    assert_eq!(model_value, "old/model");
+
+    assert!(shell.handle_command(Command::SettingsActivate));
+
+    // Enter opens the picker (loading) instead of a bare text field.
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::AiModelPicker)
+    );
+    assert_eq!(shell.app_state.current_mode(), EditorMode::PaletteFocus);
+    assert_eq!(
+        shell.pending_ai_model_target,
+        Some(crate::app::app_state::AiModelTarget::Inline)
+    );
+
+    // The worker delivers the catalog: rows appear, current model first.
+    let model = |id: &str| crate::async_runtime::message::AiModelInfo {
+        id: id.to_string(),
+        name: None,
+        context_length: Some(256_000),
+        prompt_price_per_m: Some(0.3),
+        completion_price_per_m: Some(0.9),
+        reasoning: false,
     };
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::AiModels,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiModelsListed {
+            models: vec![model("a/first"), model("old/model"), model("z/last")],
+        },
+    });
+    let labels = shell.app_state.command_palette_result_labels();
+    assert_eq!(labels, vec!["old/model", "a/first", "z/last"]);
 
-    let changed = shell.handle_command(Command::SettingsActivate);
-
-    assert!(changed);
-    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    // Pick the second row and confirm: config + settings row + palette closed.
+    assert!(shell.handle_command(Command::FilePickerSelectNext));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+    assert!(!shell.app_state.is_command_palette_visible());
+    assert_eq!(shell.pending_ai_model_target, None);
+    assert_eq!(
+        shell
+            .ai_config
+            .feature_model(crate::config::ai_config::AiFeature::InlineCompletion),
+        "a/first"
+    );
     let settings = shell
         .app_state
         .active_settings_buffer()
         .expect("settings buffer");
-    let editing = settings.editing.as_ref().expect("editing state");
-    assert_eq!(
-        editing.kind,
-        crate::app::app_state::SettingsEditingKind::AiModel
-    );
-    // Editing seeds the draft from the live config value so the user edits the
-    // real model id rather than a blank field.
-    assert_eq!(editing.draft, model_value);
+    assert!(settings.items.iter().any(|item| matches!(
+        item,
+        crate::app::app_state::SettingItem::AiModel { current } if current == "a/first"
+    )));
 }
 
 #[test]
-fn settings_activate_begins_text_edit_for_leetcode_ai_model() {
+fn settings_activate_on_leetcode_model_without_endpoint_falls_back_to_text_edit() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ai_config.set_leetcode_model("m/l".to_string()).unwrap();
     shell.handle_command(Command::OpenSettings);
-    let model_value = {
-        let settings = shell
-            .app_state
-            .active_settings_buffer_mut()
-            .expect("settings buffer");
-        let (idx, value) = settings
-            .items
-            .iter()
-            .enumerate()
-            .find_map(|(idx, item)| match item {
-                crate::app::app_state::SettingItem::LeetCodeAiModel { current } => {
-                    Some((idx, current.clone()))
-                }
-                _ => None,
-            })
-            .expect("leetcode ai model setting present");
-        settings.selected_index = idx;
-        value
-    };
+    let model_value = select_settings_row(&mut shell, |item| match item {
+        crate::app::app_state::SettingItem::LeetCodeAiModel { current } => {
+            Some(current.clone())
+        }
+        _ => None,
+    });
 
-    let changed = shell.handle_command(Command::SettingsActivate);
+    assert!(shell.handle_command(Command::SettingsActivate));
 
-    assert!(changed);
+    // No endpoint to list models from → plain text edit seeded with the id.
+    assert!(!shell.app_state.is_command_palette_visible());
     assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
     let settings = shell
         .app_state
@@ -1117,6 +1128,56 @@ fn settings_activate_begins_text_edit_for_leetcode_ai_model() {
         crate::app::app_state::SettingsEditingKind::LeetCodeAiModel
     );
     assert_eq!(editing.draft, model_value);
+    assert_eq!(editing.draft, "m/l");
+}
+
+#[test]
+fn ai_model_list_failure_closes_the_picker_and_falls_back_to_text_edit() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ai_config.provider = Some(crate::config::ai_config::AiEndpointConfig {
+        api_url: "http://127.0.0.1:9/v1".to_string(),
+        api_key: None,
+    });
+    shell.handle_command(Command::OpenSettings);
+    select_settings_row(&mut shell, |item| match item {
+        crate::app::app_state::SettingItem::AiModel { current } => Some(current.clone()),
+        _ => None,
+    });
+    assert!(shell.handle_command(Command::SettingsActivate));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::AiModelPicker)
+    );
+
+    shell.on_worker_event(crate::async_runtime::message::WorkerEvent {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::AiModels,
+        kind: crate::async_runtime::message::WorkerEventKind::Failed {
+            error: crate::async_runtime::message::WorkerFailure {
+                kind: crate::async_runtime::message::WorkerFailureKind::Execution,
+                message: "AI error (HTTP 401 Unauthorized): No auth".to_string(),
+            },
+        },
+    });
+
+    assert!(!shell.app_state.is_command_palette_visible());
+    assert_eq!(shell.pending_ai_model_target, None);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    assert_eq!(
+        settings.editing.as_ref().map(|e| e.kind.clone()),
+        Some(crate::app::app_state::SettingsEditingKind::AiModel)
+    );
+    assert!(
+        shell
+            .transient_toast
+            .as_ref()
+            .is_some_and(|toast| toast.message.contains("Could not list models"))
+    );
 }
 
 #[test]
@@ -4871,13 +4932,15 @@ fn manual_trigger_completion_dismisses_ghost_text_and_invalidates_inflight_ai() 
 }
 
 #[test]
-fn ai_inline_result_yields_to_open_completion_menu() {
-    // LSP completion wins: a VALID (current-revision, current-anchor) AI inline
-    // result that arrives while the completion menu is open must be dropped — it
-    // must neither show ghost text nor close the menu the user is picking from.
+fn ai_inline_result_shows_ghost_text_alongside_open_completion_menu() {
+    // Cursor/Windsurf model: a valid (current-revision, current-anchor) AI
+    // result that arrives while the completion menu is open shows as ghost
+    // text AND leaves the menu open — Tab takes the ghost, Enter the item.
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let root = completion_temp_root("ai_yields_to_completion");
+    let root = completion_temp_root("ai_alongside_completion");
     let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    // Caret at the end of `axios.p`, where the menu and the ghost text apply.
+    assert!(shell.app_state.jump_to_line_col(0, "axios.p".chars().count()));
     let cache = crate::lsp::WorkspaceSymbolCache::new();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
         vec![test_completion_item("post", "post")],
@@ -4894,28 +4957,219 @@ fn ai_inline_result_yields_to_open_completion_menu() {
         .expect("enter insert");
     assert!(shell.app_state.set_completion(completion));
     assert!(shell.app_state.has_completion());
-    // Anchor the AI pipeline at the current caret so the anchor guard would PASS —
-    // proving the result is dropped by the completion-open guard, not the anchor one.
     shell.reanchor_ai_inline();
     let revision = shell.ai_inline_revision;
+
+    // Streamed chunks are sanitized against the caret context on arrival: the
+    // echoed line prefix never shows.
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 999,
+        revision_id: revision,
+        topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionChunk {
+            chunk: "axios.p".to_string(),
+        },
+    });
+    assert_eq!(shell.app_state.inline_suggestion(), None);
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 999,
+        revision_id: revision,
+        topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionChunk {
+            chunk: "ost(url".to_string(),
+        },
+    });
+    assert_eq!(shell.app_state.inline_suggestion(), Some("ost(url"));
+    assert!(shell.app_state.has_completion(), "menu stays open under ghost text");
 
     shell.on_worker_result(crate::async_runtime::message::WorkerResult {
         request_id: 999,
         revision_id: revision,
         topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
         payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionResult {
-            suggestion: "ost()".to_string(),
+            suggestion: "axios.post().then(r => r.data)".to_string(),
         },
     });
+    assert_eq!(
+        shell.app_state.inline_suggestion(),
+        Some("ost().then(r => r.data)")
+    );
+    assert!(shell.app_state.has_completion());
+    assert_eq!(shell.ai_inline_stream_buffer, "");
 
-    assert!(
-        shell.app_state.inline_suggestion().is_none(),
-        "AI ghost text must not show over the completion menu"
+    // Enter accepts the menu item (`post` + call parens); the ghost text that
+    // started with the inserted text keeps its remainder at the new caret.
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert!(!shell.app_state.has_completion());
+    assert_eq!(shell.app_state.text_string(), "axios.post()");
+    assert_eq!(shell.app_state.inline_suggestion(), Some(".then(r => r.data)"));
+    assert!(shell.ai_inline_anchor_is_current());
+    assert!(shell.pending_ai_inline_request.is_none());
+}
+
+#[test]
+fn inline_neighbor_snippets_take_nearest_same_extension_tabs() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("ai_neighbor_snippets");
+    let utils = open_completion_file(
+        &mut shell,
+        &root.join("src/utils.ts"),
+        "export function add(a: number, b: number) {\n  return a + b;\n}\nexport const ZERO = 0;\n",
     );
-    assert!(
-        shell.app_state.has_completion(),
-        "the LSP completion menu must stay open (AI inline yields to it)"
+    let _readme = open_completion_file(&mut shell, &root.join("README.md"), "# readme\n");
+    let _app = open_completion_file(&mut shell, &root.join("src/app.ts"), "import { add } from './utils';\n");
+    assert!(shell.app_state.active_file().is_some_and(|p| p.ends_with("app.ts")));
+
+    // The .md tab in between is skipped; utils.ts is the nearest .ts tab.
+    let neighbors = shell.app_state.inline_neighbor_snippets(2, 1200);
+    assert_eq!(neighbors.len(), 1);
+    assert_eq!(neighbors[0].0, "utils.ts");
+    assert!(neighbors[0].1.starts_with("export function add"), "{:?}", neighbors[0].1);
+    let _ = utils;
+
+    // The head is cut back to a full line when the cap lands mid-line.
+    let neighbors = shell.app_state.inline_neighbor_snippets(1, 50);
+    assert_eq!(neighbors[0].1, "export function add(a: number, b: number) {\n");
+
+    // 0 files / 0 chars disables the feature.
+    assert!(shell.app_state.inline_neighbor_snippets(0, 1200).is_empty());
+    assert!(shell.app_state.inline_neighbor_snippets(1, 0).is_empty());
+}
+
+#[test]
+fn completion_accept_that_diverges_from_ghost_text_requests_a_fresh_suggestion() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ai_config.provider = Some(crate::config::ai_config::AiEndpointConfig {
+        api_url: "http://127.0.0.1:9/v1".to_string(),
+        api_key: None,
+    });
+    shell.ai_config.set_inline_model("m/x".to_string()).unwrap();
+    shell.ai_config.set_inline_completion_enabled(true).unwrap();
+    let root = completion_temp_root("ai_diverges_from_completion");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    assert!(shell.app_state.jump_to_line_col(0, "axios.p".chars().count()));
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("post", "post")],
+        0,
+        "axios.p".chars().count(),
+        "axios.".chars().count(),
+        "p".to_string(),
+        &cache,
+        Some("typescript"),
     );
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    assert!(shell.app_state.set_completion(completion));
+    shell.reanchor_ai_inline();
+    // Ghost proposes `post(url)`; the menu inserts `post()` with the caret
+    // after the parens, so the ghost no longer applies.
+    assert!(shell.app_state.set_inline_suggestion(Some("ost(url)".to_string())));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+
+    assert_eq!(shell.app_state.text_string(), "axios.post()");
+    assert_eq!(shell.app_state.inline_suggestion(), None);
+    // …and a new suggestion is queued for the new caret instead of leaving a
+    // dead spot.
+    assert!(shell.pending_ai_inline_request.is_some());
+}
+
+#[test]
+fn new_error_on_the_caret_line_requeues_one_inline_suggestion() {
+    use crate::async_runtime::message::{LspDiagnostic, LspPosition, LspRange};
+
+    fn error_at(line: u32, start: u32, end: u32, message: &str) -> LspDiagnostic {
+        LspDiagnostic {
+            range: LspRange {
+                start: LspPosition {
+                    line,
+                    character: start,
+                },
+                end: LspPosition {
+                    line,
+                    character: end,
+                },
+            },
+            severity: Some(1),
+            code: None,
+            source: None,
+            message: message.to_string(),
+            tags: Vec::new(),
+        }
+    }
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ai_config.provider = Some(crate::config::ai_config::AiEndpointConfig {
+        api_url: "http://127.0.0.1:9/v1".to_string(),
+        api_key: None,
+    });
+    shell.ai_config.set_inline_model("m/x".to_string()).unwrap();
+    shell.ai_config.set_inline_completion_enabled(true).unwrap();
+    let root = completion_temp_root("ai_requeue_on_diagnostic");
+    let path = open_completion_file(
+        &mut shell,
+        &root.join("src/app.ts"),
+        "const ok = 1;\nawait new Promies.\n",
+    );
+    assert!(shell.app_state.jump_to_line_col(1, "await new Promies.".chars().count()));
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.reanchor_ai_inline();
+    shell.pending_ai_inline_request = None;
+
+    // Only caret-line errors/warnings are reported, whitespace-normalised.
+    let before = shell.app_state.caret_line_diagnostic_messages(8);
+    assert!(before.is_empty());
+    let typo = "Cannot find name 'Promies'.\n  Did you mean 'Promise'?";
+    assert!(shell.app_state.set_file_diagnostics(
+        path.clone(),
+        "ts".to_string(),
+        vec![
+            error_at(0, 0, 5, "unrelated error on another line"),
+            error_at(1, 10, 17, typo),
+        ],
+    ));
+    let after = shell.app_state.caret_line_diagnostic_messages(8);
+    assert_eq!(
+        after,
+        vec!["Cannot find name 'Promies'. Did you mean 'Promise'?".to_string()]
+    );
+
+    // A NEW error on the caret line queues exactly one fresh request…
+    shell.requeue_ai_inline_for_new_diagnostic(&before, &after);
+    assert!(shell.pending_ai_inline_request.is_some());
+
+    // …an unchanged set does not…
+    shell.pending_ai_inline_request = None;
+    shell.requeue_ai_inline_for_new_diagnostic(&after, &after);
+    assert!(shell.pending_ai_inline_request.is_none());
+
+    // …nor does one while a rewrite (the fix) is already on screen…
+    assert!(
+        shell
+            .app_state
+            .set_inline_suggestion_edit(Some(crate::app::app_state::InlineEdit {
+                text: "Promise(".to_string(),
+                replace_before_caret: "Promies.".chars().count(),
+                replace_after_caret: 0,
+            }))
+    );
+    shell.requeue_ai_inline_for_new_diagnostic(&before, &after);
+    assert!(shell.pending_ai_inline_request.is_none());
+
+    // …nor outside insert mode.
+    let _ = shell.app_state.clear_inline_suggestion();
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::Escape)
+        .expect("leave insert");
+    shell.requeue_ai_inline_for_new_diagnostic(&before, &after);
+    assert!(shell.pending_ai_inline_request.is_none());
 }
 
 #[test]

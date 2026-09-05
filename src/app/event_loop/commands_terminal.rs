@@ -664,14 +664,9 @@ impl AppShell {
             );
             return true;
         }
-        let Some(provider) = self
-            .ai_config
-            .leetcode_ai_provider()
-            .cloned()
-            .filter(|p| !p.api_url.trim().is_empty() && !p.model.trim().is_empty())
-        else {
+        let Some(provider) = self.ai_config.leetcode_ai_provider() else {
             self.show_transient_toast_kind(
-                "Generate LeetCode Tests\nConfigure [leetcode.provider] in config/ai.toml first."
+                "Generate LeetCode Tests\nSet AI Endpoint, API Key and LeetCode Model in Settings first."
                     .to_string(),
                 ToastKind::Error,
             );
@@ -971,7 +966,7 @@ impl AppShell {
         destination_dir: PathBuf,
         use_ai: bool,
     ) {
-        let provider = self.ai_config.leetcode_ai_provider().cloned();
+        let provider = self.ai_config.leetcode_ai_provider();
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LeetCode,

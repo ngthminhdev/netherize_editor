@@ -1,32 +1,38 @@
+# AI features share ONE OpenAI-compatible endpoint; each feature picks its own
+# model. Settings (space , ) edits this file's copy under
+# ~/.config/netherize/config/ai.toml — never this repo file.
+
+[provider]
+# OpenRouter (https://openrouter.ai/api/v1) or any /v1 that speaks the OpenAI
+# chat/completions format. Paste the key in Settings → AI API Key.
+api_url = "https://openrouter.ai/api/v1"
+api_key = ""
+
 [inline_completion]
+# Ghost text while typing (Copilot-style). Tab or Ctrl+j accepts, Ctrl+l one
+# word. Shows alongside the LSP menu: Tab = ghost text, Enter = menu item.
 enabled = false
+# Fast, non-reasoning code model. Alternatives on OpenRouter:
+# qwen/qwen3-coder-next, qwen/qwen3-coder-flash, mistralai/devstral-2512.
+model = "mistralai/codestral-2508"
+# reasoning_effort = "none"   # default for inline: never think, just complete
 debounce_ms = 150
 prefix_chars = 4000
 suffix_chars = 1500
 max_tokens = 160
-
-[inline_completion.provider]
-api_url = "http://localhost:20128/v1"
-model = "mistral/mistral-medium"
-api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
-endpoint_kind = "chat"
+# Neighbouring tabs with the same extension are sent as reference context
+# (the head of each file). 0 files disables it.
+neighbor_files = 1
+neighbor_chars = 1200
 
 [leetcode]
 use_ai = true
-
-[leetcode.provider]
-api_url = "http://localhost:20128/v1"
-model = "cx/gpt-5.6-terra"
-api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
-endpoint_kind = "chat"
+# Expected-output generation needs a stronger model than inline completion.
+model = "mistralai/mistral-large-2512"
+# reasoning_effort = "low"    # for reasoning models (gpt-5.x, gemini-3.x)
 
 [completion_rerank]
-enabled = true
+enabled = false
+model = "mistralai/codestral-2508"
 debounce_ms = 120
 max_candidates = 20
-
-[completion_rerank.provider]
-api_url = "http://localhost:20128/v1"
-model = "mistral/devstral-2512"
-api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
-endpoint_kind = "chat"

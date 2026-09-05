@@ -135,7 +135,12 @@ impl AppShell {
 
         let mut base_theme =
             ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
-        let ai_config = AiConfig::load();
+        // Tests must not depend on (or write) the user's real ai.toml.
+        let ai_config = if cfg!(test) {
+            AiConfig::default()
+        } else {
+            AiConfig::load()
+        };
         let ui_config = UiConfig::load_active();
         let git_config = crate::config::git_config::GitConfig::load_active();
         // Sync explicitly user-set editor metrics from ui.toml → base_theme so that
@@ -337,8 +342,10 @@ impl AppShell {
             last_ai_inline_submit_at: None,
             ai_inline_suggestion_retained: false,
             ai_inline_inflight: false,
+            ai_inline_stream_buffer: String::new(),
             ai_inline_failure_streak: 0,
             ai_inline_cooldown_until: None,
+            pending_ai_model_target: None,
             ai_inline_anchor: None,
             pending_lsp_document_sync: None,
             last_editor_bounds: None,
@@ -1356,6 +1363,7 @@ impl AppShell {
 
     pub(super) fn cancel_ai_inline_completion(&mut self) {
         self.pending_ai_inline_request = None;
+        self.ai_inline_stream_buffer.clear();
         if let Some(token) = self.ai_inline_cancel_token.take() {
             token.cancel();
             self.ai_inline_inflight = false;
@@ -1403,18 +1411,30 @@ impl AppShell {
         }
     }
 
+    /// A new error on the caret line (the LSP just flagged what was typed):
+    /// ask for a fresh suggestion once so the model can offer the fix as a
+    /// rewrite (Tab applies it). Skipped when a rewrite is already showing.
+    pub(super) fn requeue_ai_inline_for_new_diagnostic(
+        &mut self,
+        before: &[String],
+        after: &[String],
+    ) {
+        if self.app_state.current_mode() != EditorMode::Insert
+            || self.app_state.inline_suggestion_replace_chars() > 0
+            || !after.iter().any(|message| !before.contains(message))
+        {
+            return;
+        }
+        self.queue_ai_inline_completion();
+    }
+
     pub(super) fn queue_ai_inline_completion(&mut self) {
         if self.app_state.current_mode() != EditorMode::Insert {
             self.cancel_ai_inline_completion();
             return;
         }
-        // LSP completion wins: while the completion menu is open (the user is
-        // typing to pick a field/func), AI inline must NOT cut in. It only fires in
-        // Insert mode when no completion menu is showing.
-        if self.app_state.has_completion() {
-            self.cancel_ai_inline_completion();
-            return;
-        }
+        // The completion menu and ghost text coexist (Cursor/Windsurf model):
+        // an open menu never blocks a suggestion request.
         if self.app_state.active_buffer_is_terminal() || self.app_state.active_file().is_none() {
             self.cancel_ai_inline_completion();
             return;
@@ -1474,13 +1494,11 @@ impl AppShell {
         let Some(pending) = self.pending_ai_inline_request.as_ref() else {
             return;
         };
-        // The completion menu opened after this was queued (race): drop the AI
-        // request rather than firing it over the menu — LSP completion wins.
-        if self.app_state.has_completion() {
+        let Some(cfg) = self.ai_config.inline_completion().cloned() else {
             self.cancel_ai_inline_completion();
             return;
-        }
-        let Some(cfg) = self.ai_config.inline_completion().cloned() else {
+        };
+        let Some(provider) = self.ai_config.inline_provider() else {
             self.cancel_ai_inline_completion();
             return;
         };
@@ -1508,11 +1526,7 @@ impl AppShell {
         }
         let cancel_token = CancellationToken::new();
         self.ai_inline_cancel_token = Some(cancel_token.clone());
-        let api_url = cfg.provider.api_url.clone();
-        let api_key = cfg.provider.api_key.clone();
-        let model = cfg.provider.model.clone();
-        let endpoint_kind = cfg.provider.endpoint_kind.clone();
-        let reasoning_effort = cfg.provider.reasoning_effort.clone();
+        self.ai_inline_stream_buffer.clear();
         let max_tokens = cfg.max_tokens();
 
         let text = self.app_state.text_string();
@@ -1521,16 +1535,18 @@ impl AppShell {
         let suffix_take = cfg.suffix_chars();
         let prefix: String = text.chars().take(cursor).collect();
         let suffix: String = text.chars().skip(cursor).take(suffix_take).collect();
-        let prefix_chars: Vec<char> = prefix.chars().collect();
-        let prefix = prefix_chars
-            .iter()
-            .skip(prefix_chars.len().saturating_sub(prefix_take))
-            .collect::<String>();
+        let (prefix, suffix) = inline_context_window(&prefix, &suffix, prefix_take, suffix_take);
         if prefix.trim().is_empty() && suffix.trim().is_empty() {
             self.cancel_ai_inline_completion();
             return;
         }
         let language_id = self.app_state.active_file().map(language_id_for_path);
+        let neighbors = self
+            .app_state
+            .inline_neighbor_snippets(cfg.neighbor_files(), cfg.neighbor_chars());
+        let diagnostics = self
+            .app_state
+            .caret_line_diagnostic_messages(INLINE_PROMPT_MAX_DIAGNOSTICS);
         self.last_ai_inline_submit_at = Some(Instant::now());
         self.ai_inline_inflight = true;
         self.request_redraw();
@@ -1538,14 +1554,12 @@ impl AppShell {
             revision_id: revision,
             topic: RequestTopic::AiInlineCompletion,
             payload: WorkerRequestPayload::AiInlineCompletionRequest {
-                api_url,
-                api_key,
-                model,
-                endpoint_kind,
-                reasoning_effort,
+                provider,
                 prefix,
                 suffix,
                 language_id,
+                neighbors,
+                diagnostics,
                 file_path: self.app_state.active_file().map(PathBuf::from),
                 max_tokens,
                 cancel_token,
@@ -1561,9 +1575,13 @@ impl AppShell {
     /// is applied later in `handle_ai_result`, guarded by the echoed prefix +
     /// revision so it can't yank a selection the user has already moved.
     pub(super) fn maybe_request_ai_completion_rerank(&mut self) {
-        let (provider, max_candidates) = match self.ai_config.completion_rerank() {
-            Some(cfg) => (cfg.provider.clone(), cfg.max_candidates()),
-            None => {
+        let (provider, max_candidates) = match (
+            self.ai_config.completion_rerank(),
+            self.ai_config
+                .resolve(crate::config::ai_config::AiFeature::CompletionRerank),
+        ) {
+            (Some(cfg), Some(provider)) => (provider, cfg.max_candidates()),
+            _ => {
                 if let Some(token) = self.ai_rerank_cancel_token.take() {
                     token.cancel();
                 }
@@ -1614,11 +1632,7 @@ impl AppShell {
             revision_id: completion_revision,
             topic: RequestTopic::AiInlineCompletion,
             payload: WorkerRequestPayload::AiCompletionRerankRequest {
-                api_url: provider.api_url.clone(),
-                api_key: provider.api_key.clone(),
-                model: provider.model.clone(),
-                endpoint_kind: provider.endpoint_kind.clone(),
-                reasoning_effort: provider.reasoning_effort.clone(),
+                provider,
                 prefix,
                 suffix,
                 language_id,
@@ -2452,5 +2466,75 @@ mod tests {
         assert!(shell.syntax_engine.is_some());
 
         let _ = std::fs::remove_file(file_path);
+    }
+}
+
+/// Cut the context window on line boundaries: keep the last `prefix_take`
+/// chars before the caret but drop the partial first line, and drop the
+/// partial last line of a suffix that hit `suffix_take`. A window that starts
+/// or ends mid-line reads as broken code to the model and wastes tokens.
+/// Caret-line LSP messages forwarded to the inline completion prompt.
+const INLINE_PROMPT_MAX_DIAGNOSTICS: usize = 3;
+
+pub(super) fn inline_context_window(
+    prefix: &str,
+    suffix: &str,
+    prefix_take: usize,
+    suffix_take: usize,
+) -> (String, String) {
+    let prefix_chars: Vec<char> = prefix.chars().collect();
+    let skipped = prefix_chars.len().saturating_sub(prefix_take);
+    let mut prefix: String = prefix_chars[skipped..].iter().collect();
+    let starts_mid_line = skipped > 0 && prefix_chars[skipped - 1] != '\n';
+    if starts_mid_line && let Some(newline) = prefix.find('\n') {
+        prefix = prefix[newline + 1..].to_string();
+    }
+    let mut suffix = suffix.to_string();
+    let capped = suffix_take > 0 && suffix.chars().count() >= suffix_take;
+    if capped
+        && let Some(last_newline) = suffix.rfind('\n')
+        && last_newline + 1 < suffix.len()
+    {
+        suffix.truncate(last_newline + 1);
+    }
+    (prefix, suffix)
+}
+
+#[cfg(test)]
+mod inline_context_window_tests {
+    use super::inline_context_window;
+
+    #[test]
+    fn keeps_everything_when_under_the_caps() {
+        let (p, s) = inline_context_window("a\nb\nc", "d\ne", 100, 100);
+        assert_eq!(p, "a\nb\nc");
+        assert_eq!(s, "d\ne");
+    }
+
+    #[test]
+    fn drops_the_partial_first_line_after_capping_the_prefix() {
+        // Cap lands inside "line1": the remainder of that line is dropped.
+        let (p, _) = inline_context_window("line1\nline2\nline3", "", 12, 10);
+        assert_eq!(p, "line2\nline3");
+        // Cap lands exactly after a newline: nothing extra is dropped, even
+        // when the window still contains more newlines.
+        let (p, _) = inline_context_window("ab\ncd", "", 2, 10);
+        assert_eq!(p, "cd");
+        let (p, _) = inline_context_window("ab\ncd\nef", "", 5, 10);
+        assert_eq!(p, "cd\nef");
+        // One long line: nothing to cut on.
+        let (p, _) = inline_context_window("abcdef", "", 3, 10);
+        assert_eq!(p, "def");
+    }
+
+    #[test]
+    fn drops_the_partial_last_line_only_when_the_suffix_hit_its_cap() {
+        let (_, s) = inline_context_window("x", "ab\ncd", 10, 5);
+        assert_eq!(s, "ab\n");
+        let (_, s) = inline_context_window("x", "ab\ncd", 10, 50);
+        assert_eq!(s, "ab\ncd");
+        // Single partial line at the cap stays: dropping it would leave nothing.
+        let (_, s) = inline_context_window("x", ")", 10, 1);
+        assert_eq!(s, ")");
     }
 }

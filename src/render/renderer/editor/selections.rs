@@ -572,6 +572,12 @@ impl Renderer {
         let viewport_top = geometry.viewport_text_top;
         let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
 
+        // Ghost text at the caret pushes the rest of the caret row right; an
+        // underline starting at/after the caret on that row moves with it.
+        let tail_shift = self.inline_ghost_tail_shift;
+        let (cursor_line, _) = app_state.cursor_line_col();
+        let cursor_byte = app_state.cursor_byte_in_line();
+
         let mut quads = Vec::new();
         for diagnostic in diagnostics {
             let severity = diagnostic.severity.unwrap_or(DIAGNOSTIC_SEVERITY_WARNING);
@@ -638,8 +644,17 @@ impl Renderer {
                     line_end_x
                 };
 
-                let left = start_x.min(end_x).max(text_area_x);
-                let right = start_x.max(end_x).min(text_area_x + text_area_w);
+                let mut left = start_x.min(end_x).max(text_area_x);
+                let mut right = start_x.max(end_x).min(text_area_x + text_area_w);
+                if tail_shift > 0.0
+                    && run.line_i == cursor_line
+                    && local_start >= cursor_byte
+                    && run.glyphs.first().is_some_and(|first| first.start <= cursor_byte)
+                    && run.glyphs.last().is_some_and(|last| cursor_byte <= last.end)
+                {
+                    left += tail_shift;
+                    right += tail_shift;
+                }
                 let width = (right - left).max(6.0);
                 if severity == DIAGNOSTIC_SEVERITY_ERROR {
                     let underline_h = 2.0;

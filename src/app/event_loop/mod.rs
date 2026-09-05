@@ -377,10 +377,15 @@ pub struct AppShell {
     /// True between submitting an inline request and its result/failure;
     /// drives the status-bar AI indicator.
     ai_inline_inflight: bool,
+    /// Raw streamed ghost text for the in-flight request; sanitized on every
+    /// chunk before it is shown.
+    ai_inline_stream_buffer: String,
     /// Consecutive non-cancelled inline failures; at the toast threshold the
     /// feature cools down instead of failing silently forever.
     ai_inline_failure_streak: u32,
     ai_inline_cooldown_until: Option<Instant>,
+    /// Which settings row the open AI model picker is choosing for.
+    pending_ai_model_target: Option<crate::app::app_state::AiModelTarget>,
     /// (buffer, caret) the inline pipeline — pending debounce, in-flight
     /// request, or visible ghost text — is valid for. When the caret leaves
     /// this position other than by consuming the suggestion, the pipeline is

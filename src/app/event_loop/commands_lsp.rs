@@ -19,7 +19,7 @@ impl AppShell {
             Command::LspRestart => Some(self.handle_lsp_restart()),
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
-            Command::CompletionAccept => Some(self.accept_completion_item()),
+            Command::CompletionAccept => Some(self.accept_completion_item_keeping_ghost()),
             Command::CompletionClose => Some(self.cancel_completion_and_return_normal()),
             Command::AiAcceptInline | Command::AiAcceptInlineWord => {
                 let report = dispatch_command(&mut self.app_state, command.clone());
@@ -37,7 +37,10 @@ impl AppShell {
                     if self.app_state.inline_suggestion().is_some() {
                         self.reanchor_ai_inline();
                     } else {
+                        // Whole suggestion taken: queue the next one at the
+                        // new caret so accepting chains like Copilot.
                         self.ai_inline_anchor = None;
+                        self.queue_ai_inline_completion();
                     }
                 }
                 Some(report.request_redraw || report.state_changed)

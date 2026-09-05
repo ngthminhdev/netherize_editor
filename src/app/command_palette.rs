@@ -133,6 +133,9 @@ pub enum CommandPaletteMode {
     /// Dojo language picker — same static list as `LeetCodeLanguageSelector`,
     /// but confirming stores the choice instead of scaffolding a file.
     DojoLanguage,
+    /// Settings model picker — `/models` of the shared AI endpoint, fuzzy
+    /// filtered; confirming stores the model for the pending target.
+    AiModelPicker,
 }
 
 impl CommandPaletteMode {
@@ -162,6 +165,7 @@ impl CommandPaletteMode {
             Self::LeetCodeLanguageSelector => "language> ",
             Self::LeetCodeProblemInput => "leetcode> ",
             Self::DojoLanguage => "language> ",
+            Self::AiModelPicker => "model> ",
         }
     }
 
@@ -191,6 +195,7 @@ impl CommandPaletteMode {
             Self::LeetCodeLanguageSelector => "type to filter languages...",
             Self::LeetCodeProblemInput => "enter problem ID, slug, or URL...",
             Self::DojoLanguage => "type to filter languages...",
+            Self::AiModelPicker => "no models match...",
         }
     }
 
@@ -220,6 +225,7 @@ impl CommandPaletteMode {
             Self::LeetCodeLanguageSelector => "NEW LEETCODE",
             Self::LeetCodeProblemInput => "FETCH LEETCODE",
             Self::DojoLanguage => "DOJO · LANGUAGE",
+            Self::AiModelPicker => "AI MODEL",
         }
     }
 
@@ -266,6 +272,8 @@ pub enum CommandPaletteAction {
     SelectDartEnv(PathBuf),
     /// Chọn ngôn ngữ để scaffold một file LeetCode mới (key = template key).
     CreateLeetCodeFile(String),
+    /// Settings model picker: store this model id for the pending target.
+    SelectAiModel(String),
     FetchLeetCodeWithLanguage {
         problem_input: String,
         language_key: String,
@@ -459,6 +467,33 @@ impl CommandPaletteItem {
             icon: None,
             action: CommandPaletteAction::SelectFileHistoryEntry(index),
             tone,
+            preview_colors: Vec::new(),
+        }
+    }
+
+    /// One `/models` row: the id, plus OpenRouter's price + context when known.
+    /// `current` marks the model already configured so it reads as selected.
+    pub fn ai_model(info: &crate::async_runtime::message::AiModelInfo, current: bool) -> Self {
+        let mut meta: Vec<String> = Vec::new();
+        if let (Some(input), Some(output)) = (info.prompt_price_per_m, info.completion_price_per_m)
+        {
+            meta.push(format!("${input:.2}/${output:.2} per M"));
+        }
+        if let Some(ctx) = info.context_length {
+            meta.push(format!("{}k ctx", ctx / 1000));
+        }
+        if info.reasoning {
+            meta.push("reasoning".to_string());
+        }
+        if current {
+            meta.push("current".to_string());
+        }
+        Self {
+            label: info.id.clone(),
+            secondary_label: (!meta.is_empty()).then(|| meta.join(" · ")),
+            icon: None,
+            action: CommandPaletteAction::SelectAiModel(info.id.clone()),
+            tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
         }
     }
@@ -1024,6 +1059,7 @@ impl CommandPalette {
                 | CommandPaletteMode::DocumentSymbols
                 | CommandPaletteMode::LeetCodeLanguageSelector
                 | CommandPaletteMode::DojoLanguage
+                | CommandPaletteMode::AiModelPicker
         ) {
             self.results = if self.query.is_empty() {
                 self.static_items.clone()
@@ -1080,6 +1116,7 @@ impl CommandPalette {
             | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
             CommandPaletteMode::LeetCodeProblemInput => Vec::new(),
             CommandPaletteMode::DojoLanguage => unreachable!("handled above"),
+            CommandPaletteMode::AiModelPicker => unreachable!("handled above"),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
@@ -1343,6 +1380,7 @@ impl CommandPalette {
                 | CommandPaletteMode::DocumentSymbols
                 | CommandPaletteMode::LeetCodeLanguageSelector
                 | CommandPaletteMode::DojoLanguage
+                | CommandPaletteMode::AiModelPicker
                 | CommandPaletteMode::CommandPalette
         ) {
             self.results

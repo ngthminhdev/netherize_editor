@@ -84,6 +84,39 @@ impl AppState {
             .open_with_items(CommandPaletteMode::DojoLanguage, items);
     }
 
+    /// Settings model picker. `loading` shows the spinner until the worker
+    /// delivers the `/models` catalog (`replace_ai_model_picker_items`).
+    pub fn open_ai_model_picker_palette(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+        loading: bool,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::AiModelPicker, items);
+        let _ = self.command_palette.set_loading(loading);
+    }
+
+    /// Swap in the fetched catalog while the picker is still open, keeping the
+    /// query the user may already have typed.
+    pub fn replace_ai_model_picker_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) -> bool {
+        if !self.command_palette.is_visible
+            || self.command_palette.mode != CommandPaletteMode::AiModelPicker
+        {
+            return false;
+        }
+        let query = self.command_palette.query.clone();
+        let vim_mode = self.command_palette.vim_mode;
+        self.command_palette
+            .open_with_items(CommandPaletteMode::AiModelPicker, items);
+        self.command_palette
+            .restore_picker_interaction(&query, vim_mode, 0);
+        let _ = self.command_palette.set_loading(false);
+        true
+    }
+
     pub fn open_dart_env_selector(&mut self) -> bool {
         let workspace = self.workspace_model.as_ref();
         self.command_palette
@@ -993,6 +1026,45 @@ impl AppState {
     pub fn diagnostics_for_path(&self, path: &Path) -> Option<&[LspDiagnostic]> {
         let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         self.diagnostics.get(&normalized).map(Vec::as_slice)
+    }
+
+    /// Error/warning messages the LSP reports on the caret line of the active
+    /// file (deduplicated, clipped, at most `max`). Fed to the inline
+    /// completion prompt so the model can propose the fix for what the user
+    /// just typed instead of building on the mistake.
+    pub fn caret_line_diagnostic_messages(&self, max: usize) -> Vec<String> {
+        const MAX_MESSAGE_CHARS: usize = 200;
+        let Some(path) = self.active_file() else {
+            return Vec::new();
+        };
+        let Some(diagnostics) = self.diagnostics_for_path(path) else {
+            return Vec::new();
+        };
+        let (line, _) = self.cursor_line_col();
+        let line = line as u32;
+        let mut messages: Vec<String> = Vec::new();
+        for diagnostic in diagnostics {
+            if messages.len() >= max {
+                break;
+            }
+            let severity = diagnostic.severity.unwrap_or(2);
+            if severity > 2 || diagnostic.range.start.line > line || diagnostic.range.end.line < line
+            {
+                continue;
+            }
+            let mut message: String = diagnostic
+                .message
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if message.chars().count() > MAX_MESSAGE_CHARS {
+                message = message.chars().take(MAX_MESSAGE_CHARS).collect::<String>() + "…";
+            }
+            if !message.is_empty() && !messages.contains(&message) {
+                messages.push(message);
+            }
+        }
+        messages
     }
 
     /// Replace the diagnostics published by `server_name` for `path`, then

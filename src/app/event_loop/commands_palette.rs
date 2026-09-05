@@ -519,6 +519,15 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::AiModelPicker)
+                    )
+                {
+                    return Some(self.confirm_ai_model_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::LeetCodeLanguageSelector)
                     )
                 {

@@ -1520,6 +1520,58 @@ fn completion_popup_tab_accepts_selected_item() {
 }
 
 #[test]
+fn ghost_text_tab_accepts_inline_suggestion_even_with_completion_open() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let now = std::time::Instant::now();
+
+    // Ghost text alone: Tab accepts it instead of inserting a tab.
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.inline_suggestion_visible = true;
+    let mapped = handler.route_normalized_input(
+        named_input(NamedKey::Tab, Some(KeyCode::Tab)),
+        &map,
+        context,
+        now,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::AiAcceptInline);
+        }
+        other => panic!("expected ai inline accept dispatch, got {:?}", other),
+    }
+
+    // Ghost text + completion menu (Cursor-style coexistence): Tab still
+    // takes the ghost text; Enter keeps accepting the menu item.
+    let mut context = completion_context();
+    context.inline_suggestion_visible = true;
+    let mapped = handler.route_normalized_input(
+        named_input(NamedKey::Tab, Some(KeyCode::Tab)),
+        &map,
+        context.clone(),
+        now,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::AiAcceptInline);
+        }
+        other => panic!("expected ai inline accept dispatch, got {:?}", other),
+    }
+    let mapped = handler.route_normalized_input(
+        named_input(NamedKey::Enter, Some(KeyCode::Enter)),
+        &map,
+        context,
+        now,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::CompletionAccept);
+        }
+        other => panic!("expected completion accept dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn completion_popup_ctrl_n_selects_next_item() {
     let mut handler = InputHandler::new();
     let map = make_map();

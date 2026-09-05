@@ -54,6 +54,14 @@ fn diagnostic_counts(
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
+/// Whether a glyph quad overlaps `rect` (`[x, y, w, h]`).
+fn glyph_touches_rect(glyph: &GlyphInstance, rect: [f32; 4]) -> bool {
+    let [gx, gy] = glyph.screen_pos;
+    let [gw, gh] = glyph.glyph_size;
+    let [rx, ry, rw, rh] = rect;
+    gx < rx + rw && gx + gw > rx && gy < ry + rh && gy + gh > ry
+}
+
 impl Renderer {
     pub fn update_editor_overlays(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
         let active_diagnostics = app_state
@@ -790,6 +798,7 @@ impl Renderer {
             ));
         }
 
+        let mut completion_menu_rect: Option<[f32; 4]> = None;
         if let Some(completion) = app_state.completion() {
             // Single-column completion menu — the SAME compact component the
             // NetherCanvas in-card editor uses (no doc panel). See
@@ -804,7 +813,7 @@ impl Renderer {
             let anchor_x = (caret_layout.x
                 - completion.typed_prefix.chars().count() as f32 * char_w)
                 .max(geometry.viewport_text_left);
-            super::completion::draw_completion_menu(
+            completion_menu_rect = super::completion::draw_completion_menu(
                 completion,
                 super::completion::CompletionMenuGeom {
                     anchor_x,
@@ -827,12 +836,19 @@ impl Renderer {
             );
         }
 
-        let ghost_glyphs = self.collect_inline_suggestion_glyphs(
+        let mut ghost_glyphs = self.collect_inline_suggestion_glyphs(
             app_state,
             geometry.origin_x,
             geometry.origin_y,
             geometry.viewport_text_width,
+            &mut chrome_quads,
         );
+        if let Some(menu) = completion_menu_rect {
+            // Ghost glyphs and the menu share one overlay batch (chrome first,
+            // then glyphs), so a multi-line ghost would print through the
+            // menu. The menu wins: drop the ghost glyphs it covers.
+            ghost_glyphs.retain(|glyph| !glyph_touches_rect(glyph, menu));
+        }
         glyphs.extend(ghost_glyphs);
 
         // Code Graph HUD draws on top of all other editor overlays.

@@ -1445,6 +1445,32 @@ impl InputHandler {
             }
         }
 
+        // Ghost text (AI inline suggestion) owns plain Tab, like Cursor and
+        // Windsurf: when the completion menu is open at the same time, Tab
+        // accepts the ghost text and Enter accepts the menu item. Keymap Tab
+        // (editor.insert_tab) is untouched when no ghost text is visible.
+        if context.focus == InputFocusContext::Editor
+            && context.mode == EditorMode::Insert
+            && context.inline_suggestion_visible
+            && normalized.named_key == Some(NamedKey::Tab)
+            && !normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+            && !normalized.modifiers.super_key()
+            && !normalized.modifiers.shift_key()
+        {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai inline accept intercept (Tab)",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                Command::AiAcceptInline,
+                1,
+                false,
+            )));
+        }
+
         if context.focus == InputFocusContext::Editor
             && context.mode == EditorMode::Insert
             && context.completion_visible

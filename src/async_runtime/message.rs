@@ -47,6 +47,8 @@ pub enum RequestTopic {
     FzfSearch,
     FilePreview,
     AiInlineCompletion,
+    /// `/models` catalog fetch for the Settings model picker.
+    AiModels,
     SystemDepCheck,
     /// Per-tool streaming installation.
     SystemDepInstall,
@@ -364,15 +366,16 @@ pub enum WorkerRequestPayload {
         completion_revision: u64,
     },
     AiInlineCompletionRequest {
-        api_url: String,
-        api_key: Option<String>,
-        model: String,
-        endpoint_kind: Option<String>,
-        reasoning_effort: Option<String>,
+        provider: crate::config::ai_config::AiProviderConfig,
         prefix: String,
         suffix: String,
         language_id: Option<String>,
         file_path: Option<PathBuf>,
+        /// `(file name, head of file)` of neighbouring tabs, reference only.
+        neighbors: Vec<(String, String)>,
+        /// LSP error/warning messages on the caret line, so the model can
+        /// propose the fix for a mistake right before the caret.
+        diagnostics: Vec<String>,
         max_tokens: u32,
         cancel_token: CancellationToken,
     },
@@ -380,11 +383,7 @@ pub enum WorkerRequestPayload {
     /// `candidates` (the server's own labels) by relevance at the cursor and
     /// returns the preferred ordering. The model never adds or removes labels.
     AiCompletionRerankRequest {
-        api_url: String,
-        api_key: Option<String>,
-        model: String,
-        endpoint_kind: Option<String>,
-        reasoning_effort: Option<String>,
+        provider: crate::config::ai_config::AiProviderConfig,
         prefix: String,
         suffix: String,
         language_id: Option<String>,
@@ -394,6 +393,11 @@ pub enum WorkerRequestPayload {
         prefix_token: String,
         completion_revision: u64,
         cancel_token: CancellationToken,
+    },
+    /// `GET {api_url}/models` for the Settings model picker.
+    AiListModels {
+        api_url: String,
+        api_key: Option<String>,
     },
     /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
     CheckSystemDeps,
@@ -582,6 +586,20 @@ pub struct LspCompletionItem {
     /// Original JSON of the item — needed to round-trip through `completionItem/resolve`.
     /// `None` for items synthesized in tests.
     pub raw_json: Option<String>,
+}
+
+/// One entry of an OpenAI-shaped `GET /models` reply. Prices are USD per
+/// million tokens; OpenRouter-only fields are `None`/`false` elsewhere.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiModelInfo {
+    pub id: String,
+    pub name: Option<String>,
+    pub context_length: Option<u64>,
+    pub prompt_price_per_m: Option<f64>,
+    pub completion_price_per_m: Option<f64>,
+    /// The model can think before answering (`supported_parameters` has
+    /// `reasoning`); inline completion switches that off.
+    pub reasoning: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -898,6 +916,10 @@ pub enum WorkerResultPayload {
         ranked: Vec<String>,
         prefix_token: String,
         completion_revision: u64,
+    },
+    /// Model catalog of the configured endpoint (Settings model picker).
+    AiModelsListed {
+        models: Vec<AiModelInfo>,
     },
     /// Result of system dependency check: list of tools not found by `which`.
     SystemDepCheckResult {
